@@ -24,6 +24,7 @@ var/
 venv/
 ENV/
 env/
+.env
 
 # 로그 및 출력 파일
 *.log
