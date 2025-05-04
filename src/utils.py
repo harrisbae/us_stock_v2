@@ -5,31 +5,26 @@ import pandas as pd
 import numpy as np
 
 def setup_argparser():
-    """명령행 인수 설정"""
-    parser = argparse.ArgumentParser(description='주식 기술적 분석 도구')
+    """명령줄 인자 파서 설정"""
+    parser = argparse.ArgumentParser(description='주식 기술적 분석 시스템')
     
-    parser.add_argument('--ticker', type=str, required=True,
-                        help='종목 코드 (예: AAPL, 005930.KS)')
+    # 필수 인자
+    parser.add_argument('--ticker', type=str, required=True, help='종목코드 (예: AAPL, 005930.KS)')
     
-    parser.add_argument('--period', type=str, default='1y',
-                        choices=['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'max'],
-                        help='조회 기간 (기본값: 1y)')
-    
+    # 옵션 인자
+    parser.add_argument('--period', type=str, default='1mo', 
+                    help='데이터 기간 (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max)')
     parser.add_argument('--interval', type=str, default='1d',
-                        choices=['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'],
-                        help='시간 간격 (기본값: 1d)')
-    
-    parser.add_argument('--visualize', action='store_true',
-                        help='차트 시각화 여부')
-    
-    parser.add_argument('--output', type=str, default=None,
-                        help='출력 디렉토리 (기본값: output/YYYYMMDD/TICKER)')
-    
-    parser.add_argument('--start-date', type=str, default=None,
-                        help='데이터 시작 날짜 (YYYY-MM-DD 형식)')
-    
-    parser.add_argument('--end-date', type=str, default=None,
-                        help='데이터 종료 날짜 (YYYY-MM-DD 형식, 기본값: 오늘)')
+                    help='봉 간격 (1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo)')
+    parser.add_argument('--start-date', type=str, help='시작 날짜 (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str, help='종료 날짜 (YYYY-MM-DD)')
+    parser.add_argument('--output', type=str, help='출력 디렉토리')
+    parser.add_argument('--visualize', action='store_true', help='차트 시각화 생성')
+    parser.add_argument('--save-csv', action='store_true', help='CSV 파일 저장')
+    parser.add_argument('--sell-only', action='store_true', help='매도 신호 분석만 수행')
+    parser.add_argument('--buy-only', action='store_true', help='매수 신호 분석만 수행')
+    parser.add_argument('--box-window', type=int, default=15, help='박스권 분석 윈도우 크기 (기간, 기본값: 15)')
+    parser.add_argument('--box-threshold', type=float, default=0.1, help='박스권 분석 변동폭 임계값 (기본값: 0.1 = 10%)')
     
     return parser
 

@@ -51,6 +51,8 @@ class StockVisualizer:
         self.ticker = ticker
         self.fig = None
         self.axes = None
+        self._is_sell_chart = False
+        self.consolidation_ranges = []  # 박스권 정보를 저장할 리스트
         
     def set_data(self, data, ticker=None):
         """데이터 및 종목코드 설정"""
@@ -64,6 +66,9 @@ class StockVisualizer:
             print("ERROR: 시각화할 데이터가 없습니다.")
             return None
             
+        # 매도 차트 플래그 설정
+        self._is_sell_chart = False
+        
         # 차트 레이아웃 설정
         self.fig = plt.figure(figsize=figsize, dpi=dpi)
         gs = gridspec.GridSpec(7, 1, height_ratios=[3, 1.5, 1, 1, 1, 1, 1])
@@ -121,6 +126,73 @@ class StockVisualizer:
             plt.subplots_adjust(top=0.95)
             
         return self.fig
+    
+    def plot_all_sell_signals(self, figsize=(14, 28), dpi=100):
+        """매도 신호를 강조한 모든 차트 그리기"""
+        if self.data is None:
+            print("ERROR: 시각화할 데이터가 없습니다.")
+            return None
+            
+        # 매도 차트 플래그 설정
+        self._is_sell_chart = True
+        
+        # 차트 레이아웃 설정
+        self.fig = plt.figure(figsize=figsize, dpi=dpi)
+        gs = gridspec.GridSpec(7, 1, height_ratios=[3, 1.5, 1, 1, 1, 1, 1])
+        
+        # 메인 차트 (캔들스틱 + 볼린저 밴드)
+        self.axes = []
+        self.axes.append(plt.subplot(gs[0]))
+        
+        # 이동평균선 차트 (독립적인 서브플롯으로 분리)
+        self.axes.append(plt.subplot(gs[1], sharex=self.axes[0]))
+        
+        # 거래량 차트
+        self.axes.append(plt.subplot(gs[2], sharex=self.axes[0]))
+        
+        # RSI 차트 (독립적인 서브플롯으로 분리)
+        self.axes.append(plt.subplot(gs[3], sharex=self.axes[0]))
+        
+        # MACD 차트
+        self.axes.append(plt.subplot(gs[4], sharex=self.axes[0]))
+        
+        # MFI 차트 (독립적인 서브플롯으로 분리)
+        self.axes.append(plt.subplot(gs[5], sharex=self.axes[0]))
+        
+        # 보조지표 차트 (볼린저 밴드 %B, OBV)
+        self.axes.append(plt.subplot(gs[6], sharex=self.axes[0]))
+        
+        # 각 차트 그리기
+        self._plot_candlestick_with_bb()
+        self._plot_moving_averages()
+        self._plot_volume()
+        self._plot_rsi()
+        self._plot_macd()
+        self._plot_mfi()
+        self._plot_momentum()
+
+        # 매도 신호가 있는 경우 모든 서브플롯에 수직선 추가
+        if 'Sell_Score' in self.data.columns:
+            self._add_sell_signal_markers()
+        
+        # x축 날짜 형식 설정
+        for ax in self.axes:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            ax.xaxis.set_major_locator(mdates.WeekdayLocator(interval=2))
+            ax.grid(True, alpha=0.3)
+            # 각 서브플롯의 x축 날짜 표시를 45도 각도로 설정
+            plt.setp(ax.get_xticklabels(), rotation=45)
+            
+        # 전체 레이아웃 조정
+        plt.tight_layout()
+        
+        # 제목 설정
+        if self.ticker:
+            period = f"{self.data.index[0].strftime('%Y-%m-%d')} ~ {self.data.index[-1].strftime('%Y-%m-%d')}"
+            self.fig.suptitle(f"{self.ticker} 매도 신호 분석 차트 ({period})", fontsize=16, color='red')
+            plt.subplots_adjust(top=0.95)
+            
+        return self.fig
         
     def _plot_candlestick_with_bb(self):
         """캔들스틱 + 볼린저 밴드 그리기"""
@@ -158,8 +230,8 @@ class StockVisualizer:
                 color=color, linewidth=1
             )
             
-            # 매수 신호 표시
-            if 'Buy_Score' in self.data.columns:
+            # 매수 신호 화살표 표시 (매도 차트가 아닌 경우에만)
+            if 'Buy_Score' in self.data.columns and (not hasattr(self, '_is_sell_chart') or not self._is_sell_chart):
                 buy_score = self.data['Buy_Score'].iloc[i]
                 
                 # 매수 점수가 50점 이상인 경우 화살표로 표시
@@ -180,6 +252,57 @@ class StockVisualizer:
                         horizontalalignment='center'
                     )
             
+            # 매도 신호 화살표 표시 (매도 차트인 경우에만)
+            if 'Sell_Score' in self.data.columns and hasattr(self, '_is_sell_chart') and self._is_sell_chart:
+                sell_score = self.data['Sell_Score'].iloc[i]
+                
+                # 매도 점수가 50점 이상인 경우 화살표로 표시
+                if sell_score >= 70:  # 매우 강한 신호
+                    ax.annotate('⬇',
+                        xy=(mdates.date2num(date), high_price * 1.01),
+                        xytext=(mdates.date2num(date), high_price * 1.03),
+                        fontsize=15, color='red',
+                        arrowprops=dict(facecolor='red', shrink=0.05),
+                        horizontalalignment='center'
+                    )
+                elif sell_score >= 50:  # 강한 신호
+                    ax.annotate('⬇',
+                        xy=(mdates.date2num(date), high_price * 1.01),
+                        xytext=(mdates.date2num(date), high_price * 1.03),
+                        fontsize=12, color='crimson',
+                        arrowprops=dict(facecolor='crimson', shrink=0.05),
+                        horizontalalignment='center'
+                    )
+        
+        # 박스권(횡보구간) 표시
+        if self.consolidation_ranges:
+            for box in self.consolidation_ranges:
+                # 박스권 영역 색상 설정 (반투명한 회색)
+                rect = plt.Rectangle(
+                    (mdates.date2num(box['start_date']), box['lower_price']),
+                    mdates.date2num(box['end_date']) - mdates.date2num(box['start_date']),
+                    box['upper_price'] - box['lower_price'],
+                    fill=True,
+                    facecolor='darkgoldenrod', alpha=0.15,
+                    linestyle='--', linewidth=2, edgecolor='goldenrod'
+                )
+                ax.add_patch(rect)
+                
+                # 박스권 레이블 추가
+                range_percent = box['range_percent'] * 100
+                label_text = f"박스권: {range_percent:.1f}%"
+                
+                # 박스권 중간 위치에 텍스트 표시
+                mid_date = box['start_date'] + (box['end_date'] - box['start_date']) / 2
+                mid_price = (box['upper_price'] + box['lower_price']) / 2
+                
+                ax.text(
+                    mdates.date2num(mid_date), mid_price,
+                    label_text, fontsize=8, color='darkgoldenrod',
+                    ha='center', va='center',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='goldenrod', boxstyle='round,pad=0.3')
+                )
+        
         # 볼린저 밴드
         if 'BB_Upper' in self.data.columns and 'BB_Lower' in self.data.columns:
             ax.plot(self.data.index, self.data['BB_Upper'], 'k--', alpha=0.3, label='BB 상단')
@@ -193,8 +316,19 @@ class StockVisualizer:
         handles, labels = ax.get_legend_handles_labels()
         handles.extend([red_patch, blue_patch])
         
-        # 매수 신호 범례 추가
-        if 'Buy_Score' in self.data.columns:
+        # 박스권 범례 추가
+        if self.consolidation_ranges:
+            box_patch = Patch(color='darkgoldenrod', alpha=0.15, label='박스권')
+            handles.append(box_patch)
+        
+        # 매수 또는 매도 신호 범례 추가
+        if self.fig and hasattr(self, '_is_sell_chart') and self._is_sell_chart:
+            # 매도 차트인 경우 매도 신호 범례 추가
+            red_arrow = plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='crimson', markersize=10, label='매도 신호')
+            dark_red_arrow = plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='red', markersize=10, label='강력 매도 신호')
+            handles.extend([red_arrow, dark_red_arrow])
+        elif 'Buy_Score' in self.data.columns:
+            # 매수 차트인 경우 매수 신호 범례 추가
             green_arrow = plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='green', markersize=10, label='매수 신호')
             magenta_arrow = plt.Line2D([0], [0], marker='^', color='w', markerfacecolor='magenta', markersize=10, label='강력 매수 신호')
             handles.extend([green_arrow, magenta_arrow])
@@ -463,6 +597,121 @@ class StockVisualizer:
         # 각 서브플롯에 해당 지표의 매수 신호 평가 내용 추가
         self._add_subplot_evaluations()
     
+    def _add_sell_signal_markers(self):
+        """모든 서브플롯에 매도 신호에 대한 수직선과 점수 표시"""
+        # 매도 점수가 15점 이상인 신호만 필터링 (임계값 낮춤)
+        sell_signals = self.data[self.data['Sell_Score'] >= 15].copy()
+        
+        if len(sell_signals) == 0:
+            return
+            
+        # 모든 서브플롯에 매도 신호 수직선 추가
+        for i, ax in enumerate(self.axes):
+            y_min, y_max = ax.get_ylim()
+            
+            for idx, row in sell_signals.iterrows():
+                score = row['Sell_Score']
+                color = 'red' if score >= 70 else ('crimson' if score >= 50 else ('tomato' if score >= 30 else 'lightcoral'))
+                linestyle = '-' if score >= 50 else ('--' if score >= 30 else ':')
+                linewidth = 1.5 if score >= 50 else 1
+                
+                # 수직선 추가
+                ax.axvline(x=idx, color=color, alpha=0.5, linestyle=linestyle, linewidth=linewidth)
+                
+                # 첫 번째 서브플롯(캔들스틱 차트)에 점수와 매도 근거 표시
+                if i == 0:
+                    # 매도 근거 텍스트 생성
+                    sell_reasons = []
+                    if 'MA_Death_Cross' in self.data.columns and row['MA_Death_Cross'] == 1:
+                        sell_reasons.append("데드크로스")
+                    if 'MA_Down_Trend_Signal' in self.data.columns and row['MA_Down_Trend_Signal'] == 1:
+                        sell_reasons.append("MA하락")
+                    if 'RSI_Sell_Signal' in self.data.columns and row['RSI_Sell_Signal'] == 1:
+                        sell_reasons.append("RSI고점")
+                    if 'RSI_Down_Signal' in self.data.columns and row['RSI_Down_Signal'] == 1:
+                        sell_reasons.append("RSI하락")
+                    if 'MACD_Death_Cross' in self.data.columns and row['MACD_Death_Cross'] == 1:
+                        sell_reasons.append("MACD하락")
+                    if 'MFI_Sell_Signal' in self.data.columns and row['MFI_Sell_Signal'] == 1:
+                        sell_reasons.append("MFI고점")
+                    if 'BB_Sell_Signal' in self.data.columns and row['BB_Sell_Signal'] == 1:
+                        sell_reasons.append("BB고점")
+                    if 'OBV_Sell_Signal' in self.data.columns and row['OBV_Sell_Signal'] == 1:
+                        sell_reasons.append("OBV하락")
+                    if 'Volume_Sell_Signal' in self.data.columns and row['Volume_Sell_Signal'] == 1:
+                        sell_reasons.append("매도거래급증")
+                    if 'Foreign_Sell_Signal' in self.data.columns and row['Foreign_Sell_Signal'] == 1:
+                        sell_reasons.append("외국인매도")
+                    
+                    # 캔들 위에 매도 점수 표시
+                    score_text = f"{score:.0f}"
+                    ax.text(idx, y_max * 0.98, score_text, 
+                           color=color, fontweight='bold', ha='center', va='top', fontsize=5,
+                           bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.1'))
+                    
+                    # 매도 근거 텍스트 표시 - 45도 각도로 설정
+                    if sell_reasons:
+                        reason_text = " | ".join(sell_reasons)
+                        text_y_position = y_max * 0.9
+                        # 긴 텍스트일 경우 위치 조정
+                        if len(sell_reasons) > 2:
+                            text_y_position = y_max * 0.88
+                        
+                        ax.text(idx, text_y_position, reason_text, 
+                               color=color, fontsize=7, ha='right', va='top', rotation=45,
+                               bbox=dict(facecolor='white', alpha=0.8, boxstyle='round,pad=0.2'))
+                    
+                # MACD 차트에 매도 신호 레이블 표시 (MACD 크로스 발생 여부)
+                if i == 4 and 'MACD_Death_Cross' in self.data.columns and row['MACD_Death_Cross'] == 1:
+                    ax.text(idx, y_max * 0.9, 'MACD하락', color=color, fontsize=8, fontweight='bold', 
+                           ha='right', rotation=45, va='top',
+                           bbox=dict(facecolor='white', alpha=0.8))
+                           
+                # RSI 차트에 매도 신호 레이블 표시 (RSI 고점 여부)
+                if i == 3:
+                    if 'RSI_Sell_Signal' in self.data.columns and row['RSI_Sell_Signal'] == 1:
+                        ax.text(idx, y_max * 0.9, 'RSI고점', color=color, fontsize=8, fontweight='bold', 
+                               ha='right', rotation=45, va='top',
+                               bbox=dict(facecolor='white', alpha=0.8))
+                    elif 'RSI_Down_Signal' in self.data.columns and row['RSI_Down_Signal'] == 1:
+                        ax.text(idx, y_max * 0.8, 'RSI하락', color=color, fontsize=8, fontweight='bold', 
+                               ha='right', rotation=45, va='top',
+                               bbox=dict(facecolor='white', alpha=0.8))
+                           
+                # MFI 차트에 매도 신호 레이블 표시 (MFI 고점 여부)
+                if i == 5 and 'MFI_Sell_Signal' in self.data.columns and row['MFI_Sell_Signal'] == 1:
+                    ax.text(idx, y_max * 0.9, 'MFI고점', color=color, fontsize=8, fontweight='bold', 
+                           ha='right', rotation=45, va='top',
+                           bbox=dict(facecolor='white', alpha=0.8))
+                           
+                # 볼린저 밴드 %B 차트에 매도 신호 레이블 표시 (BB 고점 여부)
+                if i == 6 and 'BB_Sell_Signal' in self.data.columns and row['BB_Sell_Signal'] == 1:
+                    ax.text(idx, y_max * 0.9, 'BB고점', color=color, fontsize=8, fontweight='bold', 
+                           ha='right', rotation=45, va='top',
+                           bbox=dict(facecolor='white', alpha=0.8))
+                
+                # 이동평균선 차트에 매도 신호 레이블 표시
+                if i == 1:
+                    if 'MA_Death_Cross' in self.data.columns and row['MA_Death_Cross'] == 1:
+                        ax.text(idx, y_max * 0.9, '데드크로스', color=color, fontsize=8, fontweight='bold', 
+                               ha='right', rotation=45, va='top',
+                               bbox=dict(facecolor='white', alpha=0.8))
+                    elif 'MA_Down_Trend_Signal' in self.data.columns and row['MA_Down_Trend_Signal'] == 1:
+                        ax.text(idx, y_max * 0.85, 'MA하락', color=color, fontsize=8, fontweight='bold', 
+                               ha='right', rotation=45, va='top',
+                               bbox=dict(facecolor='white', alpha=0.8))
+                
+                # 거래량 차트에 매도 신호 레이블 표시
+                if i == 2 and 'Volume_Sell_Signal' in self.data.columns and row['Volume_Sell_Signal'] == 1:
+                    ax.text(idx, y_max * 0.9, '매도거래급증', color=color, fontsize=8, fontweight='bold', 
+                           ha='right', rotation=45, va='top',
+                           bbox=dict(facecolor='white', alpha=0.8))
+        
+        # 각 서브플롯에 해당 지표의 매도 신호 평가 내용 추가
+        # 매도 평가를 위한 별도 평가 함수 추가가 필요할 수 있으나,
+        # 현재는 기존 평가 함수를 재사용
+        self._add_subplot_evaluations()
+    
     def _add_subplot_evaluations(self):
         """각 서브플롯에 해당 기술적 지표의 매수 신호 평가 내용 추가"""
         # 최신 데이터 가져오기
@@ -629,19 +878,47 @@ class StockVisualizer:
         """차트 저장"""
         if self.fig is None:
             print("ERROR: 저장할 차트가 없습니다.")
+            return
+        
+        if output_dir is None:
+            output_dir = os.path.join('output', datetime.now().strftime('%Y%m%d'))
+        
+        # 디렉토리가 없으면 생성
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        if self.ticker:
+            output_path = os.path.join(output_dir, f"{self.ticker}_technical_analysis.png")
+            self.fig.savefig(output_path, dpi=dpi, bbox_inches='tight')
+            print(f"차트가 {output_path}에 저장되었습니다.")
+            return output_path
+        else:
+            print("WARNING: 종목코드가 설정되지 않아 차트를 저장할 수 없습니다.")
             return None
             
-        # 기본 출력 디렉토리 설정
+    def save_sell_chart(self, output_dir=None, dpi=300):
+        """매도 신호 차트 저장"""
+        if self.fig is None:
+            print("ERROR: 저장할 차트가 없습니다.")
+            return
+        
         if output_dir is None:
-            today = datetime.now().strftime("%Y%m%d")
-            output_dir = os.path.join("output", today, self.ticker)
+            output_dir = os.path.join('output', datetime.now().strftime('%Y%m%d'))
+        
+        # 디렉토리가 없으면 생성
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
             
-        # 디렉토리 생성
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # 파일 저장
-        output_file = os.path.join(output_dir, f"{self.ticker}_technical_analysis.png")
-        self.fig.savefig(output_file, dpi=dpi)
-        print(f"차트가 {output_file}에 저장되었습니다.")
-        
-        return output_file 
+        if self.ticker:
+            output_path = os.path.join(output_dir, f"{self.ticker}_sell_signals.png")
+            self.fig.savefig(output_path, dpi=dpi, bbox_inches='tight')
+            print(f"매도 신호 차트가 {output_path}에 저장되었습니다.")
+            return output_path
+        else:
+            print("WARNING: 종목코드가 설정되지 않아 차트를 저장할 수 없습니다.")
+            return None
+
+    def set_consolidation_ranges(self, ranges):
+        """박스권 정보 설정"""
+        self.consolidation_ranges = ranges
+        return self 

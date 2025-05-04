@@ -11,6 +11,10 @@ START_DATE=""
 END_DATE=""
 OUTPUT_DIR=""
 HELP=false
+SELL_ONLY=false
+BUY_ONLY=false
+BOX_WINDOW=15
+BOX_THRESHOLD=0.1
 STOCKS=()
 
 # 현재 날짜 (YYYY-MM-DD 형식)
@@ -32,11 +36,18 @@ show_help() {
     echo "  -e, --end-date DATE       종료일 (YYYY-MM-DD 형식)"
     echo "  -o, --output DIR          출력 디렉토리 지정"
     echo "  -nv, --no-visualize       차트 시각화 생략"
+    echo "  --buy                     매수 신호 분석 강조 모드 (매수 신호 분석에 초점)"
+    echo "  --sell                    매도 신호 분석 강조 모드 (매도 신호 분석에 초점)"
+    echo "  --box-window WINDOW       박스권 분석 윈도우 크기 (기본값: 15)"
+    echo "  --box-threshold THRESHOLD 박스권 분석 변동폭 임계값 (기본값: 0.1 = 10%)"
     echo ""
     echo "예제:"
     echo "  ./main.sh AAPL                      # 애플 주식 기본 분석"
     echo "  ./main.sh -p 3mo AAPL TSLA AMZN     # 3개월 데이터로 여러 종목 분석"
     echo "  ./main.sh -s 2025-01-01 -e 2025-05-01 TSLA  # 특정 기간 테슬라 분석"
+    echo "  ./main.sh --buy AAPL                # 애플 주식 매수 신호 분석 모드"
+    echo "  ./main.sh --sell AAPL               # 애플 주식 매도 신호 분석 모드"
+    echo "  ./main.sh --box-window 20 --box-threshold 0.05 AAPL  # 애플 주식 박스권 분석 (변동폭 5%)"
     echo ""
 }
 
@@ -71,6 +82,22 @@ while [[ $# -gt 0 ]]; do
             VISUALIZE=false
             shift
             ;;
+        --sell)
+            SELL_ONLY=true
+            shift
+            ;;
+        --buy)
+            BUY_ONLY=true
+            shift
+            ;;
+        --box-window)
+            BOX_WINDOW="$2"
+            shift 2
+            ;;
+        --box-threshold)
+            BOX_THRESHOLD="$2"
+            shift 2
+            ;;
         *)
             # 종목코드로 해석
             STOCKS+=("$1")
@@ -99,7 +126,13 @@ fi
 # 각 종목 분석 실행
 for stock in "${STOCKS[@]}"; do
     echo "=========================="
-    echo "분석 중: $stock"
+    if [ "$SELL_ONLY" = true ]; then
+        echo "매도 신호 분석 중: $stock"
+    elif [ "$BUY_ONLY" = true ]; then
+        echo "매수 신호 분석 중: $stock"
+    else
+        echo "분석 중: $stock"
+    fi
     echo "기간: $PERIOD, 간격: $INTERVAL"
     if [ -n "$START_DATE" ]; then
         echo "분석 기간: $START_DATE ~ $END_DATE"
@@ -123,6 +156,19 @@ for stock in "${STOCKS[@]}"; do
     if [ -n "$OUTPUT_DIR" ]; then
         cmd="$cmd --output $OUTPUT_DIR"
     fi
+    
+    # 매도 신호 분석 모드 옵션 추가
+    if [ "$SELL_ONLY" = true ]; then
+        cmd="$cmd --sell-only"
+    fi
+    
+    # 매수 신호 분석 모드 옵션 추가
+    if [ "$BUY_ONLY" = true ]; then
+        cmd="$cmd --buy-only"
+    fi
+    
+    # 박스권 분석 옵션 추가
+    cmd="$cmd --box-window $BOX_WINDOW --box-threshold $BOX_THRESHOLD"
     
     # 명령 실행
     echo "실행 명령: $cmd"

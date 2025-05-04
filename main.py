@@ -54,6 +54,9 @@ def main():
     # 매수 신호 분석
     buy_signals = analyzer.find_buy_signals(window=10)
     
+    # 매도 신호 분석 추가
+    sell_signals = analyzer.find_sell_signals(window=10)
+    
     # 3. 결과 저장
     output_dir = args.output if args.output else create_output_dir(args.ticker)
     print(f"3. 데이터 저장 중... ({output_dir})")
@@ -63,43 +66,114 @@ def main():
     print("4. 분석 결과 요약:")
     print_analysis_summary(data, args.ticker)
     
-    # 매수 신호 출력
-    print("\n5. 매수 신호 분석 결과:")
-    print("==================================================")
-    print(f"종목: {args.ticker} 매수 신호 분석")
-    print("==================================================")
-    print(f"최근 10일간 매수 신호 점수:")
+    # 매수 신호 출력 (매도 전용 모드가 아닌 경우에만)
+    if not args.sell_only:
+        print("\n5. 매수 신호 분석 결과:")
+        print("==================================================")
+        print(f"종목: {args.ticker} 매수 신호 분석")
+        print("==================================================")
+        print(f"최근 10일간 매수 신호 점수:")
+        
+        for idx, row in buy_signals.iterrows():
+            date_str = idx.strftime('%Y-%m-%d')
+            score = row['Buy_Score']
+            signal = row['Buy_Signal']
+            print(f"- {date_str}: {score:.1f}점 ({signal})")
+        
+        # 최근 매수 추천
+        latest_score = buy_signals['Buy_Score'].iloc[-1]
+        latest_signal = buy_signals['Buy_Signal'].iloc[-1]
+        
+        print("\n최종 추천:")
+        if latest_score >= 70:
+            print("✅ 강력 매수 추천")
+        elif latest_score >= 50:
+            print("✅ 매수 추천")
+        elif latest_score >= 30:
+            print("⚠️ 관망 추천")
+        else:
+            print("❌ 매수 비추천")
+        
+        print("==================================================")
+        print("* 참고: 이 분석은 단순 참고용이며, 투자 결정은 추가적인 연구가 필요합니다.")
+        print("==================================================")
     
-    for idx, row in buy_signals.iterrows():
-        date_str = idx.strftime('%Y-%m-%d')
-        score = row['Buy_Score']
-        signal = row['Buy_Signal']
-        print(f"- {date_str}: {score:.1f}점 ({signal})")
-    
-    # 최근 매수 추천
-    latest_score = buy_signals['Buy_Score'].iloc[-1]
-    latest_signal = buy_signals['Buy_Signal'].iloc[-1]
-    
-    print("\n최종 추천:")
-    if latest_score >= 70:
-        print("✅ 강력 매수 추천")
-    elif latest_score >= 50:
-        print("✅ 매수 추천")
-    elif latest_score >= 30:
-        print("⚠️ 관망 추천")
-    else:
-        print("❌ 매수 비추천")
-    
-    print("==================================================")
-    print("* 참고: 이 분석은 단순 참고용이며, 투자 결정은 추가적인 연구가 필요합니다.")
-    print("==================================================")
+    # 매도 신호 출력 (매수 전용 모드가 아닌 경우에만)
+    if not args.buy_only:
+        print("\n6. 매도 신호 분석 결과:")
+        print("==================================================")
+        print(f"종목: {args.ticker} 매도 신호 분석")
+        print("==================================================")
+        print(f"최근 10일간 매도 신호 점수:")
+        
+        for idx, row in sell_signals.iterrows():
+            date_str = idx.strftime('%Y-%m-%d')
+            score = row['Sell_Score']
+            signal = row['Sell_Signal']
+            print(f"- {date_str}: {score:.1f}점 ({signal})")
+        
+        # 최근 매도 추천
+        latest_sell_score = sell_signals['Sell_Score'].iloc[-1]
+        latest_sell_signal = sell_signals['Sell_Signal'].iloc[-1]
+        
+        print("\n최종 매도 추천:")
+        if latest_sell_score >= 70:
+            print("⛔ 강력 매도 추천")
+        elif latest_sell_score >= 50:
+            print("⛔ 매도 추천")
+        elif latest_sell_score >= 30:
+            print("⚠️ 일부 매도 검토")
+        else:
+            print("✅ 매도 비추천")
+        
+        print("==================================================")
+        print("* 참고: 이 분석은 단순 참고용이며, 투자 결정은 추가적인 연구가 필요합니다.")
+        print("==================================================")
     
     # 시각화 (필요한 경우)
     if args.visualize:
-        print("6. 차트 생성 중...")
-        visualizer = StockVisualizer(data, args.ticker)
-        visualizer.plot_all()
-        visualizer.save_chart(output_dir)
+        print("7. 차트 생성 중...")
+        
+        # 박스권(횡보구간) 분석
+        consolidation_ranges = analyzer.find_consolidation_ranges(
+            window=args.box_window, 
+            threshold=args.box_threshold
+        )
+        if consolidation_ranges:
+            print(f"총 {len(consolidation_ranges)}개의 박스권 구간이 발견되었습니다.")
+            for box in consolidation_ranges:
+                start_date = box['start_date'].strftime('%Y-%m-%d')
+                end_date = box['end_date'].strftime('%Y-%m-%d')
+                range_percent = box['range_percent'] * 100
+                print(f"  - {start_date} ~ {end_date}: 변동폭 {range_percent:.1f}% (상단: {box['upper_price']:.2f}, 하단: {box['lower_price']:.2f})")
+        
+        # 매도 신호 분석 모드인 경우 매도 차트만 생성
+        if args.sell_only:
+            visualizer = StockVisualizer(data, args.ticker)
+            visualizer.set_consolidation_ranges(consolidation_ranges)
+            visualizer.plot_all_sell_signals()
+            chart_path = visualizer.save_sell_chart(output_dir)
+            print(f"매도 신호 차트가 {output_dir} 디렉토리에 저장되었습니다.")
+        # 매수 신호 분석 모드인 경우 매수 차트만 생성
+        elif args.buy_only:
+            visualizer = StockVisualizer(data, args.ticker)
+            visualizer.set_consolidation_ranges(consolidation_ranges)
+            visualizer.plot_all()
+            chart_path = visualizer.save_chart(output_dir)
+            print(f"매수 신호 차트가 {output_dir} 디렉토리에 저장되었습니다.")
+        # 일반 분석 모드인 경우 매수/매도 차트 모두 생성
+        else:
+            # 매수 신호 차트
+            visualizer = StockVisualizer(data, args.ticker)
+            visualizer.set_consolidation_ranges(consolidation_ranges)
+            visualizer.plot_all()
+            visualizer.save_chart(output_dir)
+            
+            # 매도 신호 차트 (별도 파일로 저장)
+            visualizer = StockVisualizer(data, args.ticker)
+            visualizer.set_consolidation_ranges(consolidation_ranges)
+            visualizer.plot_all_sell_signals()
+            visualizer.save_sell_chart(output_dir)
     
     print("\n완료!")
     print(f"결과는 {output_dir} 디렉토리에 저장되었습니다.")
