@@ -55,14 +55,178 @@ def calculate_support_resistance(data, window=20):
 
 def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path: str = None, current_price: float = None):
     """HMA + 만트라 밴드 매수/매도 신호 차트"""
-    # 폰트 설정
-    plt.rcParams['font.family'] = 'AppleGothic'  # macOS용 한글 폰트
-    plt.rcParams['axes.unicode_minus'] = False   # 마이너스 기호 깨짐 방지
-    
-    if isinstance(data.columns, pd.MultiIndex):
-        ohlcv_data = data.xs(ticker, axis=1, level=1)
-    else:
-        ohlcv_data = data
+    try:
+        # 한글 폰트 설정
+        plt.rcParams['font.family'] = get_available_font()
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        # 단일 인덱스 데이터프레임으로 변환
+        if isinstance(data.columns, pd.MultiIndex):
+            ohlcv_data = data.xs(ticker, axis=1, level=1)
+        else:
+            ohlcv_data = data
+
+        # 기술적 지표 계산
+        hma = calculate_hma(ohlcv_data['Close'])
+        upper_mantra, lower_mantra = calculate_mantra_bands(ohlcv_data['Close'])
+        macd, macd_signal, macd_hist = calculate_macd(ohlcv_data['Close'])
+        rsi = calculate_rsi(ohlcv_data['Close'])
+        
+        # MACD 디버깅 출력
+        print('MACD:', macd.head(10))
+        print('MACD Signal:', macd_signal.head(10))
+        print('MACD Hist:', macd_hist.head(10))
+        print('MACD shape:', macd.shape, macd_signal.shape, macd_hist.shape)
+        
+        # 신호 생성
+        hma_signals = get_hma_mantra_md_signals(ohlcv_data, ticker)
+        
+        # 그래프 생성
+        fig, (ax_main, ax_tajmahal_rsi, ax_macd, ax_rsi, ax_volume) = plt.subplots(
+            5, 1, figsize=(15, 20), sharex=True,
+            gridspec_kw={'height_ratios': [3, 1, 1, 1, 1]}
+        )
+        
+        # 캔들스틱 데이터 준비
+        ohlc = np.array([
+            [mdates.date2num(date), 
+             float(ohlcv_data.loc[date, 'Open']), 
+             float(ohlcv_data.loc[date, 'High']), 
+             float(ohlcv_data.loc[date, 'Low']), 
+             float(ohlcv_data.loc[date, 'Close'])] 
+            for date in ohlcv_data.index
+        ])
+        
+        # 캔들스틱 차트
+        candlestick_ohlc(ax_main, ohlc, width=0.6, colorup='green', colordown='red', alpha=0.6)
+        
+        # HMA, 만트라 밴드 플롯
+        ax_main.plot(ohlcv_data.index, ohlcv_data['Close'], color='black', alpha=0.5, linewidth=1.2)
+        ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=2)
+        ax_main.plot(ohlcv_data.index, upper_mantra, color='red', linestyle='--')
+        ax_main.plot(ohlcv_data.index, lower_mantra, color='green', linestyle='--')
+        
+        # 타지마할 RSI 플롯 (범례 없이)
+        ax_tajmahal_rsi.plot(ohlcv_data.index, rsi, color='purple', linewidth=1.5)
+        ax_tajmahal_rsi.axhline(y=70, color='red', linestyle='--', alpha=0.5)
+        ax_tajmahal_rsi.axhline(y=30, color='green', linestyle='--', alpha=0.5)
+        ax_tajmahal_rsi.set_ylim([0, 100])
+        ax_tajmahal_rsi.set_ylabel('RSI')
+        ax_tajmahal_rsi.grid(True, alpha=0.3)
+        
+        # MACD 플롯
+        ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=1, zorder=3)
+        ax_macd.plot(ohlcv_data.index, macd_signal, color='red', label='Signal', linewidth=1, zorder=3)
+        # Histogram 색상: 기본값(변경 없음)
+        hist_dummy = ax_macd.bar([0], [0], label='Histogram')[0]
+        
+        ax_macd.set_facecolor('white')
+        
+        # MACD 매수/매도 신호 찾기
+        macd_signals = []
+        prev_diff = 0
+        
+        for i in range(1, len(ohlcv_data.index)):
+            curr_diff = macd.iloc[i] - macd_signal.iloc[i]
+            
+            # 크로스 발생 여부 확인
+            if (curr_diff * prev_diff <= 0) and (curr_diff != prev_diff):
+                cross_date = ohlcv_data.index[i]
+                
+                # MACD와 Signal의 값
+                macd_value = macd.iloc[i]
+                signal_value = macd_signal.iloc[i]
+                
+                # 정확한 크로스 지점의 값 계산
+                cross_value = (macd_value + signal_value) / 2
+                
+                # 골드크로스/데드크로스 판단
+                # MACD가 Signal선을 상향돌파(골드크로스 - 매수)
+                if (prev_diff < 0 and curr_diff >= 0) or (prev_diff == 0 and curr_diff > 0):
+                    is_golden = True
+                # MACD가 Signal선을 하향돌파(데드크로스 - 매도)
+                elif (prev_diff > 0 and curr_diff <= 0) or (prev_diff == 0 and curr_diff < 0):
+                    is_golden = False
+                else:
+                    continue  # 크로스가 아닌 경우 스킵
+                
+                macd_signals.append((cross_date, cross_value, is_golden))
+            prev_diff = curr_diff
+        
+        # MACD 매수/매도 신호 표시
+        for date, value, is_golden in macd_signals:
+            if is_golden:  # 골드크로스 (매수)
+                ax_macd.plot(date, value, '^', color='blue', markersize=8, markeredgecolor='white', zorder=4)
+            else:  # 데드크로스 (매도)
+                ax_macd.plot(date, value, 'v', color='red', markersize=8, markeredgecolor='white', zorder=4)
+        
+        # MACD 신호 더미 마커 (범례용)
+        macd_buy = ax_macd.plot([], [], '^', color='blue', markersize=8, markeredgecolor='white', label='MACD 매수 (골든크로스)')[0]
+        macd_sell = ax_macd.plot([], [], 'v', color='red', markersize=8, markeredgecolor='white', label='MACD 매도 (데드크로스)')[0]
+        hist_dummy = ax_macd.bar([0], [0], label='Histogram')[0]
+        macd_line = ax_macd.plot([], [], color='blue', label='MACD')[0]
+        signal_line = ax_macd.plot([], [], color='red', label='Signal')[0]
+        handles = [macd_line, signal_line, hist_dummy, macd_buy, macd_sell]
+        labels = ['MACD', 'Signal', 'Histogram', 'MACD 매수 (골든크로스)', 'MACD 매도 (데드크로스)']
+        ax_macd.legend(handles, labels, loc='upper left', fontsize=8)
+        
+        ax_macd.set_ylabel('MACD', loc='top', rotation=0, labelpad=30, fontsize=10)
+        ax_macd.grid(True, alpha=0.3)
+        
+        # RSI 플롯
+        ax_rsi.plot(ohlcv_data.index, rsi, color='purple', linewidth=1)
+        ax_rsi.axhline(y=70, color='red', linestyle='--', alpha=0.5)
+        ax_rsi.axhline(y=30, color='green', linestyle='--', alpha=0.5)
+        ax_rsi.set_ylim([0, 100])
+        ax_rsi.set_ylabel('RSI')
+        ax_rsi.grid(True, alpha=0.3)
+        
+        # 거래량 플롯
+        ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color='gray', alpha=0.3)
+        ax_volume.set_ylabel('Volume')
+        ax_volume.grid(True, alpha=0.3)
+        
+        # 신호 표시
+        for signal in hma_signals:
+            color = 'blue' if signal['type'] == 'BUY' else 'red'
+            marker = '^' if signal['type'] == 'BUY' else 'v'
+            
+            # 신호 위치 설정
+            if signal['type'] == 'BUY':
+                y = lower_mantra[signal['date']] * 0.99
+                date_str = signal['date'].strftime('%m/%d')
+                ax_main.text(signal['date'], y * 0.99, f"{date_str}", 
+                            rotation=45, fontsize=6, ha='right', va='top',
+                            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                ax_main.plot(signal['date'], y, marker=marker, color=color, 
+                           markersize=10, markeredgecolor='black')
+            else:
+                y = upper_mantra[signal['date']] * 1.01
+                date_str = signal['date'].strftime('%m/%d')
+                ax_main.text(signal['date'], y * 1.01, f"{date_str}", 
+                            rotation=45, fontsize=6, ha='right', va='bottom',
+                            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                ax_main.plot(signal['date'], y, marker=marker, color=color, 
+                           markersize=10, markeredgecolor='black')
+        
+        # 현재가 표시
+        if current_price:
+            ax_main.axhline(y=current_price, color='blue', linestyle='--', alpha=0.5)
+            ax_main.text(ohlcv_data.index[-1], current_price, f'현재가: {current_price:.2f}',
+                        color='blue', ha='right', va='bottom')
+        
+        # 그래프 저장 또는 표시
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
+            
+    except Exception as e:
+        print(f"오류 발생: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
     # 시장 데이터 가져오기
     start_date = ohlcv_data.index[0]
@@ -394,135 +558,97 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     )
 
     # RSI 차트
-    rsi3_line = ax_rsi.plot(ohlcv_data.index, rsi3, color='red', label='RSI(3)', linewidth=1)[0]
-    rsi14_line = ax_rsi.plot(ohlcv_data.index, rsi14, color='blue', label='RSI(14)', linewidth=1)[0]
+    rsi3_line = ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', label='RSI(3)', linewidth=1)[0]
+    rsi14_line = ax_rsi.plot(ohlcv_data.index, rsi14, color='red', label='RSI(14)', linewidth=1)[0]
     rsi50_line = ax_rsi.plot(ohlcv_data.index, rsi50, color='green', label='RSI(50)', linewidth=1)[0]
     
     # 매수/매도 구간 라인
     sell_line = ax_rsi.axhline(y=70, color='r', linestyle='--', alpha=0.3, label='매도 구간 (70)')
     buy_line = ax_rsi.axhline(y=30, color='g', linestyle='--', alpha=0.3, label='매수 구간 (30)')
     
-    # RSI 3과 14의 크로스 지점 찾기
-    cross_points = []
+    # 신호 마커 저장용 리스트
+    buy_markers_b0 = []
+    buy_markers_b1 = []
+    buy_markers_b2 = []
+    sell_markers_s0 = []
+    sell_markers_s1 = []
+    sell_markers_s2 = []
     prev_diff = 0
-    
     for i in range(1, len(ohlcv_data.index)):
         curr_diff = rsi3.iloc[i] - rsi14.iloc[i]
-        
-        # 크로스 발생 여부 확인 (부호가 바뀌거나 한 쪽이 0인 경우)
+        date = ohlcv_data.index[i]
+        rsi3_value = rsi3.iloc[i]
+        rsi14_value = rsi14.iloc[i]
+        rsi50_value = rsi50.iloc[i]
+        # 골든/데드크로스 판별
+        is_golden = False
+        is_cross = False
         if (curr_diff * prev_diff <= 0) and (curr_diff != prev_diff):
-            cross_date = ohlcv_data.index[i]
-            
-            # RSI 3과 14의 값
-            rsi3_value = rsi3.iloc[i]
-            rsi14_value = rsi14.iloc[i]
-            
-            # 정확한 크로스 지점의 RSI 값 계산
-            cross_value = (rsi3_value + rsi14_value) / 2
-            
-            # 골드크로스/데드크로스 판단
-            # RSI 3이 RSI 14를 상향돌파(골드크로스)
+            is_cross = True
             if (prev_diff < 0 and curr_diff >= 0) or (prev_diff == 0 and curr_diff > 0):
                 is_golden = True
-            # RSI 3이 RSI 14를 하향돌파(데드크로스)
             elif (prev_diff > 0 and curr_diff <= 0) or (prev_diff == 0 and curr_diff < 0):
                 is_golden = False
             else:
-                continue  # 크로스가 아닌 경우 스킵
-                
-            cross_points.append((cross_date, cross_value, is_golden))
+                continue
         prev_diff = curr_diff
-    
-    # 매수/매도 신호 표시
-    for date, value, is_golden in cross_points:
-        if is_golden:  # 골드크로스 (매수)
-            ax_rsi.plot(date, value, '^', color='red', markersize=8, markeredgecolor='white')
-        else:  # 데드크로스 (매도)
-            ax_rsi.plot(date, value, 'v', color='blue', markersize=8, markeredgecolor='white')
-    
-    # 더미 마커 (범례용)
-    buy_marker = ax_rsi.plot([], [], '^', color='red', markersize=8, markeredgecolor='white', label='RSI 매수 (3>=14 골드크로스)')[0]
-    sell_marker = ax_rsi.plot([], [], 'v', color='blue', markersize=8, markeredgecolor='white', label='RSI 매도 (3<=14 데드크로스)')[0]
+        if not is_cross:
+            continue
+        # 매수 신호
+        if is_golden:
+            marker_b0 = ax_rsi.plot(date, rsi3_value, '^', color='gray', markersize=8, markeredgecolor='white', label='약한 매수 신호')[0]
+            ax_rsi.axvline(x=date, color='gray', linestyle='--', alpha=0.3)
+            buy_markers_b0.append(marker_b0)
+            if rsi3_value > 30 and rsi14_value > 30 and (rsi3.iloc[i-1] <= 30 or rsi14.iloc[i-1] <= 30):
+                marker_b1 = ax_rsi.plot(date, rsi3_value, '^', color='blue', markersize=8, markeredgecolor='white', label='매수 신호')[0]
+                ax_rsi.axvline(x=date, color='blue', linestyle='--', alpha=0.3)
+                buy_markers_b1.append(marker_b1)
+                if rsi50_value > 50 and rsi50.iloc[i-1] <= 50:
+                    marker_b2 = ax_rsi.plot(date, rsi3_value, '^', color='black', markersize=8, markeredgecolor='white', label='강한 매수 신호')[0]
+                    ax_rsi.axvline(x=date, color='black', linestyle='--', alpha=0.3)
+                    buy_markers_b2.append(marker_b2)
+        # 매도 신호
+        if not is_golden:
+            marker_s0 = ax_rsi.plot(date, rsi3_value, 'v', color='orange', markersize=8, markeredgecolor='white', label='약한 매도 신호')[0]
+            ax_rsi.axvline(x=date, color='orange', linestyle='--', alpha=0.3)
+            sell_markers_s0.append(marker_s0)
+            if rsi3_value < 70 and rsi14_value < 70 and (rsi3.iloc[i-1] >= 70 or rsi14.iloc[i-1] >= 70):
+                marker_s1 = ax_rsi.plot(date, rsi3_value, 'v', color='red', markersize=8, markeredgecolor='white', label='매도 신호')[0]
+                ax_rsi.axvline(x=date, color='red', linestyle='--', alpha=0.3)
+                sell_markers_s1.append(marker_s1)
+                if rsi50_value < 50 and rsi50.iloc[i-1] >= 50:
+                    marker_s2 = ax_rsi.plot(date, rsi3_value, 'v', color='#8B0000', markersize=8, markeredgecolor='white', label='강한 매도 신호')[0]
+                    ax_rsi.axvline(x=date, color='#8B0000', linestyle='--', alpha=0.3)
+                    sell_markers_s2.append(marker_s2)
     
     ax_rsi.set_ylim(0, 100)
     ax_rsi.set_ylabel('타지마할 RSI')
     ax_rsi.grid(True, alpha=0.3)
     
-    # RSI 범례 구성
-    legend_elements = [
-        (rsi3_line, rsi14_line, rsi50_line),  # RSI 라인들
-        (buy_line, sell_line),  # 매수/매도 구간
-        (buy_marker,),  # 매수 신호
-        (sell_marker,)  # 매도 신호
-    ]
-    legend_labels = [
-        'RSI (3/14/50)',
-        '매수/매도 구간',
-        'RSI 매수 (3>=14 골드크로스)',
-        'RSI 매도 (3<=14 데드크로스)'
-    ]
-    
-    ax_rsi.legend(
-        [tuple(group) if isinstance(group, tuple) else group for group in legend_elements],
-        legend_labels,
-        handler_map={tuple: HandlerTuple(ndivide=None)},
-        loc='upper right',
-        fontsize=8,
-        ncol=2
-    )
-
-    # MACD 차트
-    ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=1)
-    ax_macd.plot(ohlcv_data.index, macd_signal, color='red', label='Signal', linewidth=1)
-    ax_macd.bar(ohlcv_data.index, hist, color=['red' if h > 0 else 'blue' for h in hist], label='Histogram')
-    
-    # MACD 매수/매도 신호 찾기
-    macd_signals = []
-    prev_diff = 0
-    
-    for i in range(1, len(ohlcv_data.index)):
-        curr_diff = macd.iloc[i] - macd_signal.iloc[i]
-        
-        # 크로스 발생 여부 확인
-        if (curr_diff * prev_diff <= 0) and (curr_diff != prev_diff):
-            cross_date = ohlcv_data.index[i]
-            
-            # MACD와 Signal의 값
-            macd_value = macd.iloc[i]
-            signal_value = macd_signal.iloc[i]
-            
-            # 정확한 크로스 지점의 값 계산
-            cross_value = (macd_value + signal_value) / 2
-            
-            # 골드크로스/데드크로스 판단
-            # MACD가 Signal선을 상향돌파(골드크로스 - 매수)
-            if (prev_diff < 0 and curr_diff >= 0) or (prev_diff == 0 and curr_diff > 0):
-                is_golden = True
-            # MACD가 Signal선을 하향돌파(데드크로스 - 매도)
-            elif (prev_diff > 0 and curr_diff <= 0) or (prev_diff == 0 and curr_diff < 0):
-                is_golden = False
-            else:
-                continue  # 크로스가 아닌 경우 스킵
-                
-            macd_signals.append((cross_date, cross_value, is_golden))
-        prev_diff = curr_diff
-    
-    # MACD 매수/매도 신호 표시
-    for date, value, is_golden in macd_signals:
-        if is_golden:  # 골드크로스 (매수)
-            ax_macd.plot(date, value, '^', color='red', markersize=8, markeredgecolor='white')
-        else:  # 데드크로스 (매도)
-            ax_macd.plot(date, value, 'v', color='blue', markersize=8, markeredgecolor='white')
-    
-    # MACD 신호 더미 마커 (범례용)
-    macd_buy = ax_macd.plot([], [], '^', color='red', markersize=8, markeredgecolor='white', label='MACD 매수 (MACD>Signal)')[0]
-    macd_sell = ax_macd.plot([], [], 'v', color='blue', markersize=8, markeredgecolor='white', label='MACD 매도 (MACD<Signal)')[0]
-    
-    ax_macd.set_ylabel('MACD')
-    ax_macd.grid(True, alpha=0.3)
-    
-    # MACD 범례 업데이트
-    ax_macd.legend(loc='upper right', fontsize=8)
+    # 범례 구성
+    handles = [rsi3_line, rsi14_line, rsi50_line, buy_line, sell_line]
+    labels = ['RSI(3)', 'RSI(14)', 'RSI(50)', '매수 구간 (30)', '매도 구간 (70)']
+    # 매수 신호 마커(더미) 추가
+    if buy_markers_b0:
+        handles.append(buy_markers_b0[0])
+        labels.append('약한 매수 신호')
+    if buy_markers_b1:
+        handles.append(buy_markers_b1[0])
+        labels.append('매수 신호')
+    if buy_markers_b2:
+        handles.append(buy_markers_b2[0])
+        labels.append('강한 매수 신호')
+    # 매도 신호 마커(더미) 추가
+    if sell_markers_s0:
+        handles.append(sell_markers_s0[0])
+        labels.append('약한 매도 신호')
+    if sell_markers_s1:
+        handles.append(sell_markers_s1[0])
+        labels.append('매도 신호')
+    if sell_markers_s2:
+        handles.append(sell_markers_s2[0])
+        labels.append('강한 매도 신호')
+    ax_rsi.legend(handles, labels, loc='upper left', fontsize=8)
 
     # 거래량 차트
     volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]

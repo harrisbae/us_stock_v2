@@ -4,9 +4,44 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from src.indicators.hma_mantra.visualization.advanced import plot_hma_mantra_md_signals
 import matplotlib.pyplot as plt
+
+def calculate_rsi_signals(data, period=14):
+    """RSI 기반 매매 신호 생성"""
+    # RSI 계산
+    delta = data['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # 신호 생성
+    signal = "HOLD"
+    
+    # 최근 RSI 값 (스칼라)
+    current_rsi = rsi.iloc[-1]
+    prev_rsi = rsi.iloc[-2]
+    
+    # 매수 조건
+    if current_rsi > 30 and prev_rsi <= 30:
+        signal = "BUY"
+    elif current_rsi > 40 and prev_rsi <= 40:
+        signal = "BUY"
+    elif current_rsi > 50 and prev_rsi <= 50:
+        signal = "BUY"
+    
+    # 매도 조건
+    elif current_rsi < 70 and prev_rsi >= 70:
+        signal = "SELL"
+    elif current_rsi < 60 and prev_rsi >= 60:
+        signal = "SELL"
+    elif current_rsi < 50 and prev_rsi >= 50:
+        signal = "SELL"
+    
+    return signal
 
 def main():
     # 명령행 인자 처리
@@ -37,13 +72,14 @@ def main():
         plot_hma_mantra_md_signals(data, ticker, str(save_path), current_price)
         print(f"분석 완료: {save_path}")
 
+        # RSI 기반 신호 생성
+        #signal = calculate_rsi_signals(data)
+        
         # 신호 파일 생성
-        signal_path = save_dir / f"{ticker}_signal.txt"
-        with open(signal_path, "w") as f:
-            # 여기서는 임시로 BUY 신호를 생성
-            # 실제로는 plot_hma_mantra_md_signals 함수의 결과를 기반으로 신호를 결정해야 함
-            f.write("BUY")
-        print(f"신호 파일 생성 완료: {signal_path}")
+        #signal_path = save_dir / f"{ticker}_signal.txt"
+        #with open(signal_path, "w") as f:
+        #    f.write(signal)
+        #print(f"신호 파일 생성 완료: {signal_path} (신호: {signal})")
 
     except Exception as e:
         print(f"오류 발생: {str(e)}")
