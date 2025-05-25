@@ -101,3 +101,39 @@ fi
 if [ -f "output/hma_mantra/$SYMBOL/${SYMBOL}_analysis.png" ]; then
   mv "output/hma_mantra/$SYMBOL/${SYMBOL}_analysis.png" "output/hma_mantra/$SYMBOL/${SYMBOL}_analysis.png"
 fi 
+
+# 매수/매도 신호 종합 기능
+SUMMARY_FILE="output/analysis/summary_signal.txt"
+echo "종목,신호,날짜" > "$SUMMARY_FILE"
+
+# 현재 날짜 가져오기 (한국 시간 기준)
+CURRENT_DATE=$(TZ=Asia/Seoul date +"%Y-%m-%d")
+
+if [ ! -z "$SYMBOL_FILE" ]; then
+  while IFS= read -r symbol || [ -n "$symbol" ]; do
+    [[ $symbol =~ ^#.*$ ]] && continue
+    [[ -z "${symbol// }" ]] && continue
+    
+    SIGNAL_FILE="output/hma_mantra/$symbol/${symbol}_signal.txt"
+    if [ -f "$SIGNAL_FILE" ]; then
+      SIGNAL=$(cat "$SIGNAL_FILE")
+      echo "$symbol,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+    else
+      echo "$symbol,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+    fi
+  done < "$SYMBOL_FILE"
+else
+  SIGNAL_FILE="output/hma_mantra/$SYMBOL/${SYMBOL}_signal.txt"
+  if [ -f "$SIGNAL_FILE" ]; then
+    SIGNAL=$(cat "$SIGNAL_FILE")
+    echo "$SYMBOL,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+  else
+    echo "$SYMBOL,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+  fi
+fi
+
+echo -e "\n=== 매수/매도 신호 요약 ==="
+echo "파일 위치: $SUMMARY_FILE"
+echo "-------------------"
+cat "$SUMMARY_FILE"
+echo "-------------------" 

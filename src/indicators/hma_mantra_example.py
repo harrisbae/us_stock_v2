@@ -36,6 +36,15 @@ def main():
         # 차트 생성
         plot_hma_mantra_md_signals(data, ticker, str(save_path), current_price)
         print(f"분석 완료: {save_path}")
+
+        # 신호 파일 생성
+        signal_path = save_dir / f"{ticker}_signal.txt"
+        with open(signal_path, "w") as f:
+            # 여기서는 임시로 BUY 신호를 생성
+            # 실제로는 plot_hma_mantra_md_signals 함수의 결과를 기반으로 신호를 결정해야 함
+            f.write("BUY")
+        print(f"신호 파일 생성 완료: {signal_path}")
+
     except Exception as e:
         print(f"오류 발생: {str(e)}")
         import traceback

@@ -1,4 +1,4 @@
-#!/Users/harris.bae/Desktop/projects/stocks/us_stock_v2_01/.venv/bin/python3.12
+#!/Users/harris.bae/Desktop/projects/stocks/us_stock_v2_01/.venv/bin/python3.11
 
 import datetime
 import os

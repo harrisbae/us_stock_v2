@@ -7,6 +7,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import platform
+import os
+import requests
+from dotenv import load_dotenv
+from openai import OpenAI
 
 # 한글 폰트 설정
 if platform.system() == 'Darwin':  # macOS
@@ -30,15 +34,23 @@ class NewsAnalysis:
         # Yahoo Finance에서 뉴스 데이터 수집
         stock = yf.Ticker(self.symbol)
         news = stock.news
-        
         for item in news:
+            content = item.get('content', item)  # content dict가 있으면 사용
+            # pubDate 또는 displayTime을 우선 사용
+            date_str = content.get('pubDate') or content.get('displayTime')
+            if date_str:
+                try:
+                    date = pd.to_datetime(date_str)
+                except Exception:
+                    date = datetime.now()
+            else:
+                date = datetime.now()
             self.news_data.append({
-                'date': datetime.fromtimestamp(item.get('timestamp', 0)),
-                'title': item.get('title', ''),
-                'link': item.get('link', ''),
-                'source': item.get('source', '')
+                'date': date,
+                'title': content.get('title', ''),
+                'link': content.get('canonicalUrl', {}).get('url', ''),
+                'source': content.get('provider', {}).get('displayName', '')
             })
-        
         # 데이터프레임으로 변환
         self.news_df = pd.DataFrame(self.news_data)
         if not self.news_df.empty:
@@ -112,25 +124,43 @@ class NewsAnalysis:
         ax.set_xlabel('뉴스 건수')
         ax.grid(True, alpha=0.3)
 
+    def get_latest_news_summary_perplexity(self):
+        api_key = os.getenv("PERPLEXITY_API_KEY")
+        client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+        prompt = (
+            f"{self.symbol} 관련 최신 뉴스 3개를 찾아, "
+            "각 뉴스가 주가에 미치는 영향이 호재(긍정적)인지 악재(부정적)인지 구분해서 한글로 요약해줘. "
+            "각 뉴스는 날짜와 함께 1~2줄로 요약하고, 마지막에 [호재] 또는 [악재]로 표시해줘."
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an artificial intelligence assistant and you need to "
+                    "engage in a helpful, detailed, polite conversation with a user."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ]
+        try:
+            response = client.chat.completions.create(
+                model="sonar-pro",
+                messages=messages,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"[Perplexity 뉴스 요약 오류] {str(e)}"
+
     def _plot_recent_news(self, ax):
-        """최근 주요 뉴스"""
-        # 최근 10개 뉴스 선택
-        recent_news = self.news_df.head(10)
-        
-        headlines = []
-        headlines.append("최근 주요 뉴스:")
-        for _, row in recent_news.iterrows():
-            date_str = row.name.strftime('%m/%d %H:%M')
-            headlines.append(f"• [{date_str}] {row['title'][:50]}...")
-        
-        # 텍스트 표시
-        ax.text(0.05, 0.95, "최근 뉴스 헤드라인", fontsize=12, fontweight='bold',
+        """최신 뉴스 요약 (Perplexity)"""
+        summary = self.get_latest_news_summary_perplexity()
+        ax.text(0.05, 0.95, "최신 뉴스 요약 (Perplexity)", fontsize=12, fontweight='bold',
                 transform=ax.transAxes, va='top')
-        
-        headline_text = "\n".join(headlines)
-        ax.text(0.05, 0.85, headline_text, transform=ax.transAxes,
+        ax.text(0.05, 0.85, summary, transform=ax.transAxes,
                 va='top', fontsize=10, linespacing=1.5)
-        
         ax.axis('off')
 
 def main(symbol, save_path=None):
