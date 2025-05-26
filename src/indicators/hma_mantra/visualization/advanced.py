@@ -191,7 +191,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
         
         # 배경색 적용
         for start, end in buy_periods:
-            ax.axvspan(start, end, color='lightgreen', alpha=0.2)
+            ax.axvspan(start, end, color='lightgreen', alpha=0.08)
             
         # 매도 구간 (매수 구간이 아닌 구간)
         sell_periods = []
@@ -206,7 +206,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
             sell_periods.append((last_end, ohlcv_data.index[-1]))
             
         for start, end in sell_periods:
-            ax.axvspan(start, end, color='lightpink', alpha=0.2)
+            ax.axvspan(start, end, color='lightpink', alpha=0.08)
 
     # 모든 차트에 배경색 적용
     for ax in [ax_main, ax_rsi, ax_macd, ax_volume, ax_vix, ax_tnx, ax_dxy]:

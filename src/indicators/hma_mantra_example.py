@@ -9,6 +9,12 @@ from pathlib import Path
 from src.indicators.hma_mantra.visualization.advanced import plot_hma_mantra_md_signals
 import matplotlib.pyplot as plt
 
+def get_scalar(val):
+    # 값이 Series면 첫 번째 값만 추출, 아니면 그대로 반환
+    if isinstance(val, pd.Series):
+        return val.values[0]
+    return val
+
 def calculate_rsi_signals(data):
     """RSI 기반 매매 신호 생성"""
     # RSI 계산 (3, 14, 50 기간)
@@ -36,25 +42,32 @@ def calculate_rsi_signals(data):
     signal = "HOLD"
     
     # 최근 RSI 값들
-    current_rsi_3 = rsi_3.iloc[-1]
-    prev_rsi_3 = rsi_3.iloc[-2]
-    current_rsi_14 = rsi_14.iloc[-1]
-    current_rsi_50 = rsi_50.iloc[-1]
+    current_rsi_3 = get_scalar(rsi_3.iloc[-1])
+    prev_rsi_3 = get_scalar(rsi_3.iloc[-2])
+    current_rsi_14 = get_scalar(rsi_14.iloc[-1])
+    current_rsi_50 = get_scalar(rsi_50.iloc[-1])
+
+    if (pd.isna(current_rsi_3) or pd.isna(prev_rsi_3) or
+        pd.isna(current_rsi_14) or pd.isna(current_rsi_50)):
+        return "HOLD"
+
+    current_rsi_3 = float(current_rsi_3)
+    prev_rsi_3 = float(prev_rsi_3)
+    current_rsi_14 = float(current_rsi_14)
+    current_rsi_50 = float(current_rsi_50)
     
     # 매수 조건:
     # 1. RSI(3), RSI(14)가 30 이하
     # 2. RSI(50)이 50 이하
     # 3. RSI(3)가 30을 상향 돌파
-    if (current_rsi_3 <= 30 and current_rsi_14 <= 30 and current_rsi_50 <= 50 and 
-        current_rsi_3 > 30 and prev_rsi_3 <= 30):
+    if (current_rsi_3 > 30 and prev_rsi_3 <= 30 and current_rsi_14 <= 30 and current_rsi_50 <= 50):
         signal = "BUY"
     
     # 매도 조건:
     # 1. RSI(3), RSI(14)가 70 이상
     # 2. RSI(50)이 50 이상
     # 3. RSI(3)가 70을 하향 돌파
-    elif (current_rsi_3 >= 70 and current_rsi_14 >= 70 and current_rsi_50 >= 50 and 
-          current_rsi_3 < 70 and prev_rsi_3 >= 70):
+    elif (current_rsi_3 < 70 and prev_rsi_3 >= 70 and current_rsi_14 >= 70 and current_rsi_50 >= 50):
         signal = "SELL"
     
     return signal
