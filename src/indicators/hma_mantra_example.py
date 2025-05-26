@@ -9,36 +9,52 @@ from pathlib import Path
 from src.indicators.hma_mantra.visualization.advanced import plot_hma_mantra_md_signals
 import matplotlib.pyplot as plt
 
-def calculate_rsi_signals(data, period=14):
+def calculate_rsi_signals(data):
     """RSI 기반 매매 신호 생성"""
-    # RSI 계산
+    # RSI 계산 (3, 14, 50 기간)
     delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
+    
+    # RSI(3) 계산
+    gain_3 = (delta.where(delta > 0, 0)).rolling(window=3).mean()
+    loss_3 = (-delta.where(delta < 0, 0)).rolling(window=3).mean()
+    rs_3 = gain_3 / loss_3
+    rsi_3 = 100 - (100 / (1 + rs_3))
+    
+    # RSI(14) 계산
+    gain_14 = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss_14 = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs_14 = gain_14 / loss_14
+    rsi_14 = 100 - (100 / (1 + rs_14))
+    
+    # RSI(50) 계산
+    gain_50 = (delta.where(delta > 0, 0)).rolling(window=50).mean()
+    loss_50 = (-delta.where(delta < 0, 0)).rolling(window=50).mean()
+    rs_50 = gain_50 / loss_50
+    rsi_50 = 100 - (100 / (1 + rs_50))
     
     # 신호 생성
     signal = "HOLD"
     
-    # 최근 RSI 값 (스칼라)
-    current_rsi = rsi.iloc[-1]
-    prev_rsi = rsi.iloc[-2]
+    # 최근 RSI 값들
+    current_rsi_3 = rsi_3.iloc[-1]
+    prev_rsi_3 = rsi_3.iloc[-2]
+    current_rsi_14 = rsi_14.iloc[-1]
+    current_rsi_50 = rsi_50.iloc[-1]
     
-    # 매수 조건
-    if current_rsi > 30 and prev_rsi <= 30:
-        signal = "BUY"
-    elif current_rsi > 40 and prev_rsi <= 40:
-        signal = "BUY"
-    elif current_rsi > 50 and prev_rsi <= 50:
+    # 매수 조건:
+    # 1. RSI(3), RSI(14)가 30 이하
+    # 2. RSI(50)이 50 이하
+    # 3. RSI(3)가 30을 상향 돌파
+    if (current_rsi_3 <= 30 and current_rsi_14 <= 30 and current_rsi_50 <= 50 and 
+        current_rsi_3 > 30 and prev_rsi_3 <= 30):
         signal = "BUY"
     
-    # 매도 조건
-    elif current_rsi < 70 and prev_rsi >= 70:
-        signal = "SELL"
-    elif current_rsi < 60 and prev_rsi >= 60:
-        signal = "SELL"
-    elif current_rsi < 50 and prev_rsi >= 50:
+    # 매도 조건:
+    # 1. RSI(3), RSI(14)가 70 이상
+    # 2. RSI(50)이 50 이상
+    # 3. RSI(3)가 70을 하향 돌파
+    elif (current_rsi_3 >= 70 and current_rsi_14 >= 70 and current_rsi_50 >= 50 and 
+          current_rsi_3 < 70 and prev_rsi_3 >= 70):
         signal = "SELL"
     
     return signal
@@ -73,13 +89,13 @@ def main():
         print(f"분석 완료: {save_path}")
 
         # RSI 기반 신호 생성
-        #signal = calculate_rsi_signals(data)
+        signal = calculate_rsi_signals(data)
         
         # 신호 파일 생성
-        #signal_path = save_dir / f"{ticker}_signal.txt"
-        #with open(signal_path, "w") as f:
-        #    f.write(signal)
-        #print(f"신호 파일 생성 완료: {signal_path} (신호: {signal})")
+        signal_path = save_dir / f"{ticker}_signal.txt"
+        with open(signal_path, "w") as f:
+            f.write(signal)
+        print(f"신호 파일 생성 완료: {signal_path} (신호: {signal})")
 
     except Exception as e:
         print(f"오류 발생: {str(e)}")

@@ -393,62 +393,51 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
         ncol=1  # 범례를 1열로 표시
     )
 
-    # === 타지마할 RSI (ax_rsi) 부분 fb2aae7 방식으로 교체 ===
-    rsi3_line = ax_rsi.plot(ohlcv_data.index, rsi3, color='red', label='RSI(3)', linewidth=1)[0]
-    rsi14_line = ax_rsi.plot(ohlcv_data.index, rsi14, color='blue', label='RSI(14)', linewidth=1)[0]
-    rsi50_line = ax_rsi.plot(ohlcv_data.index, rsi50, color='green', label='RSI(50)', linewidth=1)[0]
-    
-    sell_line = ax_rsi.axhline(y=70, color='r', linestyle='--', alpha=0.3, label='매도 구간 (70)')
-    buy_line = ax_rsi.axhline(y=30, color='g', linestyle='--', alpha=0.3, label='매수 구간 (30)')
-    
-    # RSI 3과 14의 크로스 지점 찾기
-    cross_points = []
-    prev_diff = 0
-    for i in range(1, len(ohlcv_data.index)):
-        curr_diff = rsi3.iloc[i] - rsi14.iloc[i]
-        if (curr_diff * prev_diff <= 0) and (curr_diff != prev_diff):
-            cross_date = ohlcv_data.index[i]
-            rsi3_value = rsi3.iloc[i]
-            rsi14_value = rsi14.iloc[i]
-            cross_value = (rsi3_value + rsi14_value) / 2
-            if (prev_diff < 0 and curr_diff >= 0) or (prev_diff == 0 and curr_diff > 0):
-                is_golden = True
-            elif (prev_diff > 0 and curr_diff <= 0) or (prev_diff == 0 and curr_diff < 0):
-                is_golden = False
-            else:
-                continue
-            cross_points.append((cross_date, cross_value, is_golden))
-        prev_diff = curr_diff
-    for date, value, is_golden in cross_points:
-        if is_golden:
-            ax_rsi.plot(date, value, '^', color='red', markersize=8, markeredgecolor='white')
-        else:
-            ax_rsi.plot(date, value, 'v', color='blue', markersize=8, markeredgecolor='white')
-    buy_marker = ax_rsi.plot([], [], '^', color='red', markersize=8, markeredgecolor='white', label='RSI 매수 (3>=14 골드크로스)')[0]
-    sell_marker = ax_rsi.plot([], [], 'v', color='blue', markersize=8, markeredgecolor='white', label='RSI 매도 (3<=14 데드크로스)')[0]
-    ax_rsi.set_ylim(0, 100)
-    ax_rsi.set_ylabel('타지마할 RSI')
+    # RSI 플롯
+    ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', linewidth=1, label='RSI(3)')
+    ax_rsi.plot(ohlcv_data.index, rsi14, color='purple', linewidth=1, label='RSI(14)')
+    ax_rsi.plot(ohlcv_data.index, rsi50, color='green', linewidth=1, label='RSI(50)')
+    ax_rsi.axhline(y=70, color='red', linestyle='--', alpha=0.5)
+    ax_rsi.axhline(y=30, color='green', linestyle='--', alpha=0.5)
+    ax_rsi.set_ylim([0, 100])
+    ax_rsi.set_ylabel('RSI')
     ax_rsi.grid(True, alpha=0.3)
-    legend_elements = [
-        (rsi3_line, rsi14_line, rsi50_line),
-        (buy_line, sell_line),
-        (buy_marker,),
-        (sell_marker,)
-    ]
-    legend_labels = [
-        'RSI (3/14/50)',
-        '매수/매도 구간',
-        'RSI 매수 (3>=14 골드크로스)',
-        'RSI 매도 (3<=14 데드크로스)'
-    ]
-    ax_rsi.legend(
-        [tuple(group) if isinstance(group, tuple) else group for group in legend_elements],
-        legend_labels,
-        handler_map={tuple: HandlerTuple(ndivide=None)},
-        loc='upper right',
-        fontsize=8,
-        ncol=2
-    )
+
+    # RSI 매수/매도 신호 표시
+    for signal in trade_signals:
+        if signal['type'] == 'BUY':
+            # 매수 신호일 때 RSI(3)가 30을 상향 돌파하는 시점
+            if 'RSI 매수' in signal.get('reason', ''):
+                signal_date = signal['date']
+                rsi3_value = rsi3[signal_date]
+                # 수직선 표시
+                ax_rsi.axvline(x=signal_date, color='blue', linestyle=':', alpha=0.5)
+                # 매수 신호 마커 표시
+                ax_rsi.plot(signal_date, rsi3_value, '^', color='blue', markersize=8, markeredgecolor='white')
+                # 날짜와 RSI 값 표시
+                ax_rsi.text(signal_date, rsi3_value, 
+                           f' {signal_date.strftime("%m/%d")}\n RSI: {rsi3_value:.1f}', 
+                           fontsize=6, ha='left', va='bottom',
+                           bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+        else:
+            # 매도 신호일 때 RSI(3)가 70을 하향 돌파하는 시점
+            if 'RSI 매도' in signal.get('reason', ''):
+                signal_date = signal['date']
+                rsi3_value = rsi3[signal_date]
+                # 수직선 표시
+                ax_rsi.axvline(x=signal_date, color='red', linestyle=':', alpha=0.5)
+                # 매도 신호 마커 표시
+                ax_rsi.plot(signal_date, rsi3_value, 'v', color='red', markersize=8, markeredgecolor='white')
+                # 날짜와 RSI 값 표시
+                ax_rsi.text(signal_date, rsi3_value, 
+                           f' {signal_date.strftime("%m/%d")}\n RSI: {rsi3_value:.1f}', 
+                           fontsize=6, ha='left', va='top',
+                           bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+
+    # RSI 범례 추가
+    rsi_buy = ax_rsi.plot([], [], '^', color='blue', markersize=8, markeredgecolor='white', label='RSI 매수')[0]
+    rsi_sell = ax_rsi.plot([], [], 'v', color='red', markersize=8, markeredgecolor='white', label='RSI 매도')[0]
+    ax_rsi.legend(loc='upper right', fontsize=8)
 
     # MACD 차트
     ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=1)
