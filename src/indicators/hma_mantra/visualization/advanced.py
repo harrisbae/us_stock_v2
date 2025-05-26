@@ -478,13 +478,13 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     # MACD 매수/매도 신호 표시
     for date, value, is_golden in macd_signals:
         if is_golden:  # 골드크로스 (매수)
-            ax_macd.plot(date, value, '^', color='red', markersize=8, markeredgecolor='white')
+            ax_macd.plot(date, value, '^', color='blue', markersize=8, markeredgecolor='white')
         else:  # 데드크로스 (매도)
-            ax_macd.plot(date, value, 'v', color='blue', markersize=8, markeredgecolor='white')
+            ax_macd.plot(date, value, 'v', color='red', markersize=8, markeredgecolor='white')
     
     # MACD 신호 더미 마커 (범례용)
-    macd_buy = ax_macd.plot([], [], '^', color='red', markersize=8, markeredgecolor='white', label='MACD 매수 (MACD>Signal)')[0]
-    macd_sell = ax_macd.plot([], [], 'v', color='blue', markersize=8, markeredgecolor='white', label='MACD 매도 (MACD<Signal)')[0]
+    macd_buy = ax_macd.plot([], [], '^', color='blue', markersize=8, markeredgecolor='white', label='MACD 매수 (MACD>Signal)')[0]
+    macd_sell = ax_macd.plot([], [], 'v', color='red', markersize=8, markeredgecolor='white', label='MACD 매도 (MACD<Signal)')[0]
     
     ax_macd.set_ylabel('MACD')
     ax_macd.grid(True, alpha=0.3)
