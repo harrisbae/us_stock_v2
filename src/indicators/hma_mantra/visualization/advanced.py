@@ -150,11 +150,21 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     current_price = ohlcv_data['Close'].iloc[-1]
     support, resistance = calculate_support_resistance(ohlcv_data)
     
-    # 20일 박스권 영역을 투명한 빨간색으로 표시
-    if len(ohlcv_data) >= 20:
-        box_high = ohlcv_data['High'][-20:].max()
-        box_low = ohlcv_data['Low'][-20:].min()
-        ax_main.fill_between(ohlcv_data.index[-20:], box_low, box_high, color='red', alpha=0.12, zorder=0)
+    # 매수 신호 발생일에서 20일 박스권 표시
+    for signal in trade_signals:
+        if signal['type'] == 'BUY':
+            signal_date = signal['date']
+            # 신호 발생일로부터 20일 데이터 확인
+            signal_idx = ohlcv_data.index.get_loc(signal_date)
+            if signal_idx >= 19:  # 최소 20일 데이터가 있는지 확인
+                box_start = signal_idx - 19
+                box_end = signal_idx + 1
+                box_high = ohlcv_data['High'].iloc[box_start:box_end].max()
+                box_low = ohlcv_data['Low'].iloc[box_start:box_end].min()
+                # 박스권 영역 표시
+                ax_main.fill_between(ohlcv_data.index[box_start:box_end], 
+                                   box_low, box_high, 
+                                   color='red', alpha=0.12, zorder=0)
     
     # 수평선 및 가격 표시 추가
     # 현재가 라인
@@ -401,10 +411,11 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
 
     # RSI 플롯
     ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', linewidth=1, label='RSI(3)')
-    ax_rsi.plot(ohlcv_data.index, rsi14, color='purple', linewidth=1, label='RSI(14)')
+    ax_rsi.plot(ohlcv_data.index, rsi14, color='purple', linewidth=2, label='RSI(14)')
     ax_rsi.plot(ohlcv_data.index, rsi50, color='green', linewidth=1, label='RSI(50)')
     ax_rsi.axhline(y=70, color='red', linestyle='--', alpha=0.5)
     ax_rsi.axhline(y=30, color='green', linestyle='--', alpha=0.5)
+    ax_rsi.axhline(y=50, color='black', linestyle='--', alpha=0.5)  # 50 수평선 추가
     ax_rsi.set_ylim([0, 100])
     ax_rsi.set_ylabel('RSI')
     ax_rsi.grid(True, alpha=0.3)
@@ -445,7 +456,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_rsi.legend(handles, labels, loc='upper left', bbox_to_anchor=(0, 1), fontsize=8, title='RSI 신호')
 
     # MACD 차트
-    ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=1)
+    ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=2)
     ax_macd.plot(ohlcv_data.index, macd_signal, color='red', label='Signal', linewidth=1)
     ax_macd.bar(ohlcv_data.index, hist, color=['red' if h > 0 else 'blue' for h in hist], label='Histogram')
     
