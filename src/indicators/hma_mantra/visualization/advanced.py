@@ -150,6 +150,12 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     current_price = ohlcv_data['Close'].iloc[-1]
     support, resistance = calculate_support_resistance(ohlcv_data)
     
+    # 20일 박스권 영역을 투명한 빨간색으로 표시
+    if len(ohlcv_data) >= 20:
+        box_high = ohlcv_data['High'][-20:].max()
+        box_low = ohlcv_data['Low'][-20:].min()
+        ax_main.fill_between(ohlcv_data.index[-20:], box_low, box_high, color='red', alpha=0.12, zorder=0)
+    
     # 수평선 및 가격 표시 추가
     # 현재가 라인
     ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.8, alpha=0.5)
@@ -536,6 +542,29 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_vix.plot(current_date, current_vix, 'o', color='black', markersize=5, zorder=10)
     ax_vix.text(current_date, current_vix, f'{current_vix:.2f}', fontsize=5, rotation=45, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5), zorder=11)
+    
+    # VIX 20일 박스권 계산 및 표시
+    if len(vix) >= 20:
+        vix_box_high = float(vix[-20:].max())
+        vix_box_low = float(vix[-20:].min())
+        vix_box_cur = float(vix.iloc[-1])
+        # 박스권 영역을 투명한 빨간색으로 표시
+        ax_vix.fill_between(vix.index[-20:], vix_box_low, vix_box_high, color='red', alpha=0.12, zorder=0)
+        # 수평선(점선) 모두 검은색
+        ax_vix.axhline(vix_box_high, color='black', linestyle=':', linewidth=1, alpha=0.7)
+        ax_vix.axhline(vix_box_low, color='black', linestyle=':', linewidth=1, alpha=0.7)
+        ax_vix.axhline(vix_box_cur, color='black', linestyle=':', linewidth=1, alpha=0.7)
+        # 텍스트 위치 우측으로 약간 이동 (x좌표를 vix.index[-1]에서 +1로 이동)
+        from matplotlib.dates import date2num, num2date
+        last_date = vix.index[-1]
+        # x축이 datetime일 경우, 1일 뒤로 이동
+        if isinstance(last_date, pd.Timestamp):
+            text_x = last_date + pd.Timedelta(days=1)
+        else:
+            text_x = last_date
+        ax_vix.text(text_x, vix_box_high, f'저항선: {vix_box_high:.2f}', fontsize=6, color='black', ha='left', va='bottom', rotation=0, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5))
+        ax_vix.text(text_x, vix_box_low, f'지지선: {vix_box_low:.2f}', fontsize=6, color='black', ha='left', va='bottom', rotation=0, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5))
+        ax_vix.text(text_x, vix_box_cur, f'현재값: {vix_box_cur:.2f}', fontsize=6, color='black', ha='left', va='bottom', rotation=0, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5))
     
     # TNX 차트 (미국채 10년물 금리)
     ax_tnx.plot(tnx.index, tnx.values, color='green', label='US 10Y Treasury', linewidth=1)
