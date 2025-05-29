@@ -435,9 +435,8 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
                            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
 
     # RSI 범례 추가
-    rsi_buy = ax_rsi.plot([], [], '^', color='blue', markersize=8, markeredgecolor='white', label='RSI 매수')[0]
-    rsi_sell = ax_rsi.plot([], [], 'v', color='red', markersize=8, markeredgecolor='white', label='RSI 매도')[0]
-    ax_rsi.legend(loc='upper right', fontsize=8)
+    handles, labels = ax_rsi.get_legend_handles_labels()
+    ax_rsi.legend(handles, labels, loc='upper left', bbox_to_anchor=(0, 1), fontsize=8, title='RSI 신호')
 
     # MACD 차트
     ax_macd.plot(ohlcv_data.index, macd, color='blue', label='MACD', linewidth=1)
@@ -490,7 +489,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_macd.grid(True, alpha=0.3)
     
     # MACD 범례 업데이트
-    ax_macd.legend(loc='upper right', fontsize=8)
+    ax_macd.legend(loc='upper left', bbox_to_anchor=(0, 1), fontsize=8)
 
     # 거래량 차트
     volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
@@ -506,76 +505,38 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_volume.grid(True, alpha=0.3)
     ax_volume.legend(loc='upper right', fontsize=8)
 
+    # VIX 이동평균선 계산
+    vix_ma10 = vix.rolling(window=10).mean()
+    vix_ma20 = vix.rolling(window=20).mean()
+    vix_ma30 = vix.rolling(window=30).mean()
+    vix_ma60 = vix.rolling(window=60).mean()
+
     # VIX 차트
-    ax_vix.plot(vix.index, vix.values, color='black', label='VIX', linewidth=1)
-    
+    vix_line = ax_vix.plot(vix.index, vix.values, color='black', label='VIX', linewidth=1)[0]
+    ma10_line = ax_vix.plot(vix.index, vix_ma10, color='blue', linestyle='-', linewidth=1, label='MA10')[0]
+    ma20_line = ax_vix.plot(vix.index, vix_ma20, color='orange', linestyle='-', linewidth=1, label='MA20')[0]
+    ma30_line = ax_vix.plot(vix.index, vix_ma30, color='green', linestyle='-', linewidth=1, label='MA30')[0]
+    ma60_line = ax_vix.plot(vix.index, vix_ma60, color='purple', linestyle='-', linewidth=1, label='MA60')[0]
     # VIX 구간별 배경색 설정
     vix_max = float(vix.values.max()) * 1.1
-    ax_vix.axhspan(0, 20, color='green', alpha=0.1)  # 안전구간
-    ax_vix.axhspan(20, 30, color='yellow', alpha=0.1)  # 주의구간
-    ax_vix.axhspan(30, vix_max, color='red', alpha=0.1)  # 위험구간
+    stable_patch = plt.Rectangle((0,0),1,1,fc='green',alpha=0.1,label='안정')
+    warning_patch = plt.Rectangle((0,0),1,1,fc='yellow',alpha=0.1,label='주의')
+    danger_patch = plt.Rectangle((0,0),1,1,fc='red',alpha=0.1,label='위험')
+    ax_vix.axhspan(0, 20, color='green', alpha=0.1)
+    ax_vix.axhspan(20, 30, color='yellow', alpha=0.1)
+    ax_vix.axhspan(30, vix_max, color='red', alpha=0.1)
+    # 범례 추가 (좌측 상단)
+    ax_vix.legend([vix_line, ma10_line, ma20_line, ma30_line, ma60_line, stable_patch, warning_patch, danger_patch],
+                 ['VIX', 'MA10', 'MA20', 'MA30', 'MA60', '안정', '주의', '위험'],
+                 loc='upper left', fontsize=8, ncol=2, frameon=True)
     
-    # VIX 기준선
-    vix_safe = ax_vix.axhline(y=20, color='g', linestyle='--', alpha=0.5, label='안전구간 경계선 (VIX=20)')
-    vix_danger = ax_vix.axhline(y=30, color='r', linestyle='--', alpha=0.5, label='위험구간 경계선 (VIX=30)')
-    
-    # 현재 VIX 값 표시
-    current_vix = float(vix.iloc[-1].item())  # Series 값을 float로 변환
+    # 현재일자 VIX dot 및 값 표시
+    current_vix = float(vix.iloc[-1].item()) if hasattr(vix.iloc[-1], 'item') else float(vix.iloc[-1])
     current_date = vix.index[-1]
+    ax_vix.plot(current_date, current_vix, 'o', color='black', markersize=5, zorder=10)
+    ax_vix.text(current_date, current_vix, f'{current_vix:.2f}', fontsize=5, rotation=45, ha='left', va='bottom',
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5), zorder=11)
     
-    # VIX 값에 따른 투자전략 색상 및 메시지 결정
-    if current_vix < 20:
-        dot_color = 'green'
-        strategy = '적극적 매수구간'
-        strategy_detail = '성장주/레버리지 ETF 투자 고려'
-    elif current_vix <= 30:
-        dot_color = 'yellow'
-        strategy = '중립적 관망구간'
-        strategy_detail = '분할 매수/리스크 관리'
-    else:
-        dot_color = 'red'
-        strategy = '보수적 관망구간'
-        strategy_detail = '현금 보유/안전자산 선호'
-    
-    # 현재 VIX 점 찍기
-    ax_vix.plot(current_date, current_vix, 'o', color=dot_color, markersize=2, 
-                markeredgecolor='black', markeredgewidth=0.5, label=f'현재 VIX: {current_vix:.2f}',
-                zorder=10)  # 높은 zorder 값으로 최상위 레이어에 표시
-    
-    # 현재 VIX 값과 날짜만 표시 (우측에)
-    text_x = current_date  # x 좌표는 현재 날짜
-    text_y = current_vix   # y 좌표는 현재 VIX 값
-    ax_vix.text(text_x, text_y, 
-                f' {current_date.strftime("%Y-%m-%d")}\n VIX: {current_vix:.2f}', 
-                fontsize=6, ha='left', va='center',
-                bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1),
-                zorder=10)  # 텍스트도 최상위 레이어에 표시
-    
-    ax_vix.set_ylabel('VIX')
-    ax_vix.grid(True, alpha=0.3)
-    
-    # VIX 투자전략 범례
-    strategy_elements = [
-        plt.Rectangle((0,0), 1, 1, fc='green', alpha=0.3, label='적극적 매수구간 (VIX < 20)\n- 시장 안정/낮은 변동성\n- 성장주/레버리지 ETF 고려'),
-        plt.Rectangle((0,0), 1, 1, fc='yellow', alpha=0.3, label='중립적 관망구간 (20 ≤ VIX ≤ 30)\n- 불확실성 증가\n- 분할 매수/리스크 관리'),
-        plt.Rectangle((0,0), 1, 1, fc='red', alpha=0.3, label='보수적 관망구간 (VIX > 30)\n- 높은 변동성/공포감\n- 현금 보유/안전자산 선호')
-    ]
-    
-    # 기존 라인과 새로운 전략 범례 결합
-    handles, labels = ax_vix.get_legend_handles_labels()
-    all_handles = handles + strategy_elements
-    all_labels = labels + [
-        '적극적 매수구간 (VIX < 20)\n- 시장 안정/낮은 변동성\n- 성장주/레버리지 ETF 고려',
-        '중립적 관망구간 (20 ≤ VIX ≤ 30)\n- 불확실성 증가\n- 분할 매수/리스크 관리',
-        '보수적 관망구간 (VIX > 30)\n- 높은 변동성/공포감\n- 현금 보유/안전자산 선호'
-    ]
-    
-    # 범례 위치 및 스타일 설정
-    ax_vix.legend(all_handles, all_labels, 
-                 loc='upper left', 
-                 fontsize=8,
-                 bbox_to_anchor=(0.01, 1.0))
-
     # TNX 차트 (미국채 10년물 금리)
     ax_tnx.plot(tnx.index, tnx.values, color='green', label='US 10Y Treasury', linewidth=1)
     

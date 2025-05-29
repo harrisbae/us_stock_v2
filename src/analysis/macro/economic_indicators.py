@@ -201,19 +201,33 @@ class MacroAnalysis:
 
     def _plot_vix_analysis(self, ax):
         """VIX 분석 차트"""
-        ax.plot(self.vix.index, self.vix, color='red', label='VIX', alpha=0.7)
-        
+        # VIX 이동평균선 계산
+        vix_ma5 = self.vix.rolling(window=5).mean()
+        vix_ma20 = self.vix.rolling(window=20).mean()
+        vix_ma60 = self.vix.rolling(window=60).mean()
+        # 기존 VIX 선(더 굵게)
+        ax.plot(self.vix.index, self.vix, color='red', label='VIX', alpha=0.7, linewidth=2.5)
+        # 이동평균선 추가 (범례 표기 없이)
+        ax.plot(self.vix.index, vix_ma5, color='blue', linewidth=1.2)
+        ax.plot(self.vix.index, vix_ma20, color='orange', linewidth=1.2)
+        ax.plot(self.vix.index, vix_ma60, color='green', linewidth=1.2)
         # VIX 구간 표시
         ax.axhline(y=20, color='g', linestyle='--', alpha=0.3)
         ax.axhline(y=30, color='r', linestyle='--', alpha=0.3)
-        
         vix_max = self.vix.max().iloc[0]
         ax.fill_between(self.vix.index, 0, 20, color='green', alpha=0.1, label='안정')
         ax.fill_between(self.vix.index, 20, 30, color='yellow', alpha=0.1, label='주의')
         ax.fill_between(self.vix.index, 30, vix_max*1.1, color='red', alpha=0.1, label='위험')
-        
+        # 범례를 VIX와 구간만 남기고 정리
+        handles, labels = ax.get_legend_handles_labels()
+        compact_labels = []
+        compact_handles = []
+        for h, l in zip(handles, labels):
+            if l in ['VIX', '안정', '주의', '위험']:
+                compact_labels.append(l)
+                compact_handles.append(h)
+        ax.legend(compact_handles, compact_labels, loc='upper left', fontsize=9, ncol=2, frameon=True)
         ax.set_title('VIX (변동성) 분석')
-        ax.legend()
         ax.grid(True, alpha=0.3)
 
     def _plot_interest_rate_analysis(self, ax):
