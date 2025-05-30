@@ -512,11 +512,25 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
     ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=volume_colors, alpha=0.7)
     
+    # 거래량 볼린저 밴드 계산
+    volume_ma = ohlcv_data['Volume'].rolling(window=20).mean()
+    volume_std = ohlcv_data['Volume'].rolling(window=20).std()
+    volume_upper = volume_ma + (volume_std * 2)
+    
+    # 볼린저 밴드 상한선 추가
+    ax_volume.plot(ohlcv_data.index, volume_upper, color='black', linestyle='-', linewidth=1, label='Volume BB Upper')
+    
     # 전체 기간 평균 거래량 계산
     avg_volume = ohlcv_data['Volume'].mean()
     
     # 평균 거래량 선 추가
     ax_volume.axhline(y=avg_volume, color='green', linestyle='--', linewidth=1, label=f'평균 거래량: {avg_volume:,.0f}')
+    
+    # 볼린저 밴드 상한선 값 표시 (우측)
+    last_upper = volume_upper.iloc[-1]
+    ax_volume.text(ohlcv_data.index[-1], last_upper, f'BB Upper: {last_upper:,.0f}', 
+                  fontsize=6, color='black', ha='left', va='bottom',
+                  bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5))
     
     ax_volume.set_ylabel('Volume')
     ax_volume.grid(True, alpha=0.3)
