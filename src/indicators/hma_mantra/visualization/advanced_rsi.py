@@ -558,8 +558,8 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     )
 
     # RSI 차트
-    rsi3_line = ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', label='RSI(3)', linewidth=1)[0]
-    rsi14_line = ax_rsi.plot(ohlcv_data.index, rsi14, color='red', label='RSI(14)', linewidth=1)[0]
+    rsi3_line = ax_rsi.plot(ohlcv_data.index, rsi3, color='red', label='RSI(3)', linewidth=1)[0]
+    rsi14_line = ax_rsi.plot(ohlcv_data.index, rsi14, color='purple', label='RSI(14)', linewidth=1)[0]
     rsi50_line = ax_rsi.plot(ohlcv_data.index, rsi50, color='green', label='RSI(50)', linewidth=1)[0]
     
     # 매수/매도 구간 라인

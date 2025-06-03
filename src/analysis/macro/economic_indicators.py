@@ -47,7 +47,8 @@ class MacroAnalysis:
             'XLP': '필수소비재 (Consumer Staples)',
             'XLU': '유틸리티 (Utilities)',
             'XLE': '에너지 (Energy)',
-            'TQQQ': '레버리지 기술주 (Leveraged Technology)'
+            'TQQQ': '레버리지 기술주 (Leveraged Technology)',
+            'RCAT': '기술 (Technology)'
         }
         
         # GICS 서브섹터 매핑
@@ -69,7 +70,8 @@ class MacroAnalysis:
             'XLP': '필수소비재 섹터 ETF',
             'XLU': '유틸리티 섹터 ETF',
             'XLE': '에너지 섹터 ETF',
-            'TQQQ': '나스닥100 3X 레버리지 ETF'
+            'TQQQ': '나스닥100 3X 레버리지 ETF',
+            'RCAT': '컴퓨터 하드웨어 (Computer Hardware)'
         }
         
         # 섹터별 적정 PER 범위
