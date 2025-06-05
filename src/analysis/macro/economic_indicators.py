@@ -48,7 +48,8 @@ class MacroAnalysis:
             'XLU': '유틸리티 (Utilities)',
             'XLE': '에너지 (Energy)',
             'TQQQ': '레버리지 기술주 (Leveraged Technology)',
-            'RCAT': '기술 (Technology)'
+            'RCAT': '기술 (Technology)',
+            'COIN': '기술 (Technology)'
         }
         
         # GICS 서브섹터 매핑
@@ -71,7 +72,8 @@ class MacroAnalysis:
             'XLU': '유틸리티 섹터 ETF',
             'XLE': '에너지 섹터 ETF',
             'TQQQ': '나스닥100 3X 레버리지 ETF',
-            'RCAT': '컴퓨터 하드웨어 (Computer Hardware)'
+            'RCAT': '컴퓨터 하드웨어 (Computer Hardware)',
+            'COIN': '암호화폐 거래소 (Cryptocurrency Exchange)'
         }
         
         # 섹터별 적정 PER 범위
@@ -523,7 +525,8 @@ class MacroAnalysis:
             report_lines.append(f"[현재주가: ${valuation['current_price']:.2f}]  [Fair Value: ${valuation['fair_value']:.2f}]")
             report_lines.append(f"[{diff_str}]")
             report_lines.append(f"[밸류에이션: {valuation['valuation_status']}]")
-            # PER/PBR/ROE 표는 아래에서 시각화
+            # 디버깅용: 상태와 괴리율 출력
+            print(f"DEBUG: {self.symbol} | valuation_status={valuation['valuation_status']} | price_diff={valuation['price_diff']}")
             if valuation['growth'] is not None:
                 report_lines.append(f"[성장률: {valuation['growth']:.1f}%]")
             if valuation['dividend_yield'] is not None:
@@ -646,33 +649,26 @@ class MacroAnalysis:
             # yfinance를 통해 재무 데이터 수집
             stock = yf.Ticker(self.symbol)
             info = stock.info
-            
             # 현재 주가
             current_price = info.get('currentPrice', None)
             if current_price is None:
                 current_price = info.get('regularMarketPrice', None)
-            
             # PER
             per = info.get('trailingPE', None)
-            
             # PBR
             pbr = info.get('priceToBook', None)
-            
             # ROE
             roe = info.get('returnOnEquity', None)
             if roe is not None:
                 roe = roe * 100  # 퍼센트로 변환
-            
             # 성장률 (3년 평균)
             growth = info.get('earningsGrowth', None)
             if growth is not None:
                 growth = growth * 100  # 퍼센트로 변환
-            
             # 배당수익률
             dividend_yield = info.get('dividendYield', None)
             if dividend_yield is not None:
                 dividend_yield = dividend_yield * 100  # 퍼센트로 변환
-            
             return {
                 'current_price': current_price,
                 'per': per,

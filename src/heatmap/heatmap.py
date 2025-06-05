@@ -26,7 +26,7 @@ def load_portfolio(file_path):
     CSV 파일에서 보유 주식 목록을 불러옵니다.
     컬럼 예시: ticker,수량,매입가
     """
-    return pd.read_csv(file_path, encoding='utf-8')
+    return pd.read_csv(file_path, encoding='utf-8', comment='#')
 
 def fetch_market_data(tickers, period='day'):
     """
@@ -80,6 +80,8 @@ def make_heatmap(portfolio, market_data, save_path=None, period_kr='당일'):
     """
     df = pd.merge(portfolio, market_data, on='ticker')
     df['eval_value'] = df['수량'] * df['price']
+    # 0 이하 영역 제거 (squarify 오류 방지)
+    df = df[df['eval_value'] > 0]
     sizes = df['eval_value'].fillna(0)
     labels = [
         f"{row['ticker']}\n{row['change']:+.2f}%" if pd.notnull(row['change']) else f"{row['ticker']}\nN/A"
@@ -95,6 +97,8 @@ def make_heatmap(portfolio, market_data, save_path=None, period_kr='당일'):
     colors = plt.cm.RdYlGn(norm_change)
     fig = plt.figure(figsize=(19.2, 10.8))  # 1920x1080 px at dpi=100
     ax = plt.gca()
+    # 히트맵을 위에서 20% 아래로 이동
+    fig.subplots_adjust(top=0.8)
     squarify.plot(sizes=sizes, label=labels, color=colors, alpha=0.8, ax=ax, linewidth=2, edgecolor='black')
     plt.axis('off')
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -158,11 +162,11 @@ def make_heatmap_plotly(portfolio, market_data, save_path=None, period_kr='당�
             'xanchor': 'center',
             'yanchor': 'top',
             'font': {
-                'size': 78,
+                'size': 62,
                 'color': 'black'
             }
         },
-        margin=dict(t=300, l=100, r=100, b=50)
+        margin=dict(t=210, l=100, r=100, b=50)
     )
     if save_path:
         fig.write_image(save_path, width=3840, height=2160)

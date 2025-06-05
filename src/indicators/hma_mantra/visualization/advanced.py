@@ -570,9 +570,9 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     
     # VIX 20일 박스권 계산 및 표시
     if len(vix) >= 20:
-        vix_box_high = float(vix[-20:].max())
-        vix_box_low = float(vix[-20:].min())
-        vix_box_cur = float(vix.iloc[-1])
+        vix_box_high = float(vix[-20:].max().item())
+        vix_box_low = float(vix[-20:].min().item())
+        vix_box_cur = float(vix.iloc[-1].item())
         # 박스권 영역을 투명한 빨간색으로 표시
         ax_vix.fill_between(vix.index[-20:], vix_box_low, vix_box_high, color='red', alpha=0.12, zorder=0)
         # 수평선(점선) 모두 검은색
