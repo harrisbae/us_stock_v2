@@ -77,6 +77,12 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     rsi50 = calculate_rsi(ohlcv_data['Close'], period=50)
     macd, macd_signal, hist = calculate_macd(ohlcv_data['Close'])
     
+    # 볼린저 밴드 계산 (plot 전에 위치)
+    volume_ma = ohlcv_data['Volume'].rolling(window=20).mean()
+    volume_std = ohlcv_data['Volume'].rolling(window=20).std()
+    volume_upper = volume_ma + (volume_std * 2)
+    volume_lower = volume_ma - (volume_std * 2)
+
     # 볼린저 밴드 계산
     bb_ma, bb_upper, bb_lower = calculate_bollinger_bands(ohlcv_data['Close'])
 
@@ -511,30 +517,20 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     # 거래량 차트
     volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
     ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=volume_colors, alpha=0.7)
-    
-    # 거래량 볼린저 밴드 계산
-    volume_ma = ohlcv_data['Volume'].rolling(window=20).mean()
-    volume_std = ohlcv_data['Volume'].rolling(window=20).std()
-    volume_upper = volume_ma + (volume_std * 2)
-    
-    # 볼린저 밴드 상한선 추가
-    ax_volume.plot(ohlcv_data.index, volume_upper, color='black', linestyle='-', linewidth=1, label='Volume BB Upper')
-    
-    # 전체 기간 평균 거래량 계산
-    avg_volume = ohlcv_data['Volume'].mean()
-    
-    # 평균 거래량 선 추가
-    ax_volume.axhline(y=avg_volume, color='green', linestyle='--', linewidth=1, label=f'평균 거래량: {avg_volume:,.0f}')
-    
-    # 볼린저 밴드 상한선 값 표시 (우측)
-    last_upper = volume_upper.iloc[-1]
-    ax_volume.text(ohlcv_data.index[-1], last_upper, f'BB Upper: {last_upper:,.0f}', 
-                  fontsize=6, color='black', ha='left', va='bottom',
-                  bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5))
-    
+    ax_volume.plot(ohlcv_data.index, volume_ma, color='purple', linewidth=1, label='Volume BB MA')
+    ax_volume.plot(ohlcv_data.index, volume_upper, color='purple', linestyle='-', linewidth=1.5, label='Volume BB Upper')
+    ax_volume.plot(ohlcv_data.index, volume_lower, color='purple', linestyle=':', linewidth=1, label='Volume BB Lower')
     ax_volume.set_ylabel('Volume')
-    ax_volume.grid(True, alpha=0.3)
-    ax_volume.legend(loc='upper right', fontsize=8)
+    ax_volume.legend(loc='upper left', fontsize=8)
+
+    # 우측 Y축: 주가 볼린저 밴드
+    ax_volume_right = ax_volume.twinx()
+    ax_volume_right.plot(ohlcv_data.index, ohlcv_data['Close'], color='black', linewidth=0.8, alpha=0.7, label='Price')
+    ax_volume_right.plot(ohlcv_data.index, bb_ma, color='green', linewidth=1, label='Price BB MA')
+    ax_volume_right.plot(ohlcv_data.index, bb_upper, color='red', linestyle='-', linewidth=1.5, label='Price BB Upper')
+    ax_volume_right.plot(ohlcv_data.index, bb_lower, color='green', linestyle=':', linewidth=1, label='Price BB Lower')
+    ax_volume_right.set_ylabel('Price & Price BOL')
+    ax_volume_right.legend(loc='upper right', fontsize=8)
 
     # VIX 이동평균선 계산
     vix_ma10 = vix.rolling(window=10).mean()
