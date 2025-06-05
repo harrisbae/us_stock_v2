@@ -517,18 +517,14 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     # 거래량 차트
     volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
     ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=volume_colors, alpha=0.7)
-    ax_volume.plot(ohlcv_data.index, volume_ma, color='purple', linewidth=1, label='Volume BB MA')
     ax_volume.plot(ohlcv_data.index, volume_upper, color='purple', linestyle='-', linewidth=1.5, label='Volume BB Upper')
-    ax_volume.plot(ohlcv_data.index, volume_lower, color='purple', linestyle=':', linewidth=1, label='Volume BB Lower')
     ax_volume.set_ylabel('Volume')
     ax_volume.legend(loc='upper left', fontsize=8)
 
-    # 우측 Y축: 주가 볼린저 밴드
+    # 우측 Y축: 주가 볼린저밴드 상단만
     ax_volume_right = ax_volume.twinx()
-    ax_volume_right.plot(ohlcv_data.index, ohlcv_data['Close'], color='black', linewidth=0.8, alpha=0.7, label='Price')
-    ax_volume_right.plot(ohlcv_data.index, bb_ma, color='green', linewidth=1, label='Price BB MA')
+    ax_volume_right.plot(ohlcv_data.index, ohlcv_data['Close'], color='blue', linewidth=0.8, alpha=0.7, label='Price')
     ax_volume_right.plot(ohlcv_data.index, bb_upper, color='red', linestyle='-', linewidth=1.5, label='Price BB Upper')
-    ax_volume_right.plot(ohlcv_data.index, bb_lower, color='green', linestyle=':', linewidth=1, label='Price BB Lower')
     ax_volume_right.set_ylabel('Price & Price BOL')
     ax_volume_right.legend(loc='upper right', fontsize=8)
 
