@@ -261,11 +261,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_inflation' not in locals():
-                            recent_inflation = 2.7  # 기본값
+                            val = self.default_values.get('inflation')
+                            recent_inflation = val if val is not None else 2.7
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"인플레이션 데이터 파싱 오류: {e}")
-                    recent_inflation = 2.7
+                    val = self.default_values.get('inflation')
+                    recent_inflation = val if val is not None else 2.7
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -274,7 +276,7 @@ class MacroDataLoader:
                     'source': source
                 }
             else:
-                recent_inflation = 2.7
+                recent_inflation = self.default_values['inflation'] if self.default_values.get('inflation') is not None else 2.7
                 source = "기본값 (서버 응답 실패)"
                 result = {
                     'current': recent_inflation,
@@ -287,7 +289,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"인플레이션 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 2.7, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
+            val = self.default_values.get('inflation')
+            return {'current': val if val is not None else 2.7, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
     
     def _get_korea_interest_rate(self):
         """한국 기준금리 데이터 가져오기"""
@@ -328,11 +331,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_rate' not in locals():
-                            recent_rate = 3.5  # 기본값
+                            val = self.default_values.get('interest')
+                            recent_rate = val if val is not None else 3.5
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"금리 데이터 파싱 오류: {e}")
-                    recent_rate = 3.5
+                    val = self.default_values.get('interest')
+                    recent_rate = val if val is not None else 3.5
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -379,7 +384,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"금리 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 3.5, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
+            val = self.default_values.get('interest')
+            return {'current': val if val is not None else 3.5, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
     
     def _get_korea_unemployment(self):
         """한국 실업률 데이터 가져오기"""
@@ -420,11 +426,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_unemployment' not in locals():
-                            recent_unemployment = 3.0  # 기본값
+                            val = self.default_values.get('unemployment')
+                            recent_unemployment = val if val is not None else 3.0
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"실업률 데이터 파싱 오류: {e}")
-                    recent_unemployment = 3.0
+                    val = self.default_values.get('unemployment')
+                    recent_unemployment = val if val is not None else 3.0
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -446,7 +454,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"실업률 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 3.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
+            val = self.default_values.get('unemployment')
+            return {'current': val if val is not None else 3.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
     
     def _get_us_gdp(self):
         """미국 GDP 성장률 데이터 가져오기"""
@@ -513,11 +522,11 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_gdp' not in locals():
-                            recent_gdp = 2.8  # 기본값
+                            recent_gdp = self.default_values.get('gdp', 2.8)  # 파라미터로 받은 기본값 또는 하드코딩된 기본값
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"미국 GDP 데이터 파싱 오류: {e}")
-                    recent_gdp = 2.8
+                    recent_gdp = self.default_values.get('gdp', 2.8)
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -531,7 +540,7 @@ class MacroDataLoader:
             else:
                 # 다른 모든 방법 실패 시 기본값
                 result = {
-                    'current': 2.8,
+                    'current': self.default_values.get('gdp', 2.8),
                     'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'source': '기본값 (모든 방법 실패)'
                 }
@@ -541,7 +550,7 @@ class MacroDataLoader:
         except Exception as e:
             print(f"미국 GDP 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 2.8, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
+            return {'current': self.default_values.get('gdp', 2.8), 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)"}
     
     def _get_us_inflation(self):
         """미국 인플레이션 데이터 가져오기"""
@@ -612,11 +621,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_inflation' not in locals():
-                            recent_inflation = 3.7  # 기본값
+                            val = self.default_values.get('inflation')
+                            recent_inflation = val if val is not None else 3.7
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"미국 인플레이션 데이터 파싱 오류: {e}")
-                    recent_inflation = 3.7
+                    val = self.default_values.get('inflation')
+                    recent_inflation = val if val is not None else 3.7
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -626,8 +637,9 @@ class MacroDataLoader:
                 }
             else:
                 # 요청 실패 시 기본값 사용
+                val = self.default_values.get('inflation')
                 result = {
-                    'current': 3.7,
+                    'current': val if val is not None else 3.7,
                     'last_update': datetime.now().strftime('%Y-%m-%d'),
                     'source': '기본값 (서버 응답 실패)'
                 }
@@ -637,7 +649,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"인플레이션 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 3.7, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
+            val = self.default_values.get('inflation')
+            return {'current': val if val is not None else 3.7, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
     
     def _get_us_interest_rate(self):
         """미국 기준금리 데이터 가져오기"""
@@ -705,11 +718,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_rate' not in locals():
-                            recent_rate = 5.5  # 기본값
+                            val = self.default_values.get('interest')
+                            recent_rate = val if val is not None else 5.5
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"미국 기준금리 데이터 파싱 오류: {e}")
-                    recent_rate = 5.5
+                    val = self.default_values.get('interest')
+                    recent_rate = val if val is not None else 5.5
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -719,8 +734,9 @@ class MacroDataLoader:
                 }
             else:
                 # 요청 실패 시 기본값 사용
+                val = self.default_values.get('interest')
                 result = {
-                    'current': 5.5,
+                    'current': val if val is not None else 5.5,
                     'last_update': datetime.now().strftime('%Y-%m-%d'),
                     'source': '기본값 (서버 응답 실패)'
                 }
@@ -730,7 +746,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"기준금리 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 5.5, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
+            val = self.default_values.get('interest')
+            return {'current': val if val is not None else 5.5, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
     
     def _get_us_unemployment(self):
         """미국 실업률 데이터 가져오기"""
@@ -798,11 +815,13 @@ class MacroDataLoader:
                                             pass
                         
                         if 'recent_unemployment' not in locals():
-                            recent_unemployment = 3.8  # 기본값
+                            val = self.default_values.get('unemployment')
+                            recent_unemployment = val if val is not None else 3.8
                             source = "기본값 (스크래핑 실패)"
                 except Exception as e:
                     print(f"미국 실업률 데이터 파싱 오류: {e}")
-                    recent_unemployment = 3.8
+                    val = self.default_values.get('unemployment')
+                    recent_unemployment = val if val is not None else 3.8
                     source = "기본값 (파싱 오류)"
                 
                 result = {
@@ -812,8 +831,9 @@ class MacroDataLoader:
                 }
             else:
                 # 요청 실패 시 기본값 사용
+                val = self.default_values.get('unemployment')
                 result = {
-                    'current': 3.8,
+                    'current': val if val is not None else 3.8,
                     'last_update': datetime.now().strftime('%Y-%m-%d'),
                     'source': '기본값 (서버 응답 실패)'
                 }
@@ -823,7 +843,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"실업률 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 3.8, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
+            val = self.default_values.get('unemployment')
+            return {'current': val if val is not None else 3.8, 'last_update': datetime.now().strftime('%Y-%m-%d'), 'source': '기본값 (오류)'}
     
     def _get_vix_index(self):
         """VIX 변동성 지수 데이터 가져오기"""
@@ -906,7 +927,7 @@ class MacroDataLoader:
                 
                 # 모든 방법 실패 시 기본값 사용
                 result = {
-                    'current': 20.0,
+                    'current': self.default_values['vix'] if self.default_values.get('vix') is not None else 20.0,
                     'trend': 'stable',
                     'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'source': '기본값 (데이터 없음)'
@@ -917,7 +938,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"VIX 지수 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 20.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)", 'trend': 'stable'}
+            val = self.default_values.get('vix')
+            return {'current': val if val is not None else 20.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)", 'trend': 'stable'}
     
     def _get_dollar_index(self):
         """달러 지수(DXY) 데이터 가져오기"""
@@ -1019,7 +1041,7 @@ class MacroDataLoader:
                 # 모든 방법 실패 시 기본값 사용
                 print("달러지수 데이터 로드 실패, 기본값 사용")
                 result = {
-                    'current': 105.0,
+                    'current': self.default_values['dxy'] if self.default_values.get('dxy') is not None else 105.0,
                     'trend': 'stable',
                     'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'source': '기본값 (데이터 없음)'
@@ -1030,7 +1052,8 @@ class MacroDataLoader:
         except Exception as e:
             print(f"달러 지수(DXY) 데이터 로딩 오류: {e}")
             # 오류 시 기본값
-            return {'current': 105.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)", 'trend': 'stable'}
+            val = self.default_values.get('dxy')
+            return {'current': val if val is not None else 105.0, 'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'source': "기본값 (오류)", 'trend': 'stable'}
     
     def get_historical_data(self, years=5, interval='month', start_date=None, end_date=None):
         """과거 데이터 가져오기 (interval: 'month' 또는 'day', start_date/end_date 지원)"""
