@@ -42,17 +42,19 @@ except Exception as e:
 class MacroDataLoader:
     """거시경제 지표 데이터 로더 클래스"""
     
-    def __init__(self, country='korea', fred_api_key=None):
+    def __init__(self, country='korea', fred_api_key=None, default_values=None):
         """
         초기화 함수
         
         Parameters:
             country (str): 국가 코드 (기본: 'korea')
             fred_api_key (str): FRED API 키
+            default_values (dict): 스크래핑 실패 시 사용할 기본값 딕셔너리
         """
         self.country = country.lower()
         self.data_cache = {}
         self.cache_dir = "data_cache"
+        self.default_values = default_values or {}
         
         # 환경 변수에서 FRED API 키 가져오기
         # FRED API 키 설정 방법:
@@ -1276,8 +1278,8 @@ class MacroDataLoader:
             except Exception as e:
                 print(f"{indicator} 데이터 로딩 중 오류: {e}")
                 
-                # 기본값 설정
-                default_values = {
+                # 파라미터로 받은 기본값 우선 사용, 없으면 기존 하드코딩 값 사용
+                fallback_values = {
                     'gdp': 2.0,
                     'inflation': 2.5,
                     'interest': 3.0,
@@ -1285,13 +1287,15 @@ class MacroDataLoader:
                     'vix': 20.0,
                     'dxy': 105.0
                 }
-                
-                indicators[indicator.capitalize()] = default_values.get(indicator, 0)
+                value = self.default_values.get(indicator, None)
+                if value is None:
+                    value = fallback_values.get(indicator, 0)
+                indicators[indicator.capitalize()] = value
                 details[indicator.capitalize()] = {
                     'source': 'Default',
                     'last_update': 'N/A'
                 }
-                print(f"{indicator.upper()} 데이터 로딩 실패, 기본값 사용: {default_values.get(indicator, 0)}")
+                print(f"{indicator.upper()} 데이터 로딩 실패, 기본값 사용: {value}")
         
         print("\n=== 모든 거시경제 지표 로딩 완료 ===\n")
         return indicators, details

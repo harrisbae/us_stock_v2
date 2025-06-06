@@ -35,6 +35,13 @@ def main():
                         help='과거 데이터도 함께 표시')
     parser.add_argument('--history_years', type=int, default=5,
                         help='표시할 과거 데이터 연수 (기본: 5년)')
+    # 기본값 파라미터 추가
+    parser.add_argument('--default_gdp', type=float, default=None, help='스크래핑 실패 시 사용할 GDP 기본값')
+    parser.add_argument('--default_inflation', type=float, default=None, help='스크래핑 실패 시 사용할 인플레이션 기본값')
+    parser.add_argument('--default_interest', type=float, default=None, help='스크래핑 실패 시 사용할 기준금리 기본값')
+    parser.add_argument('--default_unemployment', type=float, default=None, help='스크래핑 실패 시 사용할 실업률 기본값')
+    parser.add_argument('--default_vix', type=float, default=None, help='스크래핑 실패 시 사용할 VIX 기본값')
+    parser.add_argument('--default_dxy', type=float, default=None, help='스크래핑 실패 시 사용할 DXY 기본값')
     
     args = parser.parse_args()
     
@@ -98,7 +105,16 @@ def main():
         
         try:
             # FRED_API_KEY를 명시적으로 전달
-            data_loader = MacroDataLoader(country=args.country, fred_api_key=fred_api_key)
+            # MacroDataLoader에 기본값 파라미터 전달
+            default_values = {
+                'gdp': args.default_gdp,
+                'inflation': args.default_inflation,
+                'interest': args.default_interest,
+                'unemployment': args.default_unemployment,
+                'vix': args.default_vix,
+                'dxy': args.default_dxy
+            }
+            data_loader = MacroDataLoader(country=args.country, fred_api_key=fred_api_key, default_values=default_values)
             loaded_indicators, details = data_loader.get_current_indicators()
             
             # 대소문자 표준화를 위해 데이터 키 변환

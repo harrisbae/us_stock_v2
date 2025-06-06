@@ -131,7 +131,7 @@ def make_heatmap_plotly(portfolio, market_data, save_path=None, period_kr='당�
     for sector in all_sectors:
         if sector not in existing_sectors:
             df = pd.concat([df, pd.DataFrame([{
-                'sector': sector, 'ticker': None, 'eval_value': 0, '등락률': None, '등락률_str': ''
+                'sector': sector, 'ticker': '', 'eval_value': 0, '등락률': None, '등락률_str': ''
             }])], ignore_index=True)
     # sector가 N/A인 경우 ETC로 표기
     df['sector'] = df['sector'].replace('N/A', 'ETC')
