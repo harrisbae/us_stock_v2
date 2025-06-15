@@ -13,6 +13,7 @@ from matplotlib.legend_handler import HandlerTuple
 from ..core import calculate_hma, calculate_mantra_bands, calculate_rsi, calculate_macd
 from ..signals import get_hma_mantra_md_signals
 from ..utils import get_available_font
+import matplotlib.patches as mpatches
 
 def get_market_data(start_date, end_date):
     """시장 데이터(VIX, TNX, DXY)를 가져옵니다."""
@@ -515,11 +516,17 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_macd.legend(loc='upper left', bbox_to_anchor=(0, 1), fontsize=8)
 
     # 거래량 차트
-    volume_colors = ['red' if c >= o else 'blue' for o, c in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
-    ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=volume_colors, alpha=0.7)
+    volume_colors = ['green' if close > open else 'red' for open, close in zip(ohlcv_data['Open'], ohlcv_data['Close'])]
+    ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=volume_colors, alpha=0.6)
+    
+    # Volume BB Upper(볼린저밴드 상단) 선 추가
     ax_volume.plot(ohlcv_data.index, volume_upper, color='purple', linestyle='-', linewidth=1.5, label='Volume BB Upper')
-    ax_volume.set_ylabel('Volume')
-    ax_volume.legend(loc='upper left', fontsize=8)
+    
+    # 거래량 범례용 패치 추가
+    green_patch = mpatches.Patch(color='green', label='상승 거래량')
+    red_patch = mpatches.Patch(color='red', label='하락 거래량')
+    handles, labels = ax_volume.get_legend_handles_labels()
+    ax_volume.legend(handles + [green_patch, red_patch], labels + ['상승 거래량', '하락 거래량'], loc='upper left', fontsize=8, title='거래량 색상')
 
     # 우측 Y축: 주가 볼린저밴드 상단만
     ax_volume_right = ax_volume.twinx()
