@@ -83,7 +83,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     volume_std = ohlcv_data['Volume'].rolling(window=20).std()
     volume_upper = volume_ma + (volume_std * 2)
     volume_lower = volume_ma - (volume_std * 2)
-
+    
     # 볼린저 밴드 계산
     bb_ma, bb_upper, bb_lower = calculate_bollinger_bands(ohlcv_data['Close'])
 
@@ -527,7 +527,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     red_patch = mpatches.Patch(color='red', label='하락 거래량')
     handles, labels = ax_volume.get_legend_handles_labels()
     ax_volume.legend(handles + [green_patch, red_patch], labels + ['상승 거래량', '하락 거래량'], loc='upper left', fontsize=8, title='거래량 색상')
-
+    
     # 우측 Y축: 주가 볼린저밴드 상단만
     ax_volume_right = ax_volume.twinx()
     ax_volume_right.plot(ohlcv_data.index, ohlcv_data['Close'], color='blue', linewidth=0.8, alpha=0.7, label='Price')
