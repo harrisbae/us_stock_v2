@@ -14,6 +14,7 @@ from ..core import calculate_hma, calculate_mantra_bands, calculate_rsi, calcula
 from ..signals import get_hma_mantra_md_signals
 from ..utils import get_available_font
 import matplotlib.patches as mpatches
+import pandas_datareader.data as web
 
 def get_market_data(start_date, end_date):
     """시장 데이터(VIX, TNX, DXY)를 가져옵니다."""
@@ -91,9 +92,9 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     trade_signals = get_hma_mantra_md_signals(ohlcv_data, ticker)
 
     # 차트 생성
-    fig = plt.figure(figsize=(15, 30))
+    fig = plt.figure(figsize=(15, 34))
     # 메인 차트에 범례를 위한 여유 공간 확보
-    gs = GridSpec(7, 1, height_ratios=[4, 1, 1, 1, 1, 1, 1], figure=fig)
+    gs = GridSpec(8, 1, height_ratios=[4, 1, 1, 1, 1, 1, 1, 1], figure=fig)
     
     # 메인 차트
     ax_main = fig.add_subplot(gs[0])
@@ -103,6 +104,7 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_vix = fig.add_subplot(gs[4], sharex=ax_main)
     ax_tnx = fig.add_subplot(gs[5], sharex=ax_main)
     ax_dxy = fig.add_subplot(gs[6], sharex=ax_main)
+    ax_hyspread = fig.add_subplot(gs[7], sharex=ax_main)
 
     # 메인 차트 설정
     candlestick_ohlc(ax_main, 
@@ -635,6 +637,33 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_dxy.set_ylabel('DXY')
     ax_dxy.grid(True, alpha=0.3)
     ax_dxy.legend(loc='upper right', fontsize=8)
+
+    # High Yield Spread 데이터 불러오기 (FRED)
+    try:
+        hy_spread = web.DataReader('BAMLH0A0HYM2', 'fred', start=start_date, end=end_date)
+    except Exception as e:
+        print(f"High Yield Spread 데이터 로드 실패: {e}")
+        hy_spread = None
+    # High Yield Spread subplot
+    if hy_spread is not None:
+        ax_hyspread.plot(hy_spread.index, hy_spread['BAMLH0A0HYM2'], color='purple', label='High Yield Spread')
+        # 구간별 배경색 및 투자전략
+        ax_hyspread.axhspan(0, 3, color='lime', alpha=0.15, label='Risk-On (≤3%)')
+        ax_hyspread.axhspan(3, 5, color='gold', alpha=0.15, label='Neutral (3~5%)')
+        ax_hyspread.axhspan(5, hy_spread['BAMLH0A0HYM2'].max(), color='pink', alpha=0.15, label='Risk-Off (≥5%)')
+        # 신호 발생일 세로선
+        if 'trade_signals' in locals():
+            for signal in trade_signals:
+                if 'date' in signal:
+                    ax_hyspread.axvline(signal['date'], color='red', linestyle='--', alpha=0.3)
+        ax_hyspread.set_title('High Yield Spread (BAMLH0A0HYM2)')
+        ax_hyspread.set_ylabel('Spread (%)')
+        # 범례(중복 제거)
+        handles, labels = ax_hyspread.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax_hyspread.legend(by_label.values(), by_label.keys())
+    else:
+        ax_hyspread.set_title('High Yield Spread (데이터 없음)')
 
     # 차트 제목 및 레이아웃
     start_date = ohlcv_data.index[0].strftime('%Y-%m-%d')

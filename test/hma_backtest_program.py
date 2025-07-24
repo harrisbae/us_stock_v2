@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
+import pandas_datareader.data as web
 
 # 프로젝트 루트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -377,7 +378,6 @@ class HMAMantraBacktest:
 
     def create_visualization(self, results):
         """시각화 생성 (수익금 분포 추가)"""
-        import matplotlib.pyplot as plt
         # 한글 폰트 설정 (macOS: AppleGothic)
         plt.rcParams['font.family'] = 'AppleGothic'
         plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
@@ -389,8 +389,15 @@ class HMAMantraBacktest:
         output_dir = Path(f"test/backtest_results/{self.symbol}")
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 1. 수익률/수익금/VIX 분포 히스토그램
-        fig, axes = plt.subplots(3, 4, figsize=(24, 18))
+        # High Yield Spread 데이터 불러오기 (FRED)
+        try:
+            hy_spread = web.DataReader('BAMLH0A0HYM2', 'fred', start=self.data.index.min(), end=self.data.index.max())
+        except Exception as e:
+            print(f"High Yield Spread 데이터 로드 실패: {e}")
+            hy_spread = None
+        
+        # 1. 수익률/수익금/VIX 분포 히스토그램 + High Yield Spread subplot
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         fig.suptitle(f'{self.symbol} HMA Mantra 백테스트 결과', fontsize=16)
         
         # 1개월 수익률
@@ -519,6 +526,19 @@ class HMAMantraBacktest:
             axes[2, 3].set_xlabel('평가 등급')
             axes[2, 3].set_ylabel('신호 수')
             axes[2, 3].tick_params(axis='x', rotation=45)
+        
+        # 4행 1열: High Yield Spread 시계열
+        if hy_spread is not None:
+            axes[3, 0].plot(hy_spread.index, hy_spread['BAMLH0A0HYM2'], color='purple', label='High Yield Spread')
+            # 신호 발생일 세로선
+            signal_dates = [pd.to_datetime(r['매수 신호 발생일']) for r in results]
+            for d in signal_dates:
+                axes[3, 0].axvline(d, color='red', linestyle='--', alpha=0.3)
+            axes[3, 0].set_title('High Yield Spread (BAMLH0A0HYM2)')
+            axes[3, 0].set_ylabel('Spread (%)')
+            axes[3, 0].legend()
+        else:
+            axes[3, 0].set_title('High Yield Spread (데이터 없음)')
         
         plt.tight_layout()
         plt.savefig(output_dir / f'{self.symbol}_backtest_results.png', dpi=300, bbox_inches='tight')
