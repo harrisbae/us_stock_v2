@@ -10,9 +10,10 @@ PREPOST="false"
 SYMBOL=""
 SYMBOL_FILE=""
 ANALYSIS_TYPE="technical"  # 기본값: 기술적 분석
+VOLUME_PROFILE_TYPE="none"  # 기본값: Volume Profile 없음
 
 # 명령행 인자 처리
-while getopts "s:f:p:i:t:a:" opt; do
+while getopts "s:f:p:i:t:a:v:" opt; do
   case $opt in
     s) SYMBOL="$OPTARG";;
     f) SYMBOL_FILE="$OPTARG";;
@@ -20,13 +21,14 @@ while getopts "s:f:p:i:t:a:" opt; do
     i) INTERVAL="$OPTARG";;
     t) PREPOST="$OPTARG";;
     a) ANALYSIS_TYPE="$OPTARG";;
+    v) VOLUME_PROFILE_TYPE="$OPTARG";;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1;;
   esac
 done
 
 # 필수 인자 확인 (-s 또는 -f 중 하나는 필수)
 if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
-  echo "Usage: $0 (-s SYMBOL | -f SYMBOL_FILE) [-p PERIOD] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE]"
+  echo "Usage: $0 (-s SYMBOL | -f SYMBOL_FILE) [-p PERIOD] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE]"
   echo "Options:"
   echo "  -s SYMBOL       단일 종목 분석"
   echo "  -f SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
@@ -34,6 +36,10 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  -i INTERVAL    간격 (기본값: 1d)"
   echo "  -t PREPOST     장전/장후 데이터 포함 여부 (기본값: false)"
   echo "  -a TYPE        분석 유형 (technical/macro/sector/news/chart/all, 기본값: technical)"
+  echo "  -v TYPE        Volume Profile 유형 (none/separate/overlay, 기본값: none)"
+  echo "                  none: Volume Profile 없음"
+  echo "                  separate: 별도 영역에 Volume Profile"
+  echo "                  overlay: 메인차트에 Volume Profile 오버레이"
   exit 1
 fi
 
@@ -46,7 +52,20 @@ analyze_stock() {
     case $ANALYSIS_TYPE in
         "technical"|"all")
             echo "기술적 분석 시작..."
-            python src/indicators/hma_mantra_example.py "$symbol" "$PERIOD" "$INTERVAL" "$PREPOST"
+            case $VOLUME_PROFILE_TYPE in
+                "separate")
+                    echo "Volume Profile (별도 영역) 생성 중..."
+                    python test/volume_profile_test.py "$symbol"
+                    ;;
+                "overlay")
+                    echo "Volume Profile (오버레이) 생성 중..."
+                    python test/volume_profile_overlay_test.py "$symbol"
+                    ;;
+                "none"|*)
+                    echo "기본 기술적 분석 실행..."
+                    python src/indicators/hma_mantra_example.py "$symbol" "$PERIOD" "$INTERVAL" "$PREPOST"
+                    ;;
+            esac
             ;;
         "macro"|"all")
             echo "거시경제 분석 시작..."
