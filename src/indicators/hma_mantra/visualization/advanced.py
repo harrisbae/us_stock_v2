@@ -83,7 +83,6 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     volume_ma = ohlcv_data['Volume'].rolling(window=20).mean()
     volume_std = ohlcv_data['Volume'].rolling(window=20).std()
     volume_upper = volume_ma + (volume_std * 2)
-    volume_lower = volume_ma - (volume_std * 2)
     
     # 볼린저 밴드 계산
     bb_ma, bb_upper, bb_lower = calculate_bollinger_bands(ohlcv_data['Close'])
@@ -595,6 +594,13 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     # TNX 차트 (미국채 10년물 금리)
     ax_tnx.plot(tnx.index, tnx.values, color='green', label='US 10Y Treasury', linewidth=1)
     
+    # TNX 수준별 투자 전략 배경색 및 범례(사용자 정의)
+    tnx_max = float(tnx.max().item())
+    ax_tnx.axhspan(5.0, tnx_max, color='red', alpha=0.18, label='고금리 부담 구간 (≥5.0%)\n- 주식시장에 부정적, 채권 매도 압력')
+    ax_tnx.axhspan(4.5, 5.0, color='red', alpha=0.10, label='고금리 압박 본격화 (4.5~5.0%)\n- 고금리 부담 지속, 리스크 확대')
+    ax_tnx.axhspan(4.0, 4.5, color='limegreen', alpha=0.15, label='증시 선호 구간 (골디락스, 4.0~4.5%)\n- 증시에 긍정적, 주식-채권 균형 가능')
+    ax_tnx.axhspan(0, 4.0, color='royalblue', alpha=0.13, label='침체 우려 확대 구간 (<4.0%)\n- 안전자산 선호, 성장 둔화 반영')
+    
     # 현재 TNX 값 표시
     current_tnx = float(tnx.iloc[-1].item())
     current_date = tnx.index[-1]
@@ -613,7 +619,11 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     
     ax_tnx.set_ylabel('TNX')
     ax_tnx.grid(True, alpha=0.3)
-    ax_tnx.legend(loc='upper right', fontsize=8)
+    
+    # TNX 범례 (중복 제거)
+    handles, labels = ax_tnx.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax_tnx.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=8)
 
     # DXY 차트 (달러 인덱스)
     ax_dxy.plot(dxy.index, dxy.values, color='blue', label='Dollar Index', linewidth=1)
@@ -648,9 +658,12 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     if hy_spread is not None:
         ax_hyspread.plot(hy_spread.index, hy_spread['BAMLH0A0HYM2'], color='purple', label='High Yield Spread')
         # 구간별 배경색 및 투자전략
-        ax_hyspread.axhspan(0, 3, color='lime', alpha=0.15, label='Risk-On (≤3%)')
-        ax_hyspread.axhspan(3, 5, color='gold', alpha=0.15, label='Neutral (3~5%)')
-        ax_hyspread.axhspan(5, hy_spread['BAMLH0A0HYM2'].max(), color='pink', alpha=0.15, label='Risk-Off (≥5%)')
+        ax_hyspread.axhspan(0, 3, color='lime', alpha=0.15, 
+            label='Risk-On (≤3%)\n- 시장 신뢰 높음, 위험자산 선호\n- 주식·하이일드채권 비중 확대, 공격적 투자')
+        ax_hyspread.axhspan(3, 5, color='gold', alpha=0.15, 
+            label='Neutral (3~5%)\n- 신용위험 다소 증가, 중립적 시장\n- 분산투자, 리스크 관리, 점진적 비중 조절')
+        ax_hyspread.axhspan(5, hy_spread['BAMLH0A0HYM2'].max(), color='pink', alpha=0.15, 
+            label='Risk-Off (≥5%)\n- 시장 불안, 신용위험 급등\n- 안전자산 비중 확대, 위험자산 축소')
         # 신호 발생일 세로선
         if 'trade_signals' in locals():
             for signal in trade_signals:
@@ -679,6 +692,51 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     plt.tight_layout()
     # 범례를 위한 추가 여백 제거 (이미 차트 내부에 있으므로)
     plt.subplots_adjust(right=0.95)
+
+    # --- 조건부 신호 표시 (사용자 요청) ---
+    # 볼륨 볼린저밴드 상단 계산
+    volume_ma = ohlcv_data['Volume'].rolling(window=20).mean()
+    volume_std = ohlcv_data['Volume'].rolling(window=20).std()
+    volume_upper = volume_ma + (volume_std * 2)
+
+    # MACD 골든크로스 구간 찾기
+    macd_above_signal = (macd > macd_signal)
+    macd_cross = (macd.shift(1) <= macd_signal.shift(1)) & (macd > macd_signal)  # 골든크로스 발생일
+    macd_golden_zone = macd_above_signal.cumsum()  # 골든크로스 이후 구간 마스킹용
+    macd_golden_mask = macd_golden_zone > 0
+
+    # 조건에 맞는 날짜 찾기
+    cond = (
+        (ohlcv_data['Volume'] > volume_upper) &
+        macd_golden_mask &
+        (rsi14 >= 50)
+    )
+    cond_dates = ohlcv_data.index[cond]
+
+    # 모든 subplot 리스트
+    all_axes = [ax_main, ax_rsi, ax_macd, ax_volume, ax_vix, ax_tnx, ax_dxy, ax_hyspread]
+
+    for dt in cond_dates:
+        # 모든 subplot에 수직선
+        for ax in all_axes:
+            ax.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.2, zorder=20)
+            # 상단 텍스트 제거, 하단만 남김
+            if ax is ax_main:
+                # 하단에 일자 텍스트 표시 (45도 기울임)
+                ax.text(dt, ax.get_ylim()[0], dt.strftime('%Y-%m-%d'), fontsize=6, color='magenta',
+                        ha='center', va='top', rotation=45,
+                        bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=25)
+        # 메인차트에 종가 기준 수평선 (양봉/음봉 구분)
+        close = ohlcv_data.loc[dt, 'Close']
+        open_ = ohlcv_data.loc[dt, 'Open']
+        if close >= open_:
+            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
+        else:
+            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
 
     # 저장 또는 표시
     if save_path:
