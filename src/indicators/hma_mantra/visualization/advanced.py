@@ -671,10 +671,18 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
                     ax_hyspread.axvline(signal['date'], color='red', linestyle='--', alpha=0.3)
         ax_hyspread.set_title('High Yield Spread (BAMLH0A0HYM2)')
         ax_hyspread.set_ylabel('Spread (%)')
-        # 범례(중복 제거)
+        
+        # 현재 값 우측 상단에 표시
+        current_value = hy_spread['BAMLH0A0HYM2'].iloc[-1]
+        ax_hyspread.text(0.98, 0.98, f'현재: {current_value:.2f}%', 
+                        transform=ax_hyspread.transAxes, fontsize=10, 
+                        ha='right', va='top', 
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='black'))
+        
+        # 범례(중복 제거) - 좌측 상단으로 위치 변경
         handles, labels = ax_hyspread.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
-        ax_hyspread.legend(by_label.values(), by_label.keys())
+        ax_hyspread.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=8)
     else:
         ax_hyspread.set_title('High Yield Spread (데이터 없음)')
 

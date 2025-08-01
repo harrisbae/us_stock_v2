@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from src.indicators.hma_mantra.visualization.advanced import plot_hma_mantra_md_signals
+from src.indicators.hma_mantra.visualization.volume_profile_chart import calculate_volume_profile
 import matplotlib.pyplot as plt
 
 def get_scalar(val):
@@ -14,6 +15,30 @@ def get_scalar(val):
     if isinstance(val, pd.Series):
         return val.values[0]
     return val
+
+def calculate_volume_profile_signals(data):
+    """Volume Profile 기반 매매 신호 생성"""
+    try:
+        # Volume Profile 계산
+        price_bins, volume_profile, poc_price, value_area_min, value_area_max = calculate_volume_profile(data)
+        
+        # 현재가
+        current_price = data['Close'].iloc[-1]
+        
+        # POC 가격의 +/- 10% 범위
+        poc_range_min = poc_price * 0.9
+        poc_range_max = poc_price * 1.1
+        
+        # 매수 조건: 현재가가 Value Area 내에 있고, POC 가격의 +/- 10% 범위 내에 있는 경우
+        if (value_area_min <= current_price <= value_area_max and 
+            poc_range_min <= current_price <= poc_range_max):
+            return "BUY_VP"  # Volume Profile 매수 신호
+        
+        return "HOLD_VP"
+        
+    except Exception as e:
+        print(f"Volume Profile 신호 계산 오류: {e}")
+        return "HOLD_VP"
 
 def calculate_rsi_signals(data):
     """RSI 기반 매매 신호 생성"""
@@ -72,6 +97,24 @@ def calculate_rsi_signals(data):
     
     return signal
 
+def calculate_combined_signals(data):
+    """RSI와 Volume Profile을 결합한 매매 신호 생성"""
+    # RSI 신호
+    rsi_signal = calculate_rsi_signals(data)
+    
+    # Volume Profile 신호
+    vp_signal = calculate_volume_profile_signals(data)
+    
+    # 신호 결합 로직
+    if rsi_signal == "BUY" and vp_signal == "BUY_VP":
+        return "BUY_STRONG"  # 강한 매수 신호
+    elif rsi_signal == "BUY" or vp_signal == "BUY_VP":
+        return "BUY"  # 매수 신호
+    elif rsi_signal == "SELL":
+        return "SELL"  # 매도 신호
+    else:
+        return "HOLD"  # 보유 신호
+
 def main():
     # 명령행 인자 처리
     if len(sys.argv) < 2:
@@ -101,8 +144,8 @@ def main():
         plot_hma_mantra_md_signals(data, ticker, str(save_path), current_price)
         print(f"분석 완료: {save_path}")
 
-        # RSI 기반 신호 생성
-        signal = calculate_rsi_signals(data)
+        # RSI와 Volume Profile 결합 신호 생성
+        signal = calculate_combined_signals(data)
         
         # 신호 파일 생성
         signal_path = save_dir / f"{ticker}_signal.txt"

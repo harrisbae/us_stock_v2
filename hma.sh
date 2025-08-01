@@ -35,7 +35,7 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  -p PERIOD      기간 (기본값: 120d)"
   echo "  -i INTERVAL    간격 (기본값: 1d)"
   echo "  -t PREPOST     장전/장후 데이터 포함 여부 (기본값: false)"
-  echo "  -a TYPE        분석 유형 (technical/macro/sector/news/chart/all, 기본값: technical)"
+  echo "  -a TYPE        분석 유형 (technical/macro/sector/news/chart/financial/strategy/all, 기본값: technical)"
   echo "  -v TYPE        Volume Profile 유형 (none/separate/overlay, 기본값: none)"
   echo "                  none: Volume Profile 없음"
   echo "                  separate: 별도 영역에 Volume Profile"
@@ -55,11 +55,11 @@ analyze_stock() {
             case $VOLUME_PROFILE_TYPE in
                 "separate")
                     echo "Volume Profile (별도 영역) 생성 중..."
-                    python test/volume_profile_test.py "$symbol"
+                    python test/volume_profile_test.py "$symbol" "$PERIOD"
                     ;;
                 "overlay")
                     echo "Volume Profile (오버레이) 생성 중..."
-                    python test/volume_profile_overlay_test.py "$symbol"
+                    python test/volume_profile_overlay_test.py "$symbol" "$PERIOD"
                     ;;
                 "none"|*)
                     echo "기본 기술적 분석 실행..."
@@ -82,6 +82,34 @@ analyze_stock() {
         "chart"|"all")
             echo "차트 분석 시작..."
             python src/analysis/visualization/chart_analysis.py "$symbol" "$output_dir/${symbol}_chart.png"
+            ;;
+        "financial"|"all")
+            echo "재무 분석 시작..."
+            python test/financial_analysis_test.py "$symbol" "$PERIOD"
+            ;;
+        "strategy"|"all")
+            echo "차트 기반 투자 전략 분석 시작..."
+            echo "분석할 파일 정보:"
+            echo "  - 종목: $symbol"
+            echo "  - 기간: $PERIOD"
+            echo "  - Volume Profile: $VOLUME_PROFILE_TYPE"
+            echo "  - 출력 디렉토리: output/hma_mantra/$symbol/"
+            echo "  - 신호 파일: output/hma_mantra/$symbol/${symbol}_signal.txt"
+            
+            # Volume Profile 차트 생성
+            if [ "$VOLUME_PROFILE_TYPE" = "overlay" ]; then
+                echo "Volume Profile (오버레이) 차트 생성 중..."
+                python test/volume_profile_overlay_test.py "$symbol" "$PERIOD"
+                echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_overlay_${PERIOD}_chart.png"
+            elif [ "$VOLUME_PROFILE_TYPE" = "separate" ]; then
+                echo "Volume Profile (별도 영역) 차트 생성 중..."
+                python test/volume_profile_test.py "$symbol" "$PERIOD"
+                echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_${PERIOD}_chart.png"
+            fi
+            
+            # 투자 전략 분석 실행
+            python test/strategy_analysis_test.py "$symbol" "$PERIOD"
+            echo "투자 전략 분석 완료!"
             ;;
         *)
             echo "알 수 없는 분석 유형: $ANALYSIS_TYPE"
@@ -135,7 +163,12 @@ if [ ! -z "$SYMBOL_FILE" ]; then
     
     SIGNAL_FILE="output/hma_mantra/$symbol/${symbol}_signal.txt"
     if [ -f "$SIGNAL_FILE" ]; then
-      SIGNAL=$(cat "$SIGNAL_FILE")
+      # 신호 요약 섹션에서 마지막 줄의 신호만 추출
+      SIGNAL=$(grep "=== 신호 요약 ===" -A 1 "$SIGNAL_FILE" | tail -1 | tr -d '\r')
+      if [ -z "$SIGNAL" ]; then
+        # 신호 요약이 없으면 파일의 마지막 줄 사용
+        SIGNAL=$(tail -1 "$SIGNAL_FILE" | tr -d '\r')
+      fi
       echo "$symbol,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
     else
       echo "$symbol,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
@@ -144,7 +177,12 @@ if [ ! -z "$SYMBOL_FILE" ]; then
 else
   SIGNAL_FILE="output/hma_mantra/$SYMBOL/${SYMBOL}_signal.txt"
   if [ -f "$SIGNAL_FILE" ]; then
-    SIGNAL=$(cat "$SIGNAL_FILE")
+    # 신호 요약 섹션에서 마지막 줄의 신호만 추출
+    SIGNAL=$(grep "=== 신호 요약 ===" -A 1 "$SIGNAL_FILE" | tail -1 | tr -d '\r')
+    if [ -z "$SIGNAL" ]; then
+      # 신호 요약이 없으면 파일의 마지막 줄 사용
+      SIGNAL=$(tail -1 "$SIGNAL_FILE" | tr -d '\r')
+    fi
     echo "$SYMBOL,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
   else
     echo "$SYMBOL,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"

@@ -21,14 +21,16 @@ def main():
     else:
         ticker = "TSLA"  # 기본값
     
-    # 데이터 기간 설정 (최근 6개월)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=180)
+    # 기간 설정 (명령행 인자에서 받기)
+    if len(sys.argv) > 2:
+        period = sys.argv[2]
+    else:
+        period = "6mo"  # 기본값
     
-    print(f"데이터 다운로드 중: {ticker} ({start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')})")
+    print(f"데이터 다운로드 중: {ticker} (period={period})")
     
-    # 데이터 다운로드
-    data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+    # 데이터 다운로드 (period 파라미터 직접 전달)
+    data = yf.download(ticker, period=period, progress=False)
     
     if data.empty:
         print(f"데이터를 가져올 수 없습니다: {ticker}")
@@ -40,7 +42,7 @@ def main():
     # 출력 경로 설정
     output_dir = f"output/hma_mantra/{ticker}"
     os.makedirs(output_dir, exist_ok=True)
-    save_path = f"{output_dir}/{ticker}_volume_profile_overlay_chart.png"
+    save_path = f"{output_dir}/{ticker}_volume_profile_overlay_{period}_chart.png"
     
     print(f"Volume Profile 오버레이 차트 생성 중...")
     
