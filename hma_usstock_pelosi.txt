@@ -1,0 +1,17 @@
+#GOOGL,GOOG, IT AI 클라우드
+GOOGL
+GOOG
+#AMZN, 전자상거래, 클라우드
+AMZN
+#NVDA, 반도체 AI
+NVDA
+#템퍼스 AI, 헬스케어/AI
+TEM
+#비스트라
+VST
+#팔로알토네트웍스
+PANW
+#브로드컴
+AVGO
+#마이크로소프트
+MSFT

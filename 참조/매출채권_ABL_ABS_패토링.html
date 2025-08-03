@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터랙티브 리포트: 중소/중견기업 매출채권 유동화 (Gemini API 통합)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: 보고서의 학술적 구조를 탈피하여, 자금 조달이 필요한 기업 담당자의 의사결정 흐름에 맞춘 사용자 중심의 구조를 설계했습니다. 1) 핵심 질문 제시(도입) → 2) 솔루션 비교(ABL, ABS, 팩토링) → 3) 금융기관별 지원책 탐색 → 4) 정량적 조건 비교(차트) → 5) 핵심 용어 정리 순으로 구성하여, 사용자가 단계적으로 정보를 탐색하고 자신에게 맞는 최적의 솔루션을 찾도록 유도합니다. 이는 복잡한 금융 정보를 쉽고 명확하게 전달하는 데 가장 효과적인 방식입니다. 여기에 Gemini API를 활용한 '제안서 초안 작성' 기능을 추가하여, 단순히 정보를 제공하는 것을 넘어 사용자의 실질적인 업무를 돕는 도구로 확장했습니다. -->
+    <!-- Visualization & Content Choices: 
+        - 보고서 정보: ABL, ABS, 팩토링 개념 및 특징. 목표: 비교/정리. 방법: 인터랙티브 탭 UI (HTML/JS). 상호작용: 탭 클릭 시 해당 금융상품의 핵심 정보(개념, 특징, 추천 대상, 대표 사례)가 동적으로 표시됨. 정당성: 사용자가 세 가지 옵션을 동일한 구조 하에서 직접 비교하며 차이점을 쉽게 파악할 수 있음.
+        - 보고서 정보: 금융기관별 지원 제도. 목표: 정리/탐색. 방법: 반응형 카드 그리드 (HTML/Tailwind). 상호작용: 카드 클릭 시 모달 창을 통해 기관별 상세 정보(주요 상품, 한도, 특징) 제공. 정당성: 여러 기관의 정보를 한눈에 보여주면서도, 상세 내용은 필요시 확인할 수 있어 정보 과부하를 방지하고 탐색 효율을 높임.
+        - 보고서 정보: 금리 및 한도 데이터. 목표: 비교. 시각화: 인터랙티브 바 차트 (Chart.js). 상호작용: 버튼 클릭으로 '평균 금리 비교'와 '최대 한도 비교' 차트 간 전환. 정당성: 복잡한 숫자 데이터를 시각적으로 명확하게 비교하여 사용자가 금융 조건의 차이를 직관적으로 인지할 수 있도록 함.
+        - 보고서 정보: 전문 용어(상환청구권 등). 목표: 정보 제공. 방법: 아코디언 UI (HTML/JS). 상호작용: 용어 클릭 시 설명이 펼쳐짐. 정당성: 본문 흐름을 방해하지 않으면서도 필요시 심화 정보를 제공하여 사용자의 이해를 돕는 효율적인 방식.
+        - Gemini API 통합: 보고서 정보 -> 제안서 초안. 목표: 실무 지원. 방법: Gemini API 호출 (JS fetch). 상호작용: 버튼 클릭 시 사용자 입력 폼을 받고, 제출 시 LLM이 초안을 생성하여 모달에 표시. 정당성: 단순히 정보를 소비하는 것을 넘어, 사용자가 직접 실행 가능한 결과물을 얻도록 도와 앱의 가치를 극대화.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+            color: #1e293b; /* slate-800 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 450px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .nav-link {
+            transition: color 0.3s;
+        }
+        .nav-link.active, .nav-link:hover {
+            color: #2563eb; /* blue-600 */
+            font-weight: 700;
+        }
+        .tab-button {
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+        .tab-button.active {
+            border-bottom-color: #2563eb; /* blue-600 */
+            color: #2563eb;
+        }
+        .section-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-blue-600">매출채권 유동화 가이드</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#solutions" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600">솔루션 비교</a>
+                        <a href="#providers" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600">금융기관 찾기</a>
+                        <a href="#comparison" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600">조건 비교</a>
+                        <a href="#glossary" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600">용어 정리</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <section id="intro" class="text-center py-16">
+            <h2 class="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">우리 회사에 맞는 자금 조달,</h2>
+            <h2 class="text-4xl font-bold tracking-tight text-blue-600 sm:text-5xl mt-2">매출채권으로 해결하세요</h2>
+            <p class="mt-6 text-lg leading-8 text-slate-600 max-w-3xl mx-auto">물품 대금은 나중에 받는데, 당장 운영 자금이 필요하신가요? 미래에 받을 돈, 즉 '매출채권'을 미리 현금화하여 기업의 유동성을 확보하고 성장의 발판을 마련할 수 있습니다.</p>
+        </section>
+
+        <section id="solutions" class="section-card">
+            <h3 class="text-2xl font-bold text-center">어떤 방식이 적합할까?</h3>
+            <p class="mt-4 text-center text-slate-600 max-w-2xl mx-auto">매출채권 유동화는 크게 ABL, ABS, 팩토링 세 가지 방식으로 나뉩니다. 각 방식의 특징을 비교하고 우리 회사에 가장 적합한 솔루션을 찾아보세요.</p>
+            <div class="mt-8 border-b border-slate-200">
+                <div class="flex justify-center -mb-px space-x-4 sm:space-x-8">
+                    <button class="tab-button active text-base sm:text-lg font-bold py-4 px-1" data-tab="abl">ABL</button>
+                    <button class="tab-button text-base sm:text-lg font-bold py-4 px-1" data-tab="abs">ABS</button>
+                    <button class="tab-button text-base sm:text-lg font-bold py-4 px-1" data-tab="factoring">팩토링</button>
+                </div>
+            </div>
+            <div id="tab-content" class="mt-8">
+                <!-- Content will be dynamically inserted here -->
+            </div>
+        </section>
+
+        <section id="providers" class="section-card">
+            <h3 class="text-2xl font-bold text-center">누가 도와줄 수 있나요?</h3>
+            <p class="mt-4 text-center text-slate-600 max-w-2xl mx-auto">정책금융기관부터 시중은행까지, 다양한 금융기관이 중소/중견기업의 매출채권 유동화를 지원하고 있습니다. 기관별 특징을 확인하고 상담을 준비해보세요.</p>
+            <div id="provider-cards" class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Provider cards will be dynamically inserted here -->
+            </div>
+        </section>
+
+        <section id="comparison" class="section-card">
+            <h3 class="text-2xl font-bold text-center">한눈에 보는 조건 비교</h3>
+             <p class="mt-4 text-center text-slate-600 max-w-2xl mx-auto">각 금융 상품의 일반적인 금리 수준과 지원 한도를 비교해 보세요. 실제 조건은 기업의 신용도와 거래 조건에 따라 달라질 수 있습니다.</p>
+            <div class="mt-8 flex justify-center space-x-4">
+                <button id="compare-rate-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md font-medium">평균 금리 비교</button>
+                <button id="compare-limit-btn" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-md font-medium">최대 한도 비교</button>
+            </div>
+            <div class="mt-8">
+                <div class="chart-container">
+                    <canvas id="comparisonChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section id="glossary" class="section-card">
+            <h3 class="text-2xl font-bold text-center">핵심 용어 알아보기</h3>
+            <p class="mt-4 text-center text-slate-600 max-w-2xl mx-auto">자산유동화, 어렵게 느껴지시나요? 핵심 용어의 의미를 알면 더 쉽게 이해할 수 있습니다.</p>
+            <div id="glossary-items" class="mt-8 max-w-3xl mx-auto space-y-4">
+                <!-- Glossary items will be dynamically inserted here -->
+            </div>
+        </section>
+
+    </main>
+    
+    <div id="main-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+        <div id="main-modal-content" class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg p-6 transform scale-95">
+            <!-- Modal content will be dynamically inserted here -->
+        </div>
+    </div>
+    
+    <div id="llm-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+        <div id="llm-modal-content" class="modal-content bg-white rounded-lg shadow-xl w-full max-w-xl p-6 transform scale-95">
+            <div id="llm-form-container"></div>
+            <div id="llm-result-container" class="hidden"></div>
+        </div>
+    </div>
+
+    <footer class="bg-slate-800 text-white mt-12">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center">
+            <p>이 웹페이지는 제공된 보고서를 기반으로 생성된 인터랙티브 요약본입니다.</p>
+            <p class="text-sm text-slate-400 mt-1">실제 금융 상품 신청 시에는 각 금융기관의 최신 정보를 반드시 확인하시기 바랍니다.</p>
+        </div>
+    </footer>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const contentData = {
+            solutions: {
+                abl: {
+                    title: 'ABL (자산유동화대출)',
+                    summary: '매출채권을 담보로 특정 금융기관으로부터 직접 자금을 대출받는 방식',
+                    features: [
+                        '소수의 특정 투자자(주로 금융기관) 대상',
+                        'ABS에 비해 발행 절차 비교적 간소',
+                        '장래에 발생할 매출채권도 유동화 가능'
+                    ],
+                    recommend: '신속한 자금 조달이 필요하거나, 비정기적인 대규모 자금이 필요한 기업',
+                    case: {
+                        name: '쏘카(SOCAR) 사례',
+                        detail: '미래에 발생할 장래매출채권을 기초로 3년 만기, 연 6% 중반대 금리의 ABL 발행을 추진하여 혁신 기업의 새로운 자금 조달 가능성을 제시했습니다.'
+                    }
+                },
+                abs: {
+                    title: 'ABS (자산유동화증권)',
+                    summary: '매출채권 등 자산을 기초로 증권을 발행하여 불특정 다수에게 판매하는 방식',
+                    features: [
+                        '대규모 자금 조달에 유리',
+                        '기업 신용도보다 높은 등급의 증권 발행 가능',
+                        'P-CBO 등 여러 기업의 자산을 묶어 발행 가능'
+                    ],
+                    recommend: '안정적인 현금흐름을 가진 자산을 대량 보유하고 있으며, 낮은 비용으로 대규모 자금을 조달하려는 기업',
+                    case: {
+                        name: '중소기업 P-CBO 사례',
+                        detail: '여러 중소기업이 발행한 채권을 묶어(P-CBO) 이를 기초자산으로 ABS를 발행. 개별 기업의 신용 위험을 분산하고 투자 매력도를 높였습니다.'
+                    }
+                },
+                factoring: {
+                    title: '매출채권 팩토링',
+                    summary: '보유한 매출채권을 금융기관(팩터)에 매각하여 조기에 현금화하는 방식',
+                    features: [
+                        '상환청구권 없는 경우, 구매기업 부도 위험 회피',
+                        '신속한 현금 확보로 유동성 개선 효과 큼',
+                        '정책금융기관을 통해 중소기업 지원 활발'
+                    ],
+                    recommend: '구매기업의 부도 위험 없이 안정적으로 판매대금을 회수하고 싶거나, 상시적인 단기 운영자금이 필요한 중소기업',
+                    case: {
+                        name: '중진공/신보 팩토링 사례',
+                        detail: '상환청구권 없는 팩토링을 통해 구매기업의 채무 불이행 위험을 팩터가 부담. 중소기업의 연쇄 부도를 막고 경영 안정을 지원합니다.'
+                    }
+                }
+            },
+            providers: [
+                { name: '중소벤처기업진흥공단', type: '정책', product: '매출채권 팩토링', limit: '판매기업 연 10억', feature: '상환청구권 없음, 온라인 신청' },
+                { name: '신용보증기금', type: '정책', product: '중소·중견기업 팩토링', limit: '판매기업 최대 100억', feature: '상환청구권 없음, 매출채권보험 연계' },
+                { name: '기술보증기금', type: '정책', product: '중소기업 팩토링', limit: '별도 심사', feature: '기술기업 특화, 상환청구권 없음' },
+                { name: '한국수출입은행', type: '정책', product: '매출채권 팩토링', limit: '별도 심사', feature: '수출기업 특화, 핀테크 연계' },
+                { name: '우리은행', type: '시중', product: 'B2B 전자대출', limit: '전년도 납품액 1/2', feature: '상환청구권 있음, 구매기업 신용도 기반' },
+                { name: '산업은행', type: '시중', product: 'ABL/ABS 발행 지원', limit: '건별 상이 (예: 300억)', feature: '중견기업 대규모 유동화 전문' },
+                { name: '기업은행', type: '시중', product: '매출채권 유동화', limit: '별도 심사', feature: '에스크로 계좌 등 다양한 구조 활용' },
+                { name: 'SC제일은행', type: '시중', product: '동산담보대출', limit: '매출채권 80%', feature: '매출채권을 동산담보의 일부로 인정' },
+            ],
+            glossary: [
+                { term: '상환청구권 (Recourse)', definition: '구매기업이 대금을 지급하지 못할 경우, 금융기관이 판매기업에게 대신 돈을 갚으라고 요구할 수 있는 권리입니다. \'상환청구권 없음\'은 이 위험을 금융기관이 부담한다는 의미로, 판매기업에게 매우 유리한 조건입니다.' },
+                { term: '진정한 양도 (True Sale)', definition: '자산을 담보로 잡는 것이 아니라, 소유권을 완전히 매각하는 것을 의미합니다. 이를 통해 자산이 원래 기업의 재무 상태와 법적으로 분리됩니다.' },
+                { term: '파산 격리 (Bankruptcy Remoteness)', definition: '자산을 양도한 원래 기업이 파산하더라도, 양도된 자산은 파산 재산에 포함되지 않아 채권자들의 압류 대상에서 제외되는 원칙입니다. 이는 유동화 증권 투자자를 보호하는 핵심 장치입니다.' },
+                { term: '유동화전문회사 (SPC)', definition: '자산유동화를 위해 설립된 특수목적법인입니다. 자산보유자로부터 자산을 넘겨받아 이를 기초로 증권을 발행하는 역할을 수행합니다.' }
+            ],
+            comparisonData: {
+                rate: {
+                    labels: ['정책자금 연계 ABL', '은행 ABL', '팩토링'],
+                    values: [3, 6, 12], // Average rates
+                    label: '평균 금리/수수료 (%)'
+                },
+                limit: {
+                    labels: ['중진공 팩토링', '신보 팩토링', 'KDB ABL 사례'],
+                    values: [10, 100, 300], // Max limits in 억원
+                    label: '최대 한도 (억원)'
+                }
+            }
+        };
+
+        const tabContentContainer = document.getElementById('tab-content');
+        const providerCardsContainer = document.getElementById('provider-cards');
+        const glossaryContainer = document.getElementById('glossary-items');
+
+        async function fetchWithExponentialBackoff(func, ...args) {
+            const maxRetries = 5;
+            let retries = 0;
+            let delay = 1000;
+            while (true) {
+                try {
+                    return await func(...args);
+                } catch (error) {
+                    if (retries < maxRetries) {
+                        await new Promise(res => setTimeout(res, delay));
+                        retries++;
+                        delay *= 2;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+
+        async function callGeminiApi(prompt) {
+            const chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            const response = await fetchWithExponentialBackoff(fetch, apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates.length > 0 &&
+                result.candidates[0].content && result.candidates[0].content.parts &&
+                result.candidates[0].content.parts.length > 0) {
+                return result.candidates[0].content.parts[0].text;
+            } else {
+                console.error('API response structure unexpected:', result);
+                return '제안서 초안 생성 중 오류가 발생했습니다. 다시 시도해 주세요.';
+            }
+        }
+
+        function renderSolutionContent(solutionKey) {
+            const data = contentData.solutions[solutionKey];
+            tabContentContainer.innerHTML = `
+                <div class="p-2 animate-fade-in">
+                    <h4 class="text-2xl font-bold text-blue-600">${data.title}</h4>
+                    <p class="mt-2 text-lg text-slate-700 font-medium">"${data.summary}"</p>
+                    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h5 class="font-bold text-slate-800">주요 특징 📝</h5>
+                            <ul class="mt-2 list-disc list-inside space-y-1 text-slate-600">
+                                ${data.features.map(f => `<li>${f}</li>`).join('')}
+                            </ul>
+                        </div>
+                        <div>
+                            <h5 class="font-bold text-slate-800">이런 기업에 추천 👍</h5>
+                            <p class="mt-2 text-slate-600">${data.recommend}</p>
+                        </div>
+                    </div>
+                    <div class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <h5 class="font-bold text-slate-800">대표 사례: ${data.case.name}</h5>
+                        <p class="mt-2 text-slate-600">${data.case.detail}</p>
+                    </div>
+                    <button class="mt-6 w-full py-3 px-4 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors" data-llm-action="propose" data-solution="${data.title}">
+                        ✨ 제안서 초안 작성하기
+                    </button>
+                </div>
+                <style>.animate-fade-in { animation: fadeIn 0.5s ease; } @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }</style>
+            `;
+            document.querySelector(`button[data-llm-action="propose"]`).addEventListener('click', (e) => {
+                const solution = e.target.dataset.solution;
+                openLlmModal(solution);
+            });
+        }
+
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                renderSolutionContent(e.target.dataset.tab);
+            });
+        });
+
+        renderSolutionContent('abl');
+
+        contentData.providers.forEach(provider => {
+            const card = document.createElement('div');
+            card.className = `p-4 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-105 ${provider.type === '정책' ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border`;
+            card.innerHTML = `
+                <h4 class="font-bold text-lg ${provider.type === '정책' ? 'text-blue-800' : 'text-green-800'}">${provider.name}</h4>
+                <p class="text-sm text-slate-600 mt-1">${provider.product}</p>
+                <p class="text-sm text-slate-500 mt-2">한도: ${provider.limit}</p>
+            `;
+            card.addEventListener('click', () => openMainModal(provider));
+            providerCardsContainer.appendChild(card);
+        });
+
+        const mainModal = document.getElementById('main-modal');
+        const mainModalContent = document.getElementById('main-modal-content');
+        mainModal.addEventListener('click', (e) => {
+            if (e.target === mainModal) closeMainModal();
+        });
+
+        function openMainModal(provider) {
+            mainModalContent.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <h3 class="text-2xl font-bold ${provider.type === '정책' ? 'text-blue-700' : 'text-green-700'}">${provider.name}</h3>
+                    <button id="close-main-modal-btn" class="text-slate-400 hover:text-slate-600">&times;</button>
+                </div>
+                <div class="mt-4 space-y-3">
+                    <p><strong class="w-24 inline-block">주요 상품:</strong> ${provider.product}</p>
+                    <p><strong class="w-24 inline-block">최대 한도:</strong> ${provider.limit}</p>
+                    <p><strong class="w-24 inline-block">핵심 특징:</strong> ${provider.feature}</p>
+                </div>
+            `;
+            document.getElementById('close-main-modal-btn').onclick = closeMainModal;
+            mainModal.classList.remove('opacity-0', 'pointer-events-none');
+            mainModalContent.classList.remove('scale-95');
+        }
+
+        function closeMainModal() {
+            mainModal.classList.add('opacity-0', 'pointer-events-none');
+            mainModalContent.classList.add('scale-95');
+        }
+        
+        const llmModal = document.getElementById('llm-modal');
+        const llmFormContainer = document.getElementById('llm-form-container');
+        const llmResultContainer = document.getElementById('llm-result-container');
+        const llmModalContent = document.getElementById('llm-modal-content');
+
+        llmModal.addEventListener('click', (e) => {
+            if (e.target === llmModal) closeLlmModal();
+        });
+
+        function openLlmModal(solutionName) {
+            llmFormContainer.classList.remove('hidden');
+            llmResultContainer.classList.add('hidden');
+            llmFormContainer.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <h3 class="text-2xl font-bold">✨ 제안서 초안 작성하기 (${solutionName})</h3>
+                    <button id="close-llm-modal-btn" class="text-slate-400 hover:text-slate-600">&times;</button>
+                </div>
+                <p class="mt-2 text-slate-600">몇 가지 정보를 입력하시면 금융기관에 제출할 제안서 초안을 작성해 드립니다.</p>
+                <form id="llm-form" class="mt-6 space-y-4">
+                    <div>
+                        <label for="companyName" class="block text-sm font-medium text-slate-700">회사명</label>
+                        <input type="text" id="companyName" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required placeholder="예: (주)알파테크">
+                    </div>
+                    <div>
+                        <label for="capitalAmount" class="block text-sm font-medium text-slate-700">필요 자금 (단위: 억원)</label>
+                        <input type="number" id="capitalAmount" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required placeholder="예: 5">
+                    </div>
+                    <div>
+                        <label for="capitalPurpose" class="block text-sm font-medium text-slate-700">자금 사용 목적</label>
+                        <textarea id="capitalPurpose" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required placeholder="예: 신규 공장 건설, R&D 투자"></textarea>
+                    </div>
+                    <div>
+                        <label for="collateralDesc" class="block text-sm font-medium text-slate-700">유동화 대상 자산 설명</label>
+                        <textarea id="collateralDesc" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required placeholder="예: 주요 대기업에 납품하는 6개월 만기 매출채권, 월 평균 10억원 규모"></textarea>
+                    </div>
+                    <button type="submit" class="w-full py-3 px-4 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors">
+                        초안 생성
+                    </button>
+                </form>
+                <div id="loading-indicator" class="hidden text-center mt-4">
+                    <div class="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] text-blue-500"></div>
+                    <p class="mt-2 text-slate-600">초안을 생성하고 있습니다. 잠시만 기다려 주세요...</p>
+                </div>
+            `;
+            document.getElementById('close-llm-modal-btn').onclick = closeLlmModal;
+            llmModal.classList.remove('opacity-0', 'pointer-events-none');
+            llmModalContent.classList.remove('scale-95');
+
+            document.getElementById('llm-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                document.getElementById('loading-indicator').classList.remove('hidden');
+                document.getElementById('llm-form').classList.add('hidden');
+
+                const companyName = document.getElementById('companyName').value;
+                const capitalAmount = document.getElementById('capitalAmount').value;
+                const capitalPurpose = document.getElementById('capitalPurpose').value;
+                const collateralDesc = document.getElementById('collateralDesc').value;
+
+                const prompt = `당신은 매출채권 유동화 전문가입니다. 중소/중견기업을 위한 금융기관 제출용 제안서 초안을 작성해주세요. 사용자의 정보는 다음과 같습니다. 
+                회사명: ${companyName}, 
+                희망 자금: ${capitalAmount}억원, 
+                자금 사용 목적: ${capitalPurpose},
+                유동화 대상 자산: ${collateralDesc}.
+                활용하고자 하는 금융 상품은 "${solutionName}"입니다. 기업의 성장 의지를 강조하고, 자산의 안정성을 부각하는 내용을 포함해 500자 내외로 작성해주세요.
+                `;
+
+                try {
+                    const resultText = await callGeminiApi(prompt);
+                    displayLlmResult(resultText);
+                } catch (error) {
+                    displayLlmResult('제안서 초안 생성 중 오류가 발생했습니다. 다시 시도해 주세요.');
+                }
+            });
+        }
+
+        function displayLlmResult(text) {
+            llmResultContainer.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <h3 class="text-2xl font-bold">제안서 초안 결과</h3>
+                    <button id="close-llm-modal-btn-result" class="text-slate-400 hover:text-slate-600">&times;</button>
+                </div>
+                <div class="mt-4 p-4 bg-slate-50 rounded-lg max-h-96 overflow-y-auto">
+                    <pre id="proposal-text" class="whitespace-pre-wrap text-sm leading-relaxed">${text}</pre>
+                </div>
+                <div class="mt-4 flex justify-between">
+                    <button id="copy-btn" class="py-2 px-4 bg-blue-500 text-white rounded-md font-medium hover:bg-blue-600 transition-colors">초안 복사하기</button>
+                    <button id="new-proposal-btn" class="py-2 px-4 bg-slate-200 text-slate-700 rounded-md font-medium hover:bg-slate-300 transition-colors">새 초안 작성</button>
+                </div>
+            `;
+            document.getElementById('close-llm-modal-btn-result').onclick = closeLlmModal;
+            document.getElementById('llm-form-container').classList.add('hidden');
+            llmResultContainer.classList.remove('hidden');
+
+            document.getElementById('copy-btn').addEventListener('click', () => {
+                const textToCopy = document.getElementById('proposal-text').innerText;
+                document.execCommand('copy');
+                const tempInput = document.createElement('textarea');
+                tempInput.value = textToCopy;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                const originalText = document.getElementById('copy-btn').innerText;
+                document.getElementById('copy-btn').innerText = '복사 완료!';
+                setTimeout(() => {
+                    document.getElementById('copy-btn').innerText = originalText;
+                }, 2000);
+            });
+            document.getElementById('new-proposal-btn').addEventListener('click', () => {
+                document.getElementById('llm-form-container').classList.remove('hidden');
+                llmResultContainer.classList.add('hidden');
+            });
+        }
+
+        function closeLlmModal() {
+            llmModal.classList.add('opacity-0', 'pointer-events-none');
+            llmModalContent.classList.add('scale-95');
+        }
+
+        contentData.glossary.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'border-b border-slate-200';
+            div.innerHTML = `
+                <button class="w-full text-left flex justify-between items-center py-3">
+                    <span class="font-bold text-slate-700">${item.term}</span>
+                    <span class="text-blue-500 transform transition-transform duration-300">&#9662;</span>
+                </button>
+                <div class="overflow-hidden max-h-0 transition-all duration-500 ease-in-out">
+                    <p class="pt-1 pb-4 text-slate-600">${item.definition}</p>
+                </div>
+            `;
+            const button = div.querySelector('button');
+            const content = div.querySelector('div');
+            const icon = button.querySelector('span:last-child');
+            button.addEventListener('click', () => {
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                    icon.style.transform = 'rotate(0deg)';
+                } else {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                    icon.style.transform = 'rotate(180deg)';
+                }
+            });
+            glossaryContainer.appendChild(div);
+        });
+
+        const comparisonCtx = document.getElementById('comparisonChart').getContext('2d');
+        const comparisonChart = new Chart(comparisonCtx, {
+            type: 'bar',
+            data: {
+                labels: contentData.comparisonData.rate.labels,
+                datasets: [{
+                    label: contentData.comparisonData.rate.label,
+                    data: contentData.comparisonData.rate.values,
+                    backgroundColor: ['#60a5fa', '#3b82f6', '#2563eb'],
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#e2e8f0' } }
+                }
+            }
+        });
+
+        const rateBtn = document.getElementById('compare-rate-btn');
+        const limitBtn = document.getElementById('compare-limit-btn');
+
+        rateBtn.addEventListener('click', () => {
+            updateChart('rate');
+            rateBtn.classList.replace('bg-slate-200', 'bg-blue-500');
+            rateBtn.classList.replace('text-slate-700', 'text-white');
+            limitBtn.classList.replace('bg-blue-500', 'bg-slate-200');
+            limitBtn.classList.replace('text-white', 'text-slate-700');
+        });
+
+        limitBtn.addEventListener('click', () => {
+            updateChart('limit');
+            limitBtn.classList.replace('bg-slate-200', 'bg-blue-500');
+            limitBtn.classList.replace('text-slate-700', 'text-white');
+            rateBtn.classList.replace('bg-blue-500', 'bg-slate-200');
+            rateBtn.classList.replace('text-white', 'text-slate-700');
+        });
+
+        function updateChart(dataType) {
+            const data = contentData.comparisonData[dataType];
+            comparisonChart.data.labels = data.labels;
+            comparisonChart.data.datasets[0].data = data.values;
+            comparisonChart.data.datasets[0].label = data.label;
+            comparisonChart.options.scales.y.title = { display: true, text: data.label };
+            comparisonChart.update();
+        }
+
+        const navLinks = document.querySelectorAll('.nav-link');
+        const sections = document.querySelectorAll('section');
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 80) {
+                    current = section.getAttribute('id');
+                }
+            });
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').includes(current)) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    });
+    </script>
+</body>
+</html>

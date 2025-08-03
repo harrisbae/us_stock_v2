@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>워렌 버핏 투자 원칙: 대화형 가이드</title>
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: A single-page, thematic scrolling application that guides the user on a narrative journey from Benjamin Graham's foundational principles to Warren Buffett's evolved philosophy. The structure is designed for intuitive exploration: 1. Introduction. 2. Graham's Core Ideas (interactive cards). 3. The Buffett Evolution (transition). 4. An interactive dashboard for Buffett's Five Principles, using tabs for clear navigation and charts for visual data representation. 5. Conclusion. This narrative structure was chosen over a simple report layout to make the complex investment concepts more digestible, engaging, and memorable for the user. -->
+    <!-- Visualization & Content Choices: Report Info: Graham/Buffett Principles -> Goal: Inform, Compare, Show Change -> Viz/Presentation Method: Interactive cards (HTML/JS) for foundational concepts. Tabbed interface (HTML/JS) for organizing Buffett's principles. Bar Chart (Chart.js) to compare a 'Great Company' vs. 'Average Company' ROIC, illustrating the result of an Economic Moat. Grouped Bar Chart (Chart.js) to visualize the 'Margin of Safety' by comparing intrinsic value and market price. Dynamic Line Chart (Chart.js) with an input slider to demonstrate the power of compounding over time. Justification: These interactive elements turn passive reading into active exploration, enhancing understanding and retention of key investment philosophies. -> Library/Method: Chart.js for all data visualizations. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #FDFBF7;
+            color: #3A3A3A;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .tab-button.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+        .content-panel {
+            display: none;
+        }
+        .content-panel.active {
+            display: block;
+        }
+        .icon-placeholder {
+            font-size: 2.5rem;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="container mx-auto px-4 py-8 md:py-16">
+
+        <header class="text-center mb-16">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-4">워렌 버핏의 성공 투자 원칙</h1>
+            <p class="text-lg text-gray-600 max-w-3xl mx-auto">벤저민 그레이엄의 지혜에서 출발하여 워렌 버핏이 완성한, 시대를 초월하는 가치투자의 길을 탐험해보세요.</p>
+        </header>
+
+        <main>
+            <section id="graham" class="mb-20">
+                <h2 class="text-3xl font-bold text-center mb-4">투자의 초석: 벤저민 그레이엄의 3대 원칙</h2>
+                <p class="text-center text-gray-600 mb-10 max-w-2xl mx-auto">모든 위대한 여정에는 지도가 필요합니다. 워렌 버핏의 투자 세계를 이해하기 위해, 그의 스승인 벤저민 그레이엄이 제시한 세 가지 핵심 원칙을 먼저 살펴보겠습니다.</p>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                        <h3 class="text-xl font-bold mb-3 text-blue-600">① 안전마진</h3>
+                        <p class="text-gray-700">기업의 내재가치보다 훨씬 저렴한 가격에 주식을 매수하여, 예상치 못한 위험에 대비하는 '안전 쿠션'을 확보하는 것입니다. 1달러짜리 자산을 50센트에 사는 것과 같습니다.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                        <h3 class="text-xl font-bold mb-3 text-blue-600">② 미스터 마켓</h3>
+                        <p class="text-gray-700">시장을 변덕스러운 동업자로 여기고, 그의 비이성적인 공포(가격 폭락)와 탐욕(가격 폭등)을 역으로 이용하여 이익을 얻는 지혜입니다. 시장의 감정에 휩쓸리지 마세요.</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                        <h3 class="text-xl font-bold mb-3 text-blue-600">③ 사업가적 접근</h3>
+                        <p class="text-gray-700">주식 투자를 종이 거래가 아닌, 실제 기업의 일부를 소유하는 '사업'으로 접근해야 합니다. 철저한 분석과 이해는 필수입니다.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="evolution" class="text-center mb-20 py-12 bg-blue-50 rounded-xl">
+                <h2 class="text-3xl font-bold mb-4">버핏의 진화: "좋은 기업을 적정 가격에"</h2>
+                <p class="text-gray-700 max-w-3xl mx-auto">워렌 버핏은 그레이엄의 가르침을 계승했지만, 한 걸음 더 나아갔습니다. 그는 단순히 '싼 기업'을 넘어, 장기적으로 꾸준히 가치를 창출하는 '훌륭한 기업'을 '합리적인 가격'에 인수하는 전략으로 발전시켰습니다. 이것이 바로 버핏의 성공 신화의 핵심입니다.</p>
+            </section>
+            
+            <section id="buffett-principles">
+                <h2 class="text-3xl font-bold text-center mb-10">워렌 버핏의 기업 선정 5대 원칙</h2>
+                
+                <div id="tabs-container" class="mb-8 flex flex-wrap justify-center gap-2 md:gap-4">
+                    <button data-tab="competence" class="tab-button w-full sm:w-auto text-sm md:text-base py-3 px-5 font-bold border-2 border-gray-300 rounded-full active">1. 이해할 수 있는 사업</button>
+                    <button data-tab="moat" class="tab-button w-full sm:w-auto text-sm md:text-base py-3 px-5 font-bold border-2 border-gray-300 rounded-full">2. 경제적 해자</button>
+                    <button data-tab="management" class="tab-button w-full sm:w-auto text-sm md:text-base py-3 px-5 font-bold border-2 border-gray-300 rounded-full">3. 신뢰할 수 있는 경영진</button>
+                    <button data-tab="price" class="tab-button w-full sm:w-auto text-sm md:text-base py-3 px-5 font-bold border-2 border-gray-300 rounded-full">4. 합리적인 가격</button>
+                    <button data-tab="compounding" class="tab-button w-full sm:w-auto text-sm md:text-base py-3 px-5 font-bold border-2 border-gray-300 rounded-full">5. 복리의 마법</button>
+                </div>
+
+                <div class="bg-white p-6 md:p-10 rounded-2xl shadow-xl border border-gray-200 min-h-[500px]">
+                    <div id="competence-content" class="content-panel active">
+                        <h3 class="text-2xl font-bold mb-4 text-blue-700">① 이해할 수 있는 사업 (Circle of Competence)</h3>
+                        <p class="text-gray-700 mb-6">"자신의 능력 범위를 파악하고, 그 안에 머물러라." 버핏은 자신이 완벽하게 이해하고 설명할 수 있는 단순하고 명확한 비즈니스 모델을 가진 기업에만 투자합니다. 이는 복잡하고 불확실한 분야에 투자하여 생기는 실수를 원천적으로 방지하는 첫 번째 필터입니다.</p>
+                        <div class="bg-blue-50 p-6 rounded-lg text-center">
+                            <div class="icon-placeholder text-blue-500">🧠</div>
+                            <p class="font-bold mt-2">"스스로에게 질문하세요: 나는 이 기업이 어떻게 돈을 버는지 5분 안에 설명할 수 있는가?"</p>
+                        </div>
+                    </div>
+
+                    <div id="moat-content" class="content-panel">
+                        <h3 class="text-2xl font-bold mb-4 text-blue-700">② 지속 가능한 경쟁 우위 (Economic Moat)</h3>
+                        <p class="text-gray-700 mb-6">'경제적 해자'란 경쟁사들이 쉽게 넘볼 수 없도록 기업의 장기적인 이익과 시장 점유율을 보호하는 강력한 방어벽입니다. 해자가 넓고 깊을수록 기업은 오랫동안 높은 수익성을 유지할 수 있습니다.</p>
+                         <div class="chart-container mx-auto mb-6">
+                            <canvas id="moatChart"></canvas>
+                        </div>
+                        <p class="text-center text-sm text-gray-500 mb-6">위 차트는 강력한 해자를 가진 기업(파란색)이 어떻게 장기간에 걸쳐 경쟁사(회색)보다 월등히 높은 자본수익률(ROIC)을 유지하는지 보여줍니다.</p>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="bg-blue-50 p-4 rounded-lg"><strong>무형자산:</strong> 강력한 브랜드, 특허 (예: 코카콜라)</div>
+                            <div class="bg-blue-50 p-4 rounded-lg"><strong>전환비용:</strong> 고객이 다른 서비스로 바꾸기 어려운 구조 (예: 은행)</div>
+                            <div class="bg-blue-50 p-4 rounded-lg"><strong>네트워크 효과:</strong> 사용자가 많을수록 가치가 커지는 효과 (예: SNS)</div>
+                            <div class="bg-blue-50 p-4 rounded-lg"><strong>원가우위:</strong> 경쟁사보다 훨씬 저렴하게 생산하는 능력 (예: 월마트)</div>
+                        </div>
+                    </div>
+
+                    <div id="management-content" class="content-panel">
+                        <h3 class="text-2xl font-bold mb-4 text-blue-700">③ 신뢰할 수 있는 경영진</h3>
+                        <p class="text-gray-700 mb-6">버핏은 유능하고 정직하며, 주주의 이익을 최우선으로 생각하는 경영진과 함께하는 것을 중요하게 생각합니다. 훌륭한 사업도 서투른 선장(경영진)을 만나면 난파할 수 있기 때문입니다.</p>
+                        <ul class="space-y-3">
+                            <li class="flex items-center"><span class="text-green-500 mr-3">✔</span> 합리적으로 자본을 배분하는가?</li>
+                            <li class="flex items-center"><span class="text-green-500 mr-3">✔</span> 주주들에게 솔직하고 투명하게 소통하는가?</li>
+                            <li class="flex items-center"><span class="text-green-500 mr-3">✔</span> 단기 실적보다 장기적인 내재가치 성장에 집중하는가?</li>
+                            <li class="flex items-center"><span class="text-green-500 mr-3">✔</span> 자신의 이익보다 회사의 이익을 우선하는가?</li>
+                        </ul>
+                    </div>
+
+                    <div id="price-content" class="content-panel">
+                        <h3 class="text-2xl font-bold mb-4 text-blue-700">④ 합리적인 인수 가격 (Margin of Safety)</h3>
+                        <p class="text-gray-700 mb-6">아무리 훌륭한 기업이라도 너무 비싸게 사면 좋은 투자가 될 수 없습니다. 버핏은 기업의 본질적인 가치(내재가치)를 엄격하게 평가하고, 그보다 충분히 할인된 가격, 즉 '안전마진'이 확보될 때만 주식을 매수합니다.</p>
+                        <div class="chart-container mx-auto">
+                            <canvas id="marginOfSafetyChart"></canvas>
+                        </div>
+                        <p class="text-center text-sm text-gray-500 mt-4">내재가치(파란색)와 시장가격(회색)의 차이가 바로 투자자를 보호하는 '안전마진'입니다.</p>
+                    </div>
+
+                    <div id="compounding-content" class="content-panel">
+                        <h3 class="text-2xl font-bold mb-4 text-blue-700">⑤ 장기 투자와 복리의 마법</h3>
+                        <p class="text-gray-700 mb-6">버핏의 가장 강력한 무기는 '시간'입니다. 훌륭한 기업을 오랫동안 보유함으로써, 이익이 또 다른 이익을 낳는 '복리 효과'를 극대화합니다. 그의 재산 95% 이상이 60세 이후에 형성되었다는 사실이 복리의 힘을 증명합니다.</p>
+                        <div class="chart-container mx-auto mb-6">
+                            <canvas id="compoundingChart"></canvas>
+                        </div>
+                        <div class="max-w-md mx-auto">
+                            <label for="initialInvestment" class="block text-center font-bold mb-2">초기 투자금 (만원)으로 복리 효과 확인하기:</label>
+                            <input type="range" id="initialInvestment" min="100" max="10000" value="1000" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <div class="text-center mt-2 font-bold text-blue-600 text-lg">
+                                <span id="investmentValue">1,000</span>만원
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <footer class="mt-20 pt-10 border-t border-gray-200 text-center text-gray-500">
+                <p class="font-bold text-lg mb-4 text-gray-800">투자자를 위한 제언</p>
+                <p class="max-w-3xl mx-auto">성공적인 투자는 단거리 경주가 아닌 마라톤입니다. 벤저민 그레이엄과 워렌 버핏의 원칙은 시장의 소음 속에서 길을 잃지 않도록 도와주는 등대와 같습니다. 인내심을 갖고, 자신의 원칙을 지키며, 꾸준히 배워나가세요.</p>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabs = document.querySelectorAll('.tab-button');
+            const contents = document.querySelectorAll('.content-panel');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    contents.forEach(content => content.classList.remove('active'));
+                    document.getElementById(tab.dataset.tab + '-content').classList.add('active');
+                });
+            });
+
+            let moatChart, marginOfSafetyChart, compoundingChart;
+
+            function createMoatChart() {
+                const ctx = document.getElementById('moatChart').getContext('2d');
+                if (moatChart) moatChart.destroy();
+                moatChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: Array.from({ length: 10 }, (_, i) => `Year ${i + 1}`),
+                        datasets: [{
+                            label: '해자를 가진 기업 ROIC (%)',
+                            data: [25, 26, 24, 27, 25, 28, 26, 29, 27, 30],
+                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }, {
+                            label: '평범한 기업 ROIC (%)',
+                            data: [10, 8, 12, 9, 11, 7, 10, 8, 9, 11],
+                            backgroundColor: 'rgba(156, 163, 175, 0.7)',
+                            borderColor: 'rgba(156, 163, 175, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: '자본수익률 (ROIC)' }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw}%`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function createMarginOfSafetyChart() {
+                const ctx = document.getElementById('marginOfSafetyChart').getContext('2d');
+                if (marginOfSafetyChart) marginOfSafetyChart.destroy();
+                marginOfSafetyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['기업 가치 평가'],
+                        datasets: [{
+                            label: '내재가치',
+                            data: [100],
+                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }, {
+                            label: '현재 시장 가격',
+                            data: [60],
+                            backgroundColor: 'rgba(156, 163, 175, 0.7)',
+                            borderColor: 'rgba(156, 163, 175, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: { display: true, text: '가치/가격' }
+                            }
+                        },
+                         plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                        }
+                    }
+                });
+            }
+
+            function createCompoundingChart(initialInvestment = 1000) {
+                const ctx = document.getElementById('compoundingChart').getContext('2d');
+                const years = 40;
+                const annualReturn = 0.15;
+                const labels = Array.from({ length: years + 1 }, (_, i) => i);
+                const data = labels.map(year => initialInvestment * Math.pow(1 + annualReturn, year));
+
+                if (compoundingChart) compoundingChart.destroy();
+                compoundingChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '자산 가치 (만원)',
+                            data: data,
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: '자산 가치 (만원)' },
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toLocaleString() + '만';
+                                    }
+                                }
+                            },
+                            x: {
+                                title: { display: true, text: '투자 기간 (년)' }
+                            }
+                        },
+                        plugins: {
+                           tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` 자산 가치: ${Math.round(context.raw).toLocaleString()} 만원`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const investmentSlider = document.getElementById('initialInvestment');
+            const investmentValueDisplay = document.getElementById('investmentValue');
+
+            investmentSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                investmentValueDisplay.textContent = value.toLocaleString();
+                createCompoundingChart(value);
+            });
+            
+            createMoatChart();
+            createMarginOfSafetyChart();
+            createCompoundingChart();
+        });
+    </script>
+</body>
+</html>

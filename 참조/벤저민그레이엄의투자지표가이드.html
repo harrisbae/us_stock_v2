@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>벤저민 그레이엄의 투자 지표 가이드</title>
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: A single-page dashboard application designed to present Benjamin Graham's key investment criteria. The structure consists of a main header with an introductory overview, followed by a grid layout of interactive cards. Each card is dedicated to a specific financial metric from the source report (PER, PBR, etc.). This dashboard structure was chosen to allow users to quickly scan all metrics, drill down into details for each, and interact with dynamic visualizations. This is a highly effective way to present a list of discrete but related data points, promoting a non-linear, exploratory user flow. -->
+    <!-- Visualization & Content Choices: Report Info: Graham's financial metrics -> Goal: Inform, Visualize, Compare -> Viz/Presentation Method: Interactive cards (HTML/JS) for all metrics, with a focus on clear presentation of thresholds and explanations. A Donut Chart (Chart.js) for Debt-to-Equity Ratio to visually represent the 100% threshold. A Bar Chart (Chart.js) for ROE to compare a 'High' vs 'Low' performing company based on the 10% threshold. A text-based interactive section for PER x PBR to explain the 'Reasonable Multiple'. Justification: This approach turns a static list of numbers into a dynamic tool for understanding Graham's principles. It avoids a long list of text by using a visual, card-based interface, making the content far more digestible. -> Library/Method: Chart.js for all data visualizations. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #FDFBF7;
+            color: #3A3A3A;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 300px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="container mx-auto px-4 py-8 md:py-16">
+
+        <header class="text-center mb-12 md:mb-16">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-4">벤저민 그레이엄의 투자 기준</h1>
+            <p class="text-lg text-gray-600 max-w-3xl mx-auto">가치투자의 아버지, 벤저민 그레이엄이 제시한 기업의 가치를 판단하는 핵심 재무 지표들을 탐색해 보세요. 이 기준들은 기업의 안정성과 잠재력을 평가하는 첫 번째 스크린 역할을 합니다.</p>
+        </header>
+
+        <main>
+            <section id="criteria-dashboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- PER Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow duration-300">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">PER (주가수익비율)</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 15 이하</p>
+                    <p class="text-gray-600">주가가 순이익에 비해 얼마나 비싼지를 나타내는 지표입니다. 너무 높으면 시장에서 과도하게 기대하고 있다는 신호일 수 있습니다.</p>
+                </div>
+
+                <!-- PBR Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow duration-300">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">PBR (주가순자산비율)</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 1.5 이하</p>
+                    <p class="text-gray-600">주가가 기업의 순자산(장부상 가치)에 비해 얼마나 비싼지를 보여줍니다. 1보다 낮으면 장부상 가치보다 주가가 저렴하게 거래되고 있음을 의미합니다.</p>
+                </div>
+                
+                <!-- PER x PBR Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow duration-300">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">PER x PBR</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 30 이하</p>
+                    <p class="text-gray-600">그레이엄이 기업의 가치와 안정성을 동시에 판단하기 위해 제시한 '합리적 배수'입니다. 이 지표가 낮을수록 가치투자 관점에서 매력적일 수 있습니다.</p>
+                </div>
+
+                <!-- Debt-to-Equity Ratio Card with Chart -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">부채비율</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 100% 이하</p>
+                    <div class="chart-container">
+                        <canvas id="debtRatioChart"></canvas>
+                    </div>
+                    <p class="text-gray-600 text-center text-sm mt-4">부채가 많으면 재무 안정성이 떨어지므로, 부채비율 100% 이하를 안정적인 기업의 기준으로 봅니다.</p>
+                </div>
+                
+                <!-- ROE Card with Chart -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">ROE (자본수익률)</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 10% 이상</p>
+                    <div class="chart-container">
+                        <canvas id="roeChart"></canvas>
+                    </div>
+                    <p class="text-gray-600 text-center text-sm mt-4">기업이 주주의 자본을 얼마나 효율적으로 사용하여 이익을 내는지를 나타냅니다. 10% 이상이면 경영 효율성이 좋다고 평가합니다.</p>
+                </div>
+
+                <!-- Retained Earnings Ratio Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow duration-300">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">유보율</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 1000% 이상</p>
+                    <p class="text-gray-600">기업이 벌어들인 이익 중 사내에 축적해 둔 금액의 비율입니다. 유보율이 높을수록 재무적으로 안정성이 뛰어나며 미래 성장을 위한 투자 여력이 높습니다.</p>
+                </div>
+
+                <!-- Dividend Yield Card -->
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow duration-300">
+                    <h2 class="text-2xl font-bold text-blue-600 mb-2">배당수익률</h2>
+                    <p class="text-gray-700 font-bold text-lg mb-4">기준: 3~5% 이상</p>
+                    <p class="text-gray-600">주식 가격 대비 배당금의 비율입니다. 그레이엄은 배당금을 투자 수익의 일부로 간주하며, 안정적인 배당을 지급하는 기업을 선호했습니다.</p>
+                </div>
+
+            </section>
+        </main>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            
+            function createDebtRatioChart() {
+                const ctx = document.getElementById('debtRatioChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['안전(Debt < 100%)', '위험(Debt > 100%)'],
+                        datasets: [{
+                            data: [80, 20],
+                            backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(239, 68, 68, 0.7)'],
+                            borderColor: ['rgba(59, 130, 246, 1)', 'rgba(239, 68, 68, 1)'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.label + ': ' + context.parsed + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function createRoeChart() {
+                const ctx = document.getElementById('roeChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['A기업 (고효율)', 'B기업 (저효율)'],
+                        datasets: [{
+                            label: 'ROE',
+                            data: [18, 5],
+                            backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(156, 163, 175, 0.7)'],
+                            borderColor: ['rgba(59, 130, 246, 1)', 'rgba(156, 163, 175, 1)'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: '자본수익률 (%)' }
+                            },
+                             x: {
+                                title: { display: true, text: '회사 비교' }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'ROE: ' + context.raw + '%';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createDebtRatioChart();
+            createRoeChart();
+        });
+    </script>
+</body>
+</html>
