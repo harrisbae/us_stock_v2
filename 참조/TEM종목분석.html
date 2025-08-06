@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tempus AI (TEM) 대화형 기업 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony (Teal & Slate) -->
+    <!-- Application Structure Plan: A single-page, multi-section dashboard designed to tell a story. The structure contrasts the 'Traditional Value (Graham)' perspective with the 'Modern Growth (AI Story)' narrative. The flow is: 1. Hero/Header: Introduce TEM and the core investment dilemma. 2. Key Metrics Dashboard: Quick overview of growth vs. profitability. 3. Graham vs. Growth Narrative: A core two-column layout showing why TEM fails Graham's tests but excels in growth metrics. 4. Financial Performance Deep Dive: Charts visualizing revenue growth and the path to profitability. 5. Competitive Moat Explained: A visual diagram of TEM's "walled garden" data strategy. 6. Expert Conclusion: A balanced summary of strengths and risks. This thematic structure was chosen to make the complex analysis digestible and engaging, allowing users to understand the fundamental conflict in valuing TEM. -->
+    <!-- Visualization & Content Choices: 1. Graham's Scorecard: (Goal: Inform/Compare) Uses HTML/CSS cards with icons (❌) and stark visual indicators to show how TEM fails every Graham metric. This immediately communicates the value-investor perspective. (Method: HTML/Tailwind). 2. Financial Performance: (Goal: Show Change/Compare) Uses Chart.js bar and line charts to visualize segment revenue and the trend towards profitability (improving Adj. EBITDA), providing clear evidence for the growth narrative. (Method: Chart.js/Canvas). 3. Competitive Moat Diagram: (Goal: Explain/Organize) Uses a simple HTML/CSS flowchart to explain the "walled garden" data flywheel, a key differentiator that is hard to grasp from text alone. (Method: HTML/Tailwind). These choices prioritize visual storytelling over data dumping. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #F8FAFC; /* slate-50 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .nav-link {
+            transition: color 0.3s, border-color 0.3s;
+        }
+        .nav-link:hover {
+            color: #0F766E; /* teal-700 */
+        }
+        .nav-link.active {
+            color: #0D9488; /* teal-600 */
+            border-bottom-color: #0D9488;
+        }
+        .kpi-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .graham-fail {
+            border-left: 4px solid #EF4444; /* red-500 */
+        }
+        .growth-pass {
+            border-left: 4px solid #22C55E; /* green-500 */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="font-bold text-xl text-teal-700">TEM</span>
+                    <span class="ml-2 text-gray-600">Interactive Analysis</span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">개요</a>
+                        <a href="#graham-vs-growth" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">가치 vs 성장</a>
+                        <a href="#financials" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">재무 성과</a>
+                        <a href="#moat" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">경쟁 우위</a>
+                        <a href="#conclusion" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">최종 평가</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="overview" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-gray-900">
+                    Tempus AI (TEM)
+                </h1>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">
+                    AI 정밀의학의 미래, 그러나 전통적 가치 평가의 딜레마. Tempus AI의 혁신적 기술과 재무적 현실 사이의 간극을 대화형으로 분석합니다.
+                </p>
+                <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-4xl mx-auto">
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">매출 성장률 (YoY)</p>
+                        <p class="text-2xl font-bold text-green-600">+75.4%</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">순손실 (Q1 2025)</p>
+                        <p class="text-2xl font-bold text-red-600">-$68M</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">P/S Ratio (FWD)</p>
+                        <p class="text-2xl font-bold text-orange-500">~6.8x</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">Adj. EBITDA 흑자전환</p>
+                        <p class="text-2xl font-bold text-teal-600">2025년 예상</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="graham-vs-growth" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">두 개의 렌즈: 가치 함정인가, 성장 기회인가?</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">벤자민 그레이엄의 보수적 가치 평가 기준과 AI 시대의 성장 잠재력이라는 두 가지 관점에서 TEM을 비교 분석합니다. TEM이 왜 전통적 기준에는 부합하지 않는지, 그리고 시장은 무엇을 보고 있는지 확인해보세요.</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 lg:gap-12">
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-red-800">벤자민 그레이엄의 가치 평가 Scorecard</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">전통적 가치 투자자의 시선: 모든 기준 미충족</p>
+                        <div class="space-y-4">
+                            <div class="graham-fail bg-red-50 p-3 rounded">
+                                <p class="font-medium">❌ 수익성: 지속적인 순손실 (PER 음수)</p>
+                                <p class="text-sm text-gray-600">그레이엄의 최우선 기준인 '꾸준한 이익'에 부합하지 않음.</p>
+                            </div>
+                            <div class="graham-fail bg-red-50 p-3 rounded">
+                                <p class="font-medium">❌ 밸류에이션: PER x PBR > 22.5</p>
+                                <p class="text-sm text-gray-600">PBR(29+)이 매우 높아 '안전마진' 확보 불가.</p>
+                            </div>
+                            <div class="graham-fail bg-red-50 p-3 rounded">
+                                <p class="font-medium">❌ 재무 건전성 (부채): 부채비율 > 100%</p>
+                                <p class="text-sm text-gray-600">총 부채비율(373%)이 그레이엄의 보수적 기준을 크게 초과.</p>
+                            </div>
+                            <div class="graham-fail bg-red-50 p-3 rounded">
+                                <p class="font-medium">❌ 재무 건전성 (유동성): 유동비율 < 200%</p>
+                                <p class="text-sm text-gray-600">유동비율(171%)이 기준 미달, 단기 재무 안정성 우려.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-green-800">AI 시대의 성장 스토리</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">미래 성장 잠재력에 대한 기대</p>
+                        <div class="space-y-4">
+                            <div class="growth-pass bg-green-50 p-3 rounded">
+                                <h4 class="font-medium">✅ 독점적 데이터 자산 (Data Moat)</h4>
+                                <p class="text-sm text-gray-600">300PB 이상의 독점적인 임상/분자 데이터는 경쟁사가 모방할 수 없는 강력한 경쟁 우위.</p>
+                            </div>
+                            <div class="growth-pass bg-green-50 p-3 rounded">
+                                <h4 class="font-medium">✅ 폭발적인 매출 성장</h4>
+                                <p class="text-sm text-gray-600">Q1 2025 매출 75.4% 성장, 연간 가이던스 80% 상향. 시장 지배력 확대 증명.</p>
+                            </div>
+                            <div class="growth-pass bg-green-50 p-3 rounded">
+                                <h4 class="font-medium">✅ 대형 제약사와의 파트너십</h4>
+                                <p class="text-sm text-gray-600">AstraZeneca 등과의 대규모 데이터 라이선싱 계약은 데이터 가치와 수익화 능력 입증.</p>
+                            </div>
+                             <div class="growth-pass bg-green-50 p-3 rounded">
+                                <h4 class="font-medium">✅ 수익성 개선 가시화</h4>
+                                <p class="text-sm text-gray-600">2025년 조정 EBITDA 흑자 전환 예상. 규모의 경제를 통한 수익성 확보 기대.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="financials" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">재무 성과 심층 분석</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">TEM의 성장 스토리를 뒷받침하는 핵심 재무 데이터를 시각화하여 보여줍니다. 사업 부문별 성장과 수익성 개선 추이를 확인하세요.</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-12">
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">사업 부문별 매출 성장 (Q1 2025 YoY)</h3>
+                        <div class="chart-container">
+                            <canvas id="segmentGrowthChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">매출 및 조정 EBITDA 추이</h3>
+                        <div class="chart-container">
+                            <canvas id="profitabilityTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="moat" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">독점적 경쟁 우위: 데이터 플라이휠</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">TEM의 가장 강력한 해자는 'Walled Garden' 데이터 전략입니다. 진단 테스트가 데이터를 만들고, 데이터가 AI를 강화하며, 강화된 AI가 더 나은 진단을 이끄는 선순환 구조를 시각적으로 이해해 보세요.</p>
+                </div>
+                <div class="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-xl">
+                    <div class="flex flex-col md:flex-row items-center justify-around space-y-8 md:space-y-0 md:space-x-4">
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">🔬</div>
+                            <h4 class="font-bold text-lg">1. 진단 테스트</h4>
+                            <p class="text-sm text-gray-600">Genomics 서비스 제공</p>
+                        </div>
+                        <div class="text-2xl text-teal-500 font-bold transform md:rotate-0 rotate-90">➡️</div>
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">💾</div>
+                            <h4 class="font-bold text-lg">2. 데이터 축적</h4>
+                            <p class="text-sm text-gray-600">독점적 멀티모달 데이터 생성</p>
+                        </div>
+                        <div class="text-2xl text-teal-500 font-bold transform md:rotate-0 rotate-90">➡️</div>
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">🤖</div>
+                            <h4 class="font-bold text-lg">3. AI 모델 강화</h4>
+                            <p class="text-sm text-gray-600">데이터로 AI 모델 훈련 및 고도화</p>
+                        </div>
+                        <div class="text-2xl text-teal-500 font-bold transform md:rotate-0 rotate-90">➡️</div>
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">💡</div>
+                            <h4 class="font-bold text-lg">4. 가치 창출</h4>
+                            <p class="text-sm text-gray-600">더 나은 진단 & 데이터 수익화</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="py-16 sm:py-20 bg-slate-800 text-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight">최종 평가 및 투자 관점</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-slate-300">TEM은 전통적 가치 투자 기준으로는 '투자 부적격'이지만, AI 정밀 의학의 패러다임을 바꾸는 '혁신 기업'으로서 독보적인 성장 잠재력을 지니고 있습니다.</p>
+                </div>
+                <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold text-green-400 mb-2">강점 (Strengths)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>AI 헬스케어 시장의 선도적 위치와 기술력</li>
+                            <li>모방 불가능한 독점적 데이터 자산 (Walled Garden)</li>
+                            <li>폭발적인 매출 성장률과 수익화 능력 입증</li>
+                            <li>대형 제약사와의 강력한 파트너십 네트워크</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-red-400 mb-2">약점 및 위험 (Risks)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>전통적 기준에서 벗어난 높은 밸류에이션 부담</li>
+                            <li>지속적인 순손실 및 수익성 확보 시점의 불확실성</li>
+                            <li>높은 부채 수준 등 취약한 재무 건전성</li>
+                            <li>치열한 경쟁 환경과 규제 변화의 위험</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-10 bg-slate-700 p-6 rounded-lg text-center">
+                    <p class="text-lg">
+                        결론적으로 TEM은 벤자민 그레이엄의 '가치 투자자'가 아닌, **장기적인 기술 혁신과 시장 파괴적 잠재력에 투자하는 '성장 투자자'**에게 적합합니다. 이 기업의 '안전마진'은 낮은 밸류에이션이 아닌, <span class="font-bold text-teal-300">독점적 데이터와 AI 기술력이 만들어내는 미래의 지속 가능한 경쟁 우위</span>에서 찾아야 합니다.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white">
+        <div class="container mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm">
+            <p>&copy; 2025 Interactive Report. All data sourced from the provided TEM analysis report.</p>
+            <p class="text-gray-400">This is a visual interpretation for informational purposes only and not financial advice.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chartData = {
+                segmentGrowth: {
+                    labels: ['Genomics', 'Data & Services'],
+                    data: [88.9, 43.2]
+                },
+                profitabilityTrend: {
+                    labels: ['2024', 'Q1 \'25', '2025 (E)'],
+                    revenue: [693.4, 255.7, 1250], 
+                    adjEbitda: [-104.7, -16.2, 5.0]
+                }
+            };
+
+            const renderSegmentGrowthChart = () => {
+                const ctx = document.getElementById('segmentGrowthChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: chartData.segmentGrowth.labels,
+                        datasets: [{
+                            label: '매출 성장률 (%)',
+                            data: chartData.segmentGrowth.data,
+                            backgroundColor: [
+                                'rgba(13, 148, 136, 0.8)', // teal-600
+                                'rgba(15, 118, 110, 0.6)'  // teal-700
+                            ],
+                            borderColor: '#F8FAFC',
+                            borderWidth: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` ${context.label}: ${context.raw}% 성장`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const renderProfitabilityTrendChart = () => {
+                const ctx = document.getElementById('profitabilityTrendChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.profitabilityTrend.labels,
+                        datasets: [
+                            {
+                                type: 'line',
+                                label: '총 매출 ($M)',
+                                data: chartData.profitabilityTrend.revenue,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                yAxisID: 'yRevenue',
+                                tension: 0.1,
+                                fill: true,
+                            },
+                            {
+                                type: 'bar',
+                                label: '조정 EBITDA ($M)',
+                                data: chartData.profitabilityTrend.adjEbitda,
+                                backgroundColor: (context) => {
+                                    const value = context.raw;
+                                    return value >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)';
+                                },
+                                borderColor: (context) => {
+                                    const value = context.raw;
+                                    return value >= 0 ? 'rgba(16, 185, 129, 1)' : 'rgba(239, 68, 68, 1)';
+                                },
+                                yAxisID: 'yEbitda',
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            yRevenue: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: '매출 ($M)'
+                                }
+                            },
+                            yEbitda: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: '조정 EBITDA ($M)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false, 
+                                },
+                            }
+                        }
+                    }
+                });
+            };
+
+            renderSegmentGrowthChart();
+            renderProfitabilityTrendChart();
+
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.remove('active');
+                            if (link.getAttribute('href').substring(1) === entry.target.id) {
+                                link.classList.add('active');
+                            }
+                        });
+                    }
+                });
+            }, { rootMargin: '-50% 0px -50% 0px' });
+
+            sections.forEach(section => {
+                observer.observe(section);
+            });
+            
+            navLinks.forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+</html>

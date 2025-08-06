@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursion (RXRX) 대화형 기업 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Tech Forward (Slate & Indigo) -->
+    <!-- Application Structure Plan: A single-page, narrative-driven dashboard. The structure is designed to present a central conflict: RXRX viewed through the traditional 'Value Lens' of Benjamin Graham versus the nuanced 'Market Philosophy' of Howard Marks. The flow is: 1. Hero/Header: Introduce RXRX and the core investment dilemma. 2. Key Metrics Dashboard: At-a-glance view of financials (loss, cash, etc.). 3. The Two Lenses (Graham vs. Marks): The core interactive section with a two-column layout. Graham's side is a quantitative scorecard showing failures. Marks' side is a qualitative exploration of second-level thinking and risk. 4. Competitive Moat Explained: A visual diagram of the "Recursion OS" data flywheel. 5. Financial Deep Dive: Charts visualizing revenue vs. loss and cash runway. 6. Expert Conclusion: A synthesized final verdict. This thematic structure was chosen to make the complex, dual-faceted analysis accessible and engaging, guiding the user to form a sophisticated viewpoint. -->
+    <!-- Visualization & Content Choices: 1. Graham's Scorecard: (Goal: Inform/Compare) Uses HTML/CSS cards with prominent '미충족' (Fail) icons (❌) to instantly communicate that RXRX does not fit the value mold. This is more impactful than a simple table. (Method: HTML/Tailwind). 2. Howard Marks' Principles: (Goal: Explain/Organize) Uses interactive cards that summarize each principle (e.g., "2차원적 사고"). This encourages exploration of deeper concepts without overwhelming the user upfront. (Method: HTML/Tailwind, JS for potential future interactions). 3. Data Flywheel Diagram: (Goal: Explain/Organize) A simple, clear flowchart built with HTML/Tailwind to visualize the self-reinforcing business model, a key differentiator. (Method: HTML/Tailwind). 4. Financial Charts: (Goal: Show Change/Trend) A combined bar/line chart for Revenue vs. Net Loss effectively shows the growth story versus the current cash burn. (Method: Chart.js/Canvas). These choices prioritize visual storytelling and conceptual clarity. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #F8FAFC; /* slate-50 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .nav-link {
+            transition: color 0.3s, border-color 0.3s;
+        }
+        .nav-link:hover {
+            color: #4338CA; /* indigo-700 */
+        }
+        .nav-link.active {
+            color: #4F46E5; /* indigo-600 */
+            border-bottom-color: #4F46E5;
+        }
+        .kpi-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .graham-card {
+            border-left: 4px solid #EF4444; /* red-500 */
+        }
+        .marks-card {
+            border-left: 4px solid #4F46E5; /* indigo-600 */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="font-bold text-xl text-indigo-700">RXRX</span>
+                    <span class="ml-2 text-gray-600">Interactive Analysis</span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">개요</a>
+                        <a href="#lenses" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">두 개의 렌즈</a>
+                        <a href="#moat" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">경쟁 우위</a>
+                        <a href="#financials" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">재무 분석</a>
+                        <a href="#conclusion" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">최종 평가</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="overview" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-gray-900">
+                    Recursion Pharmaceuticals (RXRX)
+                </h1>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">
+                    전통적 가치 평가의 잣대로는 '투기', 혁신적 관점에서는 '기회'. AI 신약 개발의 패러다임을 바꾸는 RXRX의 본질을 두 거장의 시선으로 분석합니다.
+                </p>
+                <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-4xl mx-auto">
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">PER (TTM)</p>
+                        <p class="text-2xl font-bold text-red-600">마이너스</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">순손실 (Q1 2025)</p>
+                        <p class="text-2xl font-bold text-red-600">-$202M</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">현금 및 투자</p>
+                        <p class="text-2xl font-bold text-green-600">$500M</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">배당 수익률</p>
+                        <p class="text-2xl font-bold text-gray-600">0%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="lenses" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">두 개의 렌즈: 그레이엄 vs. 막스</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">RXRX는 어떤 투자자에게 매력적일까요? 가치 투자의 아버지 벤자민 그레이엄의 엄격한 잣대와, 시장의 심리를 꿰뚫는 하워드 막스의 철학을 통해 RXRX의 다층적인 모습을 탐색합니다.</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 lg:gap-12">
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-red-800">벤자민 그레이엄의 Scorecard</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">'방어적 투자자'의 관점: 모든 기준 미충족</p>
+                        <div class="space-y-4">
+                            <div class="graham-card bg-red-50 p-4 rounded-md">
+                                <p class="font-bold text-lg flex items-center"><span class="text-2xl mr-2">❌</span>수익성 (PER, ROE)</p>
+                                <p class="text-sm text-gray-700 mt-1">지속적인 순손실로 PER과 ROE 모두 마이너스. 그레이엄의 최우선 기준인 '꾸준한 이익'에 부합하지 않음.</p>
+                            </div>
+                            <div class="graham-card bg-red-50 p-4 rounded-md">
+                                <p class="font-bold text-lg flex items-center"><span class="text-2xl mr-2">❌</span>밸류에이션 (PBR, PERxPBR)</p>
+                                <p class="text-sm text-gray-700 mt-1">PBR(2.1x 이상)이 기준치를 초과하며, PER이 음수이므로 결합 기준(PERxPBR<22.5)을 충족할 수 없음.</p>
+                            </div>
+                            <div class="graham-card bg-red-50 p-4 rounded-md">
+                                <p class="font-bold text-lg flex items-center"><span class="text-2xl mr-2">❌</span>배당 (Dividend Yield)</p>
+                                <p class="text-sm text-gray-700 mt-1">배당금 0%. 모든 자본을 성장에 재투자하므로, 소득 창출을 원하는 투자자에게는 부적합.</p>
+                            </div>
+                             <div class="bg-green-50 p-4 rounded-md border-l-4 border-green-500">
+                                <p class="font-bold text-lg flex items-center"><span class="text-2xl mr-2">✅</span>부채 건전성 (Debt/Equity)</p>
+                                <p class="text-sm text-gray-700 mt-1">총 부채 대 자본 비율(39.75%)은 매우 보수적. 그레이엄의 재무 안정성 기준 일부 충족.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-indigo-800">하워드 막스의 투자 철학</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">'2차원적 사고'를 통한 기회 탐색</p>
+                        <div class="space-y-4">
+                            <div class="marks-card bg-indigo-50 p-4 rounded-md">
+                                <h4 class="font-bold text-lg">2차원적 사고</h4>
+                                <p class="text-sm text-gray-700 mt-1">**1차원:** "신약 개발 중단 = 실패" → **2차원:** "자원 재배치를 통한 효율성 증대 및 위험 관리."</p>
+                            </div>
+                            <div class="marks-card bg-indigo-50 p-4 rounded-md">
+                                <h4 class="font-bold text-lg">가치 vs. 가격</h4>
+                                <p class="text-sm text-gray-700 mt-1">AI에 대한 시장의 낙관론과 바이오텍의 내재된 위험 사이에서 가격이 변동. "좋은 것을 사는 것보다 잘 사는 것"이 중요.</p>
+                            </div>
+                            <div class="marks-card bg-indigo-50 p-4 rounded-md">
+                                <h4 class="font-bold text-lg">위험 인식 및 통제</h4>
+                                <p class="text-sm text-gray-700 mt-1">높은 임상 실패 위험을 전략적 파트너십과 보수적인 부채 관리로 통제하려는 노력이 엿보임.</p>
+                            </div>
+                            <div class="marks-card bg-indigo-50 p-4 rounded-md">
+                                <h4 class="font-bold text-lg">시장 주기 이해</h4>
+                                <p class="text-sm text-gray-700 mt-1">AI 열풍(과잉)과 바이오텍의 실적 실망(조정) 주기를 이해하고, 역발상적 기회를 포착할 수 있는가?</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="moat" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">경쟁 우위: Recursion OS 데이터 플라이휠</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">RXRX의 진정한 가치는 개별 신약이 아닌, 신약 개발을 산업화하는 AI 플랫폼에 있습니다. 대규모 실험이 데이터를 만들고, 데이터가 AI를 강화하며, 강화된 AI가 다시 실험을 이끄는 선순환 구조를 시각적으로 이해해 보세요.</p>
+                </div>
+                <div class="max-w-5xl mx-auto bg-slate-50 p-8 rounded-lg shadow-xl">
+                    <div class="flex flex-col md:flex-row items-center justify-around space-y-8 md:space-y-0 md:space-x-2">
+                        <div class="text-center flex-1">
+                            <div class="text-5xl mb-2">🔬</div>
+                            <h4 class="font-bold text-lg">1. 대규모 실험</h4>
+                            <p class="text-sm text-gray-600">매주 수백만 건의 습식 실험 수행</p>
+                        </div>
+                        <div class="text-3xl text-indigo-500 font-bold transform md:rotate-0 rotate-90">→</div>
+                        <div class="text-center flex-1">
+                            <div class="text-5xl mb-2">💾</div>
+                            <h4 class="font-bold text-lg">2. 독점 데이터 축적</h4>
+                            <p class="text-sm text-gray-600">세계 최대 규모의 생물학/화학 데이터셋 생성</p>
+                        </div>
+                        <div class="text-3xl text-indigo-500 font-bold transform md:rotate-0 rotate-90">→</div>
+                        <div class="text-center flex-1">
+                            <div class="text-5xl mb-2">🤖</div>
+                            <h4 class="font-bold text-lg">3. AI 모델 강화</h4>
+                            <p class="text-sm text-gray-600">Recursion OS & Boltz-2 모델 훈련/고도화</p>
+                        </div>
+                        <div class="text-3xl text-indigo-500 font-bold transform md:rotate-0 rotate-90">→</div>
+                        <div class="text-center flex-1">
+                            <div class="text-5xl mb-2">💊</div>
+                            <h4 class="font-bold text-lg">4. 신약 후보 발굴</h4>
+                            <p class="text-sm text-gray-600">유망 후보물질 식별 및 파트너십</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="financials" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">재무 성과 심층 분석</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">RXRX의 성장 스토리와 재무적 현실을 데이터를 통해 확인합니다. 매출 성장과 순손실, 그리고 현금 보유고 추이를 통해 회사의 현재 위치를 파악하세요.</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-12">
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">분기별 매출 및 순손실 추이</h3>
+                        <div class="chart-container">
+                            <canvas id="revenueLossChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">현금 보유고 및 예상 운영 기간</h3>
+                        <div class="chart-container">
+                            <canvas id="cashRunwayChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="py-16 sm:py-20 bg-slate-800 text-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight">최종 평가: 어떤 투자자를 위한 주식인가?</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-slate-300">RXRX는 전통적 가치 투자자에게는 '투기'로 보일 수 있지만, 기술 혁신의 잠재력을 믿는 성장 투자자에게는 '기회'가 될 수 있습니다.</p>
+                </div>
+                <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold text-green-400 mb-2">기회 요인 (Opportunities)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>AI 기반 신약 개발 플랫폼의 파괴적 잠재력</li>
+                            <li>NVIDIA, Roche 등과의 강력한 전략적 파트너십</li>
+                            <li>독점적 대규모 데이터셋이 만드는 강력한 경쟁 우위(Moat)</li>
+                            <li>보수적인 부채 관리로 확보한 재무적 유연성</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-red-400 mb-2">위험 요인 (Risks)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>지속적인 순손실과 높은 현금 소진율</li>
+                            <li>임상 시험 실패 및 규제 승인 불확실성</li>
+                            <li>전통적 기준에서 벗어난 높은 밸류에이션 부담</li>
+                            <li>AI 및 바이오텍 분야의 치열한 경쟁</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-10 bg-slate-700 p-6 rounded-lg text-center">
+                    <p class="text-lg">
+                        **결론:** RXRX는 '안전마진'을 낮은 밸류에이션이 아닌, <span class="font-bold text-indigo-300">기술적 우위와 플랫폼의 확장성에서 파생되는 미래의 독점적 이익 창출 능력</span>으로 재해석하는 투자자에게 적합합니다. 단기 변동성과 긴 투자 회수 기간을 감내할 수 있는 **모험적인 성장 투자자**를 위한 종목입니다.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white">
+        <div class="container mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm">
+            <p>&copy; 2025 Interactive Report. All data sourced from the provided RXRX analysis report.</p>
+            <p class="text-gray-400">This is a visual interpretation for informational purposes only and not financial advice.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chartData = {
+                revenueLoss: {
+                    labels: ['Q3 \'24', 'Q4 \'24', 'Q1 \'25', 'Q2 \'25 (E)'],
+                    revenue: [12.9, 13.5, 14.7, 14.4], 
+                    netLoss: [-98.6, -90.1, -202.5, -150.0] // Hypothetical estimate for Q2 loss
+                },
+                cashRunway: {
+                    cashPosition: 500.45, // Q1 2025
+                    annualBurn: 450, // 2025 estimate
+                }
+            };
+
+            const renderRevenueLossChart = () => {
+                const ctx = document.getElementById('revenueLossChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.revenueLoss.labels,
+                        datasets: [
+                            {
+                                label: '매출 ($M)',
+                                data: chartData.revenueLoss.revenue,
+                                backgroundColor: 'rgba(79, 70, 229, 0.7)',
+                                borderColor: 'rgba(79, 70, 229, 1)',
+                                yAxisID: 'yRevenue',
+                            },
+                            {
+                                label: '순손실 ($M)',
+                                data: chartData.revenueLoss.netLoss,
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                yAxisID: 'yLoss',
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            yRevenue: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: '매출 ($M)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false, 
+                                }
+                            },
+                            yLoss: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: '순손실 ($M)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const renderCashRunwayChart = () => {
+                const quarterlyBurn = chartData.cashRunway.annualBurn / 4;
+                const runwayQuarters = chartData.cashRunway.cashPosition / quarterlyBurn;
+                const runwayYears = runwayQuarters / 4;
+
+                const ctx = document.getElementById('cashRunwayChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['현금 보유고', '연간 예상 현금 소진'],
+                        datasets: [{
+                            label: '금액 ($M)',
+                            data: [chartData.cashRunway.cashPosition, chartData.cashRunway.annualBurn],
+                            backgroundColor: [
+                                'rgba(34, 197, 94, 0.7)',
+                                'rgba(249, 115, 22, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(34, 197, 94, 1)',
+                                'rgba(249, 115, 22, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` ${context.dataset.label}: $${context.raw}M`;
+                                    }
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: `예상 현금 운영 기간: 약 ${runwayYears.toFixed(1)}년 (2027년 중반까지)`,
+                                font: { size: 14 }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '금액 ($M)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            renderRevenueLossChart();
+            renderCashRunwayChart();
+
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.remove('active');
+                            if (link.getAttribute('href').substring(1) === entry.target.id) {
+                                link.classList.add('active');
+                            }
+                        });
+                    }
+                });
+            }, { rootMargin: '-50% 0px -50% 0px' });
+
+            sections.forEach(section => {
+                observer.observe(section);
+            });
+            
+            navLinks.forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+</html>

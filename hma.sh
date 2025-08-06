@@ -5,6 +5,9 @@ source .venv/bin/activate
 
 # 기본값 설정
 PERIOD="120d"
+DAYS=""  # 일수 옵션 추가
+FROM_DATE=""  # 시작 날짜 옵션 추가
+TO_DATE=""    # 종료 날짜 옵션 추가
 INTERVAL="1d"
 PREPOST="false"
 SYMBOL=""
@@ -13,33 +16,148 @@ ANALYSIS_TYPE="technical"  # 기본값: 기술적 분석
 VOLUME_PROFILE_TYPE="none"  # 기본값: Volume Profile 없음
 
 # 명령행 인자 처리
-while getopts "s:f:p:i:t:a:v:" opt; do
-  case $opt in
-    s) SYMBOL="$OPTARG";;
-    f) SYMBOL_FILE="$OPTARG";;
-    p) PERIOD="$OPTARG";;
-    i) INTERVAL="$OPTARG";;
-    t) PREPOST="$OPTARG";;
-    a) ANALYSIS_TYPE="$OPTARG";;
-    v) VOLUME_PROFILE_TYPE="$OPTARG";;
-    \?) echo "Invalid option -$OPTARG" >&2; exit 1;;
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s)
+      SYMBOL="$2"
+      shift 2
+      ;;
+    -f)
+      SYMBOL_FILE="$2"
+      shift 2
+      ;;
+    -p)
+      PERIOD="$2"
+      shift 2
+      ;;
+    -d)
+      DAYS="$2"
+      shift 2
+      ;;
+    -i)
+      INTERVAL="$2"
+      shift 2
+      ;;
+    -t)
+      PREPOST="$2"
+      shift 2
+      ;;
+    -a)
+      ANALYSIS_TYPE="$2"
+      shift 2
+      ;;
+    -v)
+      VOLUME_PROFILE_TYPE="$2"
+      shift 2
+      ;;
+    --from)
+      FROM_DATE="$2"
+      shift 2
+      ;;
+    --to)
+      TO_DATE="$2"
+      shift 2
+      ;;
+    --file)
+      SYMBOL_FILE="$2"
+      shift 2
+      ;;
+    *)
+      echo "알 수 없는 옵션: $1"
+      exit 1
+      ;;
   esac
 done
 
-# 필수 인자 확인 (-s 또는 -f 중 하나는 필수)
+# 일수 옵션이 지정된 경우 PERIOD를 업데이트
+if [ ! -z "$DAYS" ]; then
+  PERIOD="${DAYS}d"
+fi
+
+# 날짜 범위 처리
+if [ ! -z "$FROM_DATE" ] || [ ! -z "$TO_DATE" ]; then
+  # --to와 -p가 모두 지정된 경우: --to 날짜로부터 -p 기간만큼 이전 계산
+  if [ ! -z "$TO_DATE" ] && [ ! -z "$PERIOD" ] && [ "$PERIOD" != "120d" ] && [ -z "$FROM_DATE" ]; then
+    # PERIOD에서 숫자와 단위 분리 (예: 30d -> 30, d, 6mo -> 6, mo)
+    if [[ "$PERIOD" =~ ^([0-9]+)([dmy]|mo)$ ]]; then
+      amount=${BASH_REMATCH[1]}
+      unit=${BASH_REMATCH[2]}
+      
+      # Python을 사용하여 날짜 계산
+      FROM_DATE=$(python3 -c "
+from datetime import datetime, timedelta
+import sys
+
+to_date = '$TO_DATE'
+amount = $amount
+unit = '$unit'
+
+# 단위에 따라 날짜 계산
+if unit == 'd':
+    days = amount
+elif unit == 'm' or unit == 'mo':  # m 또는 mo (월)
+    days = amount * 30  # 월을 30일로 근사
+elif unit == 'y':
+    days = amount * 365  # 년을 365일로 근사
+else:
+    days = amount
+
+# FROM_DATE 계산 (TO_DATE에서 days일 전)
+try:
+    to_dt = datetime.strptime(to_date, '%Y-%m-%d')
+    from_dt = to_dt - timedelta(days=days)
+    print(from_dt.strftime('%Y-%m-%d'))
+except Exception as e:
+    print(to_date)  # 오류 시 TO_DATE 반환
+")
+      echo "종료 날짜($TO_DATE)로부터 $PERIOD 전까지 계산: $FROM_DATE ~ $TO_DATE"
+    fi
+  fi
+  
+  # --to가 지정되지 않은 경우 오늘 날짜로 설정
+  if [ -z "$TO_DATE" ]; then
+    TO_DATE=$(date +"%Y-%m-%d")
+    echo "종료 날짜가 지정되지 않아 오늘 날짜($TO_DATE)로 설정합니다."
+  fi
+  
+  # --from이 지정되지 않은 경우 TO_DATE로 설정 (같은 날짜)
+  if [ -z "$FROM_DATE" ]; then
+    FROM_DATE="$TO_DATE"
+  fi
+  
+  PERIOD="${FROM_DATE}_${TO_DATE}"
+fi
+
+# 필수 인자 확인 (-s 또는 --file 중 하나는 필수)
 if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
-  echo "Usage: $0 (-s SYMBOL | -f SYMBOL_FILE) [-p PERIOD] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE]"
+  echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE]"
   echo "Options:"
-  echo "  -s SYMBOL       단일 종목 분석"
-  echo "  -f SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
-  echo "  -p PERIOD      기간 (기본값: 120d)"
-  echo "  -i INTERVAL    간격 (기본값: 1d)"
-  echo "  -t PREPOST     장전/장후 데이터 포함 여부 (기본값: false)"
-  echo "  -a TYPE        분석 유형 (technical/macro/sector/news/chart/financial/strategy/all, 기본값: technical)"
-  echo "  -v TYPE        Volume Profile 유형 (none/separate/overlay, 기본값: none)"
-  echo "                  none: Volume Profile 없음"
-  echo "                  separate: 별도 영역에 Volume Profile"
-  echo "                  overlay: 메인차트에 Volume Profile 오버레이"
+  echo "  -s SYMBOL           단일 종목 분석"
+  echo "  --file SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
+  echo "  -p PERIOD          기간 (예: 120d, 6mo, 1y, 기본값: 120d)"
+  echo "  -d DAYS            일수 (예: 30, 60, 90, 365, 기본값: 사용 안함)"
+  echo "  --from START_DATE  시작 날짜 (예: 2024-01-01)"
+  echo "  --to END_DATE      종료 날짜 (예: 2024-12-31, 생략 시 오늘 날짜)"
+  echo "  -i INTERVAL        간격 (기본값: 1d)"
+  echo "  -t PREPOST         장전/장후 데이터 포함 여부 (기본값: false)"
+  echo "  -a TYPE            분석 유형 (technical/macro/sector/news/chart/financial/strategy/all, 기본값: technical)"
+  echo "  -v TYPE            Volume Profile 유형 (none/separate/overlay, 기본값: none)"
+  echo "                      none: Volume Profile 없음"
+  echo "                      separate: 별도 영역에 Volume Profile"
+  echo "                      overlay: 메인차트에 Volume Profile 오버레이"
+  echo ""
+  echo "기간 설정 예시:"
+  echo "  -p 30d            30일"
+  echo "  -p 6mo            6개월"
+  echo "  -p 1y             1년"
+  echo "  -d 30             30일 (자동으로 30d로 변환)"
+  echo "  -d 365            1년 (자동으로 365d로 변환)"
+  echo "  --from 2024-01-01 --to 2024-12-31  특정 날짜 범위"
+  echo "  --from 2024-08-01 --to 2025-08-01  12개월 특정 기간"
+  echo "  --from 2025-01-01                   2025년 1월 1일부터 오늘까지"
+  echo "  --to 2025-08-01 -p 30d             2025-08-01로부터 30일 전까지"
+  echo "  --to 2025-08-01 -p 6mo             2025-08-01로부터 6개월 전까지"
+  echo "  --to 2025-08-01 -p 1y              2025-08-01로부터 1년 전까지"
   exit 1
 fi
 

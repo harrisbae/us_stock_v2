@@ -56,7 +56,7 @@ def calculate_support_resistance(data, window=20):
     return current_support, current_resistance
 
 def calculate_volume_profile(ohlcv_data, num_bins=50):
-    """Fixed Range Volume Profile 계산"""
+    """Fixed Range Volume Profile 계산 (Net Volume 포함)"""
     # 가격 범위 설정
     price_min = ohlcv_data['Low'].min()
     price_max = ohlcv_data['High'].max()
@@ -66,6 +66,9 @@ def calculate_volume_profile(ohlcv_data, num_bins=50):
     
     # 거래량 분포 계산
     volume_profile = []
+    net_volume_profile = []  # Net Volume 추가
+    volume_ratios = []  # 비율 추가
+    
     for i in range(len(price_bins) - 1):
         bin_low = price_bins[i]
         bin_high = price_bins[i + 1]
@@ -74,14 +77,26 @@ def calculate_volume_profile(ohlcv_data, num_bins=50):
         mask = (ohlcv_data['Low'] <= bin_high) & (ohlcv_data['High'] >= bin_low)
         total_volume = ohlcv_data.loc[mask, 'Volume'].sum()
         
+        # Net Volume 계산 (상승일과 하락일 구분)
+        up_mask = mask & (ohlcv_data['Close'] > ohlcv_data['Open'])
+        down_mask = mask & (ohlcv_data['Close'] < ohlcv_data['Open'])
+        
+        up_volume = ohlcv_data.loc[up_mask, 'Volume'].sum()
+        down_volume = ohlcv_data.loc[down_mask, 'Volume'].sum()
+        net_volume = up_volume - down_volume
+        
         volume_profile.append(total_volume)
+        net_volume_profile.append(net_volume)
+    
+    # 전체 거래량 대비 비율 계산
+    total_volume = sum(volume_profile)
+    volume_ratios = [vol / total_volume * 100 for vol in volume_profile]
     
     # POC (Point of Control) 계산
     poc_idx = np.argmax(volume_profile)
     poc_price = price_bins[poc_idx]
     
     # Value Area 계산 (거래량 70% 구간)
-    total_volume = sum(volume_profile)
     target_volume = total_volume * 0.7
     
     # POC를 중심으로 Value Area 확장
@@ -109,7 +124,7 @@ def calculate_volume_profile(ohlcv_data, num_bins=50):
     value_area_min = min(value_area_prices)
     value_area_max = max(value_area_prices)
     
-    return price_bins, volume_profile, poc_price, value_area_min, value_area_max
+    return price_bins, volume_profile, net_volume_profile, volume_ratios, poc_price, value_area_min, value_area_max
 
 def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str = None, save_path: str = None, current_price: float = None):
     """Volume Profile이 메인차트에 오버레이된 차트"""
@@ -147,7 +162,7 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     trade_signals = get_hma_mantra_md_signals(ohlcv_data, ticker)
 
     # Volume Profile 계산
-    price_bins, volume_profile, poc_price, value_area_min, value_area_max = calculate_volume_profile(ohlcv_data)
+    price_bins, volume_profile, net_volume_profile, volume_ratios, poc_price, value_area_min, value_area_max = calculate_volume_profile(ohlcv_data)
 
     # 차트 생성 (2x1 레이아웃: 메인차트 + 거래량)
     fig = plt.figure(figsize=(20, 12))
@@ -159,11 +174,32 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     # 거래량 차트 (하단)
     ax_volume = fig.add_subplot(gs[1, 0], sharex=ax_main)
 
-    # 메인 차트 설정
+    # 메인 차트 설정 (투명도 높임)
     candlestick_ohlc(ax_main, 
                      [[mdates.date2num(date), o, h, l, c] for date, (o, h, l, c) in 
                       zip(ohlcv_data.index, ohlcv_data[['Open', 'High', 'Low', 'Close']].values)],
-                     width=0.6, colorup='green', colordown='red', alpha=0.7)
+                     width=0.6, colorup='green', colordown='red', alpha=0.9)
+    
+    # VIX 값 우측 상단에 표시
+    if not vix.empty:
+        # 기간의 마지막 날짜에 해당하는 VIX 값 찾기
+        end_date = ohlcv_data.index[-1]
+        vix_end_date = vix.index[vix.index <= end_date][-1] if len(vix.index[vix.index <= end_date]) > 0 else vix.index[-1]
+        vix_value = float(vix.loc[vix_end_date].iloc[0])  # 스칼라 값으로 변환
+        
+        # VIX 값에 따른 색상 설정
+        if vix_value < 20:
+            vix_color = 'green'  # 낮은 변동성
+        elif vix_value < 30:
+            vix_color = 'orange'  # 중간 변동성
+        else:
+            vix_color = 'red'  # 높은 변동성
+        
+        # 우측 상단에 VIX 값 표시
+        ax_main.text(0.98, 0.98, f'VIX: {vix_value:.2f}\n{vix_end_date.strftime("%Y-%m-%d")}', 
+                    transform=ax_main.transAxes, fontsize=12, ha='right', va='top',
+                    bbox=dict(facecolor=vix_color, alpha=0.8, edgecolor='black', pad=5),
+                    color='white', fontweight='bold')
 
     # HMA와 만트라 밴드
     ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=1.5, label='HMA')
@@ -186,22 +222,24 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     current_price = ohlcv_data['Close'].iloc[-1]
     support, resistance = calculate_support_resistance(ohlcv_data)
     
-    # 수평선 및 가격 표시
+    # 수평선 및 가격 표시 (Volume Profile보다 더 왼쪽으로 조정)
     ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.8, alpha=0.5)
-    ax_main.text(ohlcv_data.index[-1], current_price, 
-                f'현재가: {current_price:.2f}\n{ohlcv_data.index[-1].strftime("%Y-%m-%d")}', 
-                rotation=45, fontsize=6, ha='left', va='bottom',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+    # Volume Profile보다 더 왼쪽에 텍스트 배치
+    text_x = ohlcv_data.index[0] - (ohlcv_data.index[-1] - ohlcv_data.index[0]) * 0.02
+    ax_main.text(text_x, current_price, 
+                f'현재가: {current_price:.2f}', 
+                fontsize=8, ha='right', va='center',
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', pad=2))
     
     ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.8, alpha=0.5)
-    ax_main.text(ohlcv_data.index[-1], support, f'지지선: {support:.2f}', 
-                rotation=45, fontsize=6, ha='left', va='bottom',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+    ax_main.text(text_x, support, f'지지선: {support:.2f}', 
+                fontsize=8, ha='right', va='center',
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='green', pad=2))
     
     ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.8, alpha=0.5)
-    ax_main.text(ohlcv_data.index[-1], resistance, f'저항선: {resistance:.2f}', 
-                rotation=45, fontsize=6, ha='left', va='bottom',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+    ax_main.text(text_x, resistance, f'저항선: {resistance:.2f}', 
+                fontsize=8, ha='right', va='center',
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='red', pad=2))
 
     # 매수/매도 신호 표시
     for signal in trade_signals:
@@ -241,6 +279,10 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     )
     cond_dates = ohlcv_data.index[cond]
 
+    # 거래량 분위수 계산 (3분위)
+    volume_33 = ohlcv_data['Volume'].quantile(0.33)
+    volume_67 = ohlcv_data['Volume'].quantile(0.67)
+    
     for dt in cond_dates:
         # 수직선
         ax_main.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.2, zorder=20)
@@ -249,15 +291,25 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
                     ha='center', va='top', rotation=45,
                     bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=25)
         
-        # 종가 기준 수평선
+        # 종가 기준 수평선 (거래량에 따른 두께 적용)
         close = ohlcv_data.loc[dt, 'Close']
         open_ = ohlcv_data.loc[dt, 'Open']
+        volume = ohlcv_data.loc[dt, 'Volume']
+        
+        # 거래량에 따른 두께 결정
+        if volume >= volume_67:
+            linewidth = 1.6  # 상위 (높은 거래량)
+        elif volume >= volume_33:
+            linewidth = 1.2  # 중위 (보통 거래량)
+        else:
+            linewidth = 0.8  # 하위 (낮은 거래량)
+        
         if close >= open_:
-            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='lime', linestyle='-', linewidth=linewidth, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
         else:
-            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='red', linestyle='-', linewidth=linewidth, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
 
@@ -266,34 +318,67 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     main_xlim = ax_main.get_xlim()
     main_ylim = ax_main.get_ylim()
     
-    # Volume Profile을 메인차트 우측에 오버레이
-    # Volume Profile의 너비를 메인차트의 20%로 설정
-    overlay_width = (main_xlim[1] - main_xlim[0]) * 0.2
-    overlay_start = main_xlim[1] - overlay_width
+    # Volume Profile을 메인차트 좌측에 오버레이
+    # Volume Profile의 너비를 메인차트의 10%로 설정
+    overlay_width = (main_xlim[1] - main_xlim[0]) * 0.10
+    
+    # 좌측에 Volume Profile 배치
+    overlay_start = main_xlim[0] + (main_xlim[1] - main_xlim[0]) * 0.05  # 좌측에서 약간 떨어진 위치
     
     # Volume Profile 정규화 (0~1 범위로)
     max_volume = max(volume_profile)
     normalized_volume = [v / max_volume for v in volume_profile]
     
-    # Volume Profile 막대 그리기
-    bin_heights = price_bins[1] - price_bins[0]
-    for i, (price, vol) in enumerate(zip(price_bins[:-1], normalized_volume)):
-        bar_width = vol * overlay_width * 0.8  # 막대 너비를 거래량에 비례하게
-        ax_main.barh(price, bar_width, height=bin_heights, left=overlay_start, 
-                    alpha=0.3, color='blue', zorder=10)
+    # Net Volume Profile 정규화
+    max_net_volume = max(abs(min(net_volume_profile)), abs(max(net_volume_profile))) if net_volume_profile else 1
+    normalized_net_volume = [v / max_net_volume for v in net_volume_profile]
     
-    # POC (Point of Control) 표시
+    # Volume Profile 막대 그리기 (Net Volume 색상 적용)
+    bin_heights = price_bins[1] - price_bins[0]
+    for i, (price, vol, net_vol, ratio) in enumerate(zip(price_bins[:-1], normalized_volume, normalized_net_volume, volume_ratios)):
+        bar_width = vol * overlay_width * 0.8  # 막대 너비를 거래량에 비례하게
+        
+        # Net Volume에 따른 색상 설정
+        if net_vol > 0:
+            color = 'green'  # 상승 압력
+        elif net_vol < 0:
+            color = 'red'    # 하락 압력
+        else:
+            color = 'gray'   # 중립
+        
+        # Volume Profile 막대 그리기 (투명도 낮춤)
+        ax_main.barh(price, bar_width, height=bin_heights, left=overlay_start, 
+                    alpha=0.4, color=color, zorder=10)
+        
+        # 비율 텍스트 표시 (주요 구간만)
+        if ratio > 2.0:  # 2% 이상인 구간만 표시
+            ax_main.text(overlay_start + bar_width + overlay_width * 0.05, price, 
+                        f'{ratio:.1f}%', fontsize=6, color='black', ha='left', va='center',
+                        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=11)
+    
+    # POC (Point of Control) 표시 (최신일자까지 연장)
+    poc_xmin = (overlay_start - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
+    poc_xmax = 1.0  # 최신일자까지 연장
     ax_main.axhline(poc_price, color='red', linestyle='--', alpha=0.8, linewidth=2, 
-                   xmin=0.8, xmax=1.0, zorder=15, label=f'POC: {poc_price:.2f}')
+                   xmin=poc_xmin, xmax=poc_xmax, zorder=15, label=f'POC: {poc_price:.2f}')
     
     # POC 가격 텍스트 표시
     ax_main.text(overlay_start + overlay_width * 0.5, poc_price, f'{poc_price:.2f}', 
                 fontsize=8, color='red', ha='center', va='center',
                 bbox=dict(facecolor='white', alpha=0.8, edgecolor='red', pad=2), zorder=16)
     
-    # Value Area 표시
+    # Value Area 표시 (Volume Profile 영역에만)
+    value_xmax = (overlay_start + overlay_width - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
     ax_main.axhspan(value_area_min, value_area_max, alpha=0.1, color='green', 
-                   xmin=0.8, xmax=1.0, zorder=5, label=f'Value Area: {value_area_min:.2f}-{value_area_max:.2f}')
+                   xmin=poc_xmin, xmax=value_xmax, zorder=5, label=f'Value Area: {value_area_min:.2f}-{value_area_max:.2f}')
+    
+    # Net Volume Profile 범례 추가 (투명도 조정)
+    legend_elements = [
+        plt.Rectangle((0, 0), 1, 1, facecolor='green', alpha=0.4, label='상승 압력 (Net +)'),
+        plt.Rectangle((0, 0), 1, 1, facecolor='red', alpha=0.4, label='하락 압력 (Net -)'),
+        plt.Rectangle((0, 0), 1, 1, facecolor='gray', alpha=0.4, label='중립 (Net 0)')
+    ]
+    ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.95), fontsize=8)
 
     # 거래량 차트 표시 (하단)
     # 거래량 막대 (양봉/음봉 구분)

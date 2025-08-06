@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vertiv (VRT) 대화형 기업 분석</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: A single-page, multi-section dashboard. The structure guides the user from a high-level overview to a detailed analysis, contrasting the 'Traditional Value (Graham)' vs. 'Modern Growth (AI Story)' perspectives. The flow is: 1. Hero/Header, 2. Key Metrics Dashboard, 3. Graham vs. Growth Narrative (two-column layout), 4. Financial Performance Deep Dive (charts), 5. Competitive Landscape, 6. Expert Conclusion. This non-linear, thematic structure was chosen over the report's linear format to allow users to quickly grasp the core investment thesis and explore data points interactively, enhancing comprehension and engagement. -->
+    <!-- Visualization & Content Choices: 1. Graham's Scorecard: (Goal: Compare/Inform) Uses HTML/CSS cards with icons (✅/❌) and bar gauges to visually compare VRT's metrics against Graham's targets, making the dense table in the report instantly digestible. (Method: HTML/Tailwind, JS). 2. Financial Performance: (Goal: Show Change/Compare) Uses Chart.js bar and line charts to visualize regional and historical financial data, providing clear evidence for the growth narrative. (Method: Chart.js/Canvas). 3. Competitive Landscape: (Goal: Compare/Organize) Uses a side-by-side card layout to compare VRT with a key competitor, making the analysis more direct and scannable than text. (Method: HTML/Tailwind). These choices prioritize visual clarity and interactivity to tell a compelling story. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #F8FAFC; /* slate-50 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .nav-link {
+            transition: color 0.3s, border-color 0.3s;
+        }
+        .nav-link:hover {
+            color: #1E40AF; /* blue-800 */
+        }
+        .nav-link.active {
+            color: #1D4ED8; /* blue-700 */
+            border-bottom-color: #1D4ED8;
+        }
+        .kpi-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .gauge-bar-bg {
+            background-color: #E5E7EB; /* gray-200 */
+        }
+        .gauge-bar-fill-fail {
+            background-color: #EF4444; /* red-500 */
+        }
+        .gauge-bar-fill-pass {
+            background-color: #22C55E; /* green-500 */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="font-bold text-xl text-blue-700">VRT</span>
+                    <span class="ml-2 text-gray-600">Interactive Analysis</span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">개요</a>
+                        <a href="#graham-vs-growth" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">가치 vs 성장</a>
+                        <a href="#financials" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">재무 성과</a>
+                        <a href="#competition" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">경쟁 환경</a>
+                        <a href="#conclusion" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-gray-600 border-b-2 border-transparent">최종 평가</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="overview" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-gray-900">
+                    Vertiv Holdings Co (VRT)
+                </h1>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">
+                    AI 시대의 핵심, 데이터센터 인프라의 강자. 전통적 가치 평가와 폭발적 성장 잠재력 사이, VRT의 현재와 미래를 대화형으로 분석합니다.
+                </p>
+                <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-4xl mx-auto">
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">PER (비GAAP TTM)</p>
+                        <p class="text-2xl font-bold text-red-600">42.39</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">매출 성장률 (YoY)</p>
+                        <p class="text-2xl font-bold text-green-600">+35.1%</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">부채비율 (D/E)</p>
+                        <p class="text-2xl font-bold text-green-600">93.5%</p>
+                    </div>
+                    <div class="kpi-card bg-slate-50 p-4 rounded-lg shadow">
+                        <p class="text-sm text-gray-500">ROE (TTM)</p>
+                        <p class="text-2xl font-bold text-green-600">51.6%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="graham-vs-growth" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">두 개의 렌즈: 가치주인가, 성장주인가?</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">벤자민 그레이엄의 보수적 가치 평가 기준과 AI 시대의 성장 잠재력이라는 두 가지 관점에서 VRT를 비교 분석합니다. 각 카드를 통해 VRT가 각 기준을 어떻게 충족하는지(또는 못하는지) 확인해보세요.</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 lg:gap-12">
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-blue-800">벤자민 그레이엄의 가치 평가 Scorecard</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">전통적 가치 투자자의 시선</p>
+                        <div class="space-y-6">
+                            <div>
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium">PER (주가수익비율)</span>
+                                    <span class="font-bold text-red-500 text-lg">42.39 <span class="text-sm font-normal text-gray-500">/ 15 이하</span></span>
+                                </div>
+                                <div class="w-full gauge-bar-bg rounded-full h-2.5 mt-2">
+                                    <div class="gauge-bar-fill-fail h-2.5 rounded-full" style="width: 100%"></div>
+                                </div>
+                                <p class="text-xs text-right text-red-500 mt-1">❌ 기준치 초과</p>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium">PER x PBR</span>
+                                    <span class="font-bold text-red-500 text-lg">731.5 <span class="text-sm font-normal text-gray-500">/ 22 이하</span></span>
+                                </div>
+                                <div class="w-full gauge-bar-bg rounded-full h-2.5 mt-2">
+                                    <div class="gauge-bar-fill-fail h-2.5 rounded-full" style="width: 100%"></div>
+                                </div>
+                                <p class="text-xs text-right text-red-500 mt-1">❌ 기준치 초과</p>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium">부채비율 (D/E)</span>
+                                    <span class="font-bold text-green-500 text-lg">93.5% <span class="text-sm font-normal text-gray-500">/ 100% 이하</span></span>
+                                </div>
+                                <div class="w-full gauge-bar-bg rounded-full h-2.5 mt-2">
+                                    <div class="gauge-bar-fill-pass h-2.5 rounded-full" style="width: 93.5%"></div>
+                                </div>
+                                <p class="text-xs text-right text-green-500 mt-1">✅ 충족</p>
+                            </div>
+                             <div>
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium">유보 이익</span>
+                                    <span class="font-bold text-green-500 text-lg">흑자 전환</span>
+                                </div>
+                                <p class="text-xs text-right text-green-500 mt-1">✅ 긍정적 신호</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-semibold text-center text-green-800">AI 시대의 성장 동력</h3>
+                        <p class="text-center text-sm text-gray-500 mt-2 mb-6">미래 성장 잠재력에 대한 기대</p>
+                        <div class="space-y-5">
+                            <div class="flex items-start">
+                                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold">1</div>
+                                <div class="ml-4">
+                                    <h4 class="text-lg font-medium">AI & 데이터센터 특화</h4>
+                                    <p class="mt-1 text-gray-600">NVIDIA 등과의 파트너십을 통해 고밀도 AI 배포를 위한 액체 냉각 및 전력 솔루션 시장을 선도합니다.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold">2</div>
+                                <div class="ml-4">
+                                    <h4 class="text-lg font-medium">강력한 실적 성장</h4>
+                                    <p class="mt-1 text-gray-600">매출과 이익이 시장 예상치를 크게 상회하며 폭발적으로 성장하고 있으며, 높은 수주 잔고는 미래 성장을 예고합니다.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex-shrink-0 h-8 w-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold">3</div>
+                                <div class="ml-4">
+                                    <h4 class="text-lg font-medium">개선된 재무 건전성</h4>
+                                    <p class="mt-1 text-gray-600">높은 성장에도 불구하고 부채비율을 안정적으로 관리하고 있으며, 유보 이익이 흑자로 전환되었습니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="financials" class="py-16 sm:py-20 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">재무 성과 심층 분석</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">VRT의 성장 스토리를 뒷받침하는 핵심 재무 데이터를 시각화하여 보여줍니다. 지역별 매출 성장과 분기별 실적 추이를 확인하세요.</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-12">
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">Q2 2025 지역별 매출 성장률 (YoY)</h3>
+                        <div class="chart-container">
+                            <canvas id="regionalGrowthChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-center mb-4">분기별 매출 및 주당순이익(EPS) 추이</h3>
+                        <div class="chart-container">
+                            <canvas id="quarterlyPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="competition" class="py-16 sm:py-20">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight text-gray-900">경쟁 환경 및 차별성</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-600">데이터센터 인프라 시장의 주요 경쟁사와 비교하여 VRT가 가진 독보적인 강점과 차별화 포인트를 분석합니다.</p>
+                </div>
+                <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 items-stretch">
+                    <div class="bg-white p-6 rounded-lg shadow-lg border-2 border-blue-600">
+                        <h3 class="text-2xl font-semibold text-center">Vertiv (VRT)</h3>
+                        <div class="mt-4 space-y-3">
+                            <p class="flex items-center"><span class="text-green-500 mr-2">✔</span><strong>AI 특화 솔루션:</strong> NVIDIA 맞춤형 액체 냉각/전력</p>
+                            <p class="flex items-center"><span class="text-green-500 mr-2">✔</span><strong>기술 리더십:</strong> 고효율 액체 냉각 기술 선도</p>
+                            <p class="flex items-center"><span class="text-green-500 mr-2">✔</span><strong>강력한 성장 모멘텀:</strong> AI 수요 기반의 높은 수주 잔고</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+                        <h3 class="text-2xl font-semibold text-center">Schneider Electric & Others</h3>
+                         <div class="mt-4 space-y-3">
+                            <p class="flex items-center"><span class="text-blue-500 mr-2">✔</span><strong>시장 양분:</strong> VRT와 함께 DCPI 시장의 과점 리더</p>
+                            <p class="flex items-center"><span class="text-blue-500 mr-2">✔</span><strong>광범위한 포트폴리오:</strong> 더 넓은 전기/자동화 제품 생태계 보유</p>
+                            <p class="flex items-center"><span class="text-blue-500 mr-2">✔</span><strong>R&D 역량:</strong> 대규모 기업으로서 깊이 있는 연구개발 능력</p>
+                        </div>
+                    </div>
+                </div>
+                 <p class="text-center mt-8 text-gray-700 max-w-3xl mx-auto">VRT는 경쟁사들도 액체 냉각 솔루션을 확장하는 가운데, <span class="font-bold text-blue-700">NVIDIA와의 독점적 파트너십</span>과 <span class="font-bold text-blue-700">고밀도 AI 워크로드에 대한 맞춤형 솔루션</span>에 집중함으로써 차별화된 경쟁 우위를 확보하고 있습니다.</p>
+            </div>
+        </section>
+
+        <section id="conclusion" class="py-16 sm:py-20 bg-slate-800 text-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold tracking-tight">최종 평가 및 투자 관점</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-slate-300">VRT는 전통적 가치 투자 기준으로는 고평가되었지만, AI 혁명의 핵심 인프라 제공자로서 독보적인 성장 잠재력을 지닌 기업입니다.</p>
+                </div>
+                <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold text-green-400 mb-2">강점 (Strengths)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>AI 메가트렌드에 직접적으로 연관된 강력한 시장 지위</li>
+                            <li>NVIDIA 파트너십 기반의 독보적인 기술 혁신 (액체 냉각)</li>
+                            <li>견고한 재무 성과와 개선된 재무 구조</li>
+                            <li>미래 성장을 담보하는 높은 수주 잔고</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-red-400 mb-2">약점 및 위험 (Risks)</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-200">
+                            <li>전통적 기준에서 벗어난 높은 밸류에이션 부담</li>
+                            <li>성장을 위한 운전자본 투자로 인한 단기 현금흐름 압박</li>
+                            <li>시장 평균보다 높은 주가 변동성 (베타 1.77)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-10 bg-slate-700 p-6 rounded-lg text-center">
+                    <p class="text-lg">
+                        결론적으로 VRT는 '성장 가치'를 추구하는 투자자에게 더 적합합니다. 투자자는 '안전마진'의 개념을 낮은 밸류에이션이 아닌, <span class="font-bold text-green-300">기술적 우위와 시장 지배력에서 파생되는 미래의 견고한 이익 창출 능력</span>으로 해석해야 합니다. 단기 변동성은 존재하나, 장기적으로 높은 성장이 기대되는 기업입니다.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white">
+        <div class="container mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm">
+            <p>&copy; 2025 Interactive Report. All data sourced from the provided VRT analysis report.</p>
+            <p class="text-gray-400">This is a visual interpretation for informational purposes only and not financial advice.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chartData = {
+                regionalGrowth: {
+                    labels: ['미주', '아시아 태평양', 'EMEA'],
+                    data: [42.9, 35.1, 12.5]
+                },
+                quarterlyPerformance: {
+                    labels: ['Q3 \'24', 'Q4 \'24', 'Q1 \'25', 'Q2 \'25'],
+                    revenue: [18.7, 19.5, 21.4, 26.4], 
+                    eps: [0.52, 0.56, 0.79, 0.95]
+                }
+            };
+
+            const renderRegionalGrowthChart = () => {
+                const ctx = document.getElementById('regionalGrowthChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.regionalGrowth.labels,
+                        datasets: [{
+                            label: '매출 성장률 (%)',
+                            data: chartData.regionalGrowth.data,
+                            backgroundColor: [
+                                'rgba(59, 130, 246, 0.7)',
+                                'rgba(16, 185, 129, 0.7)',
+                                'rgba(249, 115, 22, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(59, 130, 246, 1)',
+                                'rgba(16, 185, 129, 1)',
+                                'rgba(249, 115, 22, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` ${context.dataset.label}: ${context.raw}%`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '성장률 (%)'
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const renderQuarterlyPerformanceChart = () => {
+                const ctx = document.getElementById('quarterlyPerformanceChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.quarterlyPerformance.labels,
+                        datasets: [
+                            {
+                                type: 'line',
+                                label: '매출 (억$)',
+                                data: chartData.quarterlyPerformance.revenue,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                yAxisID: 'yRevenue',
+                                tension: 0.2,
+                                fill: true,
+                            },
+                            {
+                                type: 'bar',
+                                label: 'EPS ($)',
+                                data: chartData.quarterlyPerformance.eps,
+                                backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                                borderColor: 'rgba(16, 185, 129, 1)',
+                                yAxisID: 'yEps',
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            yRevenue: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: '매출 (억$)'
+                                }
+                            },
+                            yEps: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'EPS ($)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false, 
+                                },
+                            }
+                        }
+                    }
+                });
+            };
+
+            renderRegionalGrowthChart();
+            renderQuarterlyPerformanceChart();
+
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.remove('active');
+                            if (link.getAttribute('href').substring(1) === entry.target.id) {
+                                link.classList.add('active');
+                            }
+                        });
+                    }
+                });
+            }, { rootMargin: '-50% 0px -50% 0px' });
+
+            sections.forEach(section => {
+                observer.observe(section);
+            });
+            
+            navLinks.forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+</html>

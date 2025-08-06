@@ -25,3 +25,5 @@ SMR
 MSTR
 VRT
 HIMS
+#이더리움
+ETHA

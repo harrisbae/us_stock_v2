@@ -29,8 +29,15 @@ def main():
     
     print(f"데이터 다운로드 중: {ticker} (period={period})")
     
-    # 데이터 다운로드 (period 파라미터 직접 전달)
-    data = yf.download(ticker, period=period, progress=False)
+    # 날짜 범위인지 확인 (YYYY-MM-DD_YYYY-MM-DD 형식)
+    if '_' in period and len(period.split('_')) == 2:
+        start_date, end_date = period.split('_')
+        print(f"날짜 범위: {start_date} ~ {end_date}")
+        # 날짜 범위로 데이터 다운로드
+        data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+    else:
+        # 기존 period 방식으로 데이터 다운로드
+        data = yf.download(ticker, period=period, progress=False)
     
     if data.empty:
         print(f"데이터를 가져올 수 없습니다: {ticker}")

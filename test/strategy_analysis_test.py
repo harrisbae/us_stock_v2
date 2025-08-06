@@ -77,8 +77,16 @@ def calculate_volume_profile(data, num_bins=50):
 def analyze_strategy_signal(ticker, period="12mo"):
     """차트 기반 투자 전략 분석"""
     try:
-        # 데이터 다운로드
-        data = yf.download(ticker, period=period, progress=False)
+        # 날짜 범위인지 확인 (YYYY-MM-DD_YYYY-MM-DD 형식)
+        if '_' in period and len(period.split('_')) == 2:
+            start_date, end_date = period.split('_')
+            print(f"날짜 범위로 데이터 다운로드: {start_date} ~ {end_date}")
+            # 날짜 범위로 데이터 다운로드
+            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        else:
+            # 기존 period 방식으로 데이터 다운로드
+            data = yf.download(ticker, period=period, progress=False)
+        
         if data.empty:
             return None, "데이터 없음"
         
