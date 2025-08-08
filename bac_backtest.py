@@ -14,21 +14,58 @@ import os
 # 경로 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.indicators.hma_mantra_example import calculate_combined_signals
+def get_scalar(val):
+    """값이 Series면 첫 번째 값만 추출, 아니면 그대로 반환"""
+    if isinstance(val, pd.Series):
+        return val.iloc[0]
+    return val
+
+def calculate_simple_signals(data):
+    """간단한 매매 신호 생성 (RSI 기반)"""
+    try:
+        # RSI 계산 (14기간)
+        delta = data['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        # 현재 RSI 값
+        current_rsi = get_scalar(rsi.iloc[-1])
+        prev_rsi = get_scalar(rsi.iloc[-2])
+        
+        if pd.isna(current_rsi) or pd.isna(prev_rsi):
+            return "HOLD"
+        
+        current_rsi = float(current_rsi)
+        prev_rsi = float(prev_rsi)
+        
+        # 매수 조건: RSI가 30을 상향 돌파
+        if current_rsi > 30 and prev_rsi <= 30:
+            return "BUY"
+        
+        # 매도 조건: RSI가 70을 하향 돌파
+        elif current_rsi < 70 and prev_rsi >= 70:
+            return "SELL"
+        
+        return "HOLD"
+        
+    except Exception as e:
+        return "HOLD"
 
 def get_buy_signals(data):
     """매수 신호 날짜들을 반환"""
     buy_signals = []
     
     for i in range(len(data)):
-        if i < 50:  # 충분한 데이터가 없으면 건너뛰기
+        if i < 20:  # 충분한 데이터가 없으면 건너뛰기
             continue
             
         # 현재까지의 데이터로 신호 계산
         current_data = data.iloc[:i+1]
-        signal = calculate_combined_signals(current_data)
+        signal = calculate_simple_signals(current_data)
         
-        if signal in ['BUY', 'BUY_STRONG']:
+        if signal == 'BUY':
             buy_signals.append(data.index[i])
     
     return buy_signals
@@ -42,9 +79,8 @@ def calculate_returns(data, buy_signals, strategy_type='same_day'):
         buy_signals: 매수 신호 날짜들
         strategy_type: 'same_day' (같은 날 종가 매수) 또는 'next_day' (익일 종가 매수)
     """
-    portfolio_value = 1000  # 초기 포트폴리오 가치
     shares_owned = 0
-    total_invested = 0
+    total_invested = 0.0
     trades = []
     
     for signal_date in buy_signals:
@@ -58,7 +94,7 @@ def calculate_returns(data, buy_signals, strategy_type='same_day'):
             buy_date = data.index[next_day_idx]
         
         # 매수 가격 (종가)
-        buy_price = data.loc[buy_date, 'Close']
+        buy_price = float(data.loc[buy_date, 'Close'])
         
         # 1000달러로 매수할 수 있는 주식 수
         shares_to_buy = int(1000 / buy_price)
@@ -93,7 +129,7 @@ def calculate_period_returns(data, shares_owned, total_invested, periods):
             continue
             
         last_date = valid_dates[-1]
-        last_price = data.loc[last_date, 'Close']
+        last_price = float(data.loc[last_date, 'Close'])
         
         # 포트폴리오 가치
         portfolio_value = shares_owned * last_price

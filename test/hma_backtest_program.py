@@ -3,6 +3,7 @@
 HMA Mantra 매수 시그널 백테스트 프로그램
 목적: HMA Mantra 전략의 매수 시그널이 실제로 유효한지 검증
 조건: 매수 신호 발생 시 USD 1,000씩 고정 매수하여 성과 분석
+VIX 대역별 매수비용 지원 추가
 """
 
 import sys
@@ -14,6 +15,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from pathlib import Path
 import warnings
+import argparse
 warnings.filterwarnings('ignore')
 import pandas_datareader.data as web
 
@@ -21,22 +23,87 @@ import pandas_datareader.data as web
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class HMAMantraBacktest:
-    def __init__(self, symbol, period="24mo", initial_capital=1000):
+    def __init__(self, symbol, period="24mo", initial_capital=1000, vix_low=0, vix_high=999, vix_bands=None, result_dir=None):
         """
         HMA Mantra 백테스트 초기화
         
         Args:
             symbol (str): 종목 심볼
             period (str): 백테스트 기간 (예: "24mo" = 2년)
-            initial_capital (float): 매수당 투자 금액 (USD)
+            initial_capital (float): 기본 매수당 투자 금액 (USD)
+            vix_low (float): VIX 하한값
+            vix_high (float): VIX 상한값
+            vix_bands (dict): VIX 대역별 매수비용 설정
+            result_dir (str): 결과 저장 디렉토리
         """
         self.symbol = symbol
         self.period = period
         self.initial_capital = initial_capital
+        self.vix_low = vix_low
+        self.vix_high = vix_high
+        self.vix_bands = vix_bands or {}
+        self.result_dir = result_dir
         self.data = None
         self.signals = []
         self.portfolio = []
         self.benchmark_data = None
+        self.vix_data = None
+        
+    def parse_vix_bands(self, vix_bands_str):
+        """VIX 대역 문자열을 파싱하여 딕셔너리로 변환"""
+        if not vix_bands_str:
+            return {}
+            
+        bands = {}
+        for band_str in vix_bands_str.split(','):
+            if ':' in band_str:
+                band_name, cost_str = band_str.strip().split(':')
+                try:
+                    cost = int(cost_str)
+                    bands[band_name.strip()] = cost
+                except ValueError:
+                    print(f"경고: 잘못된 비용 값 '{cost_str}' 무시")
+                    
+        return bands
+    
+    def get_vix_band_cost(self, vix_value):
+        """VIX 값에 따른 매수비용 반환"""
+        if not self.vix_bands:
+            return self.initial_capital
+            
+        # VIX 대역별 비용 결정
+        if vix_value < 20:
+            return self.vix_bands.get('low', self.vix_bands.get('0-20', self.initial_capital))
+        elif vix_value <= 30:
+            return self.vix_bands.get('mid', self.vix_bands.get('20-30', self.initial_capital))
+        else:
+            return self.vix_bands.get('high', self.vix_bands.get('30+', self.initial_capital))
+    
+    def get_vix_value(self, date):
+        """특정 날짜의 VIX 값 반환"""
+        if self.vix_data is None:
+            return 20  # 기본값
+            
+        # 해당 날짜 또는 가장 가까운 이전 날짜의 VIX 값
+        try:
+            vix_value = self.vix_data.loc[date, 'Close']
+            return float(vix_value)
+        except KeyError:
+            # 해당 날짜가 없으면 가장 가까운 이전 날짜 찾기
+            try:
+                prev_dates = self.vix_data.index[self.vix_data.index <= date]
+                if len(prev_dates) > 0:
+                    vix_value = self.vix_data.loc[prev_dates[-1], 'Close']
+                    return float(vix_value)
+                else:
+                    return 20  # 기본값
+            except:
+                return 20  # 기본값
+    
+    def check_vix_condition(self, date):
+        """VIX 조건 확인"""
+        vix_value = self.get_vix_value(date)
+        return self.vix_low <= vix_value <= self.vix_high
         
     def load_data(self):
         """주식 데이터, 벤치마크 데이터, VIX 데이터 로드"""
@@ -69,18 +136,34 @@ class HMAMantraBacktest:
             if self.benchmark_data.empty:
                 self.benchmark_data = yf.download("^GSPC", period="12mo", interval="1d", progress=False)
             
-            # VIX 데이터 로드
+            # VIX 데이터 로드 (VIX 필터 사용 시 더 긴 기간 필요)
             print("VIX 데이터 로드 중...")
-            self.vix_data = yf.download("^VIX", period=self.period, interval="1d", progress=False)
+            vix_period = self.period
+            if self.vix_low > 0 or self.vix_high < 999 or self.vix_bands:
+                # VIX 필터 사용 시 더 긴 기간으로 VIX 데이터 로드
+                if self.period == "6mo":
+                    vix_period = "12mo"
+                elif self.period == "12mo":
+                    vix_period = "24mo"
+                elif self.period == "24mo":
+                    vix_period = "60mo"
+                print(f"VIX 필터 사용으로 인해 VIX 데이터를 {vix_period} 기간으로 로드")
+            
+            self.vix_data = yf.download("^VIX", period=vix_period, interval="1d", progress=False)
             if self.vix_data.empty:
-                self.vix_data = yf.download("^VIX", period="12mo", interval="1d", progress=False)
+                # 더 짧은 기간으로 재시도
+                fallback_periods = ["12mo", "6mo", "3mo"]
+                for fallback_period in fallback_periods:
+                    self.vix_data = yf.download("^VIX", period=fallback_period, interval="1d", progress=False)
+                    if not self.vix_data.empty:
+                        print(f"VIX 데이터 로드 완료 ({fallback_period})")
+                        break
+                
                 if self.vix_data.empty:
                     print("VIX 데이터 로드 실패, 기본값 사용")
                     self.vix_data = None
-                else:
-                    print("VIX 데이터 로드 완료 (1년)")
             else:
-                print("VIX 데이터 로드 완료 (2년)")
+                print(f"VIX 데이터 로드 완료 ({vix_period})")
             
             print(f"데이터 로드 완료: {len(self.data)} 개 데이터 포인트")
             
@@ -101,10 +184,24 @@ class HMAMantraBacktest:
         """hma.sh와 동일한 복합 신호 로직(HMA, 만트라 밴드, RSI, MACD) 적용"""
         print("매수 신호 생성 중...")
         from src.indicators.hma_mantra.signals import get_hma_mantra_md_signals
-        self.signals = [
-            s for s in get_hma_mantra_md_signals(self.data, self.symbol)
-            if s['type'] == 'BUY'
-        ]
+        
+        # 모든 매수 신호 가져오기
+        all_signals = get_hma_mantra_md_signals(self.data, self.symbol)
+        buy_signals = [s for s in all_signals if s['type'] == 'BUY']
+        
+        # VIX 조건 필터링
+        if self.vix_low > 0 or self.vix_high < 999:
+            filtered_signals = []
+            for signal in buy_signals:
+                if self.check_vix_condition(signal['date']):
+                    filtered_signals.append(signal)
+                else:
+                    print(f"VIX 조건 미충족으로 신호 제외: {signal['date'].strftime('%Y-%m-%d')} (VIX: {self.get_vix_value(signal['date']):.2f})")
+            self.signals = filtered_signals
+            print(f"VIX 조건 필터링 후: {len(self.signals)} 개 신호 (원래 {len(buy_signals)} 개)")
+        else:
+            self.signals = buy_signals
+            
         print(f"매수 신호 생성 완료: {len(self.signals)} 개 신호")
         
     def calculate_returns(self, buy_date, buy_price, hold_periods=[30, 90, 180]):
@@ -167,8 +264,9 @@ class HMAMantraBacktest:
             buy_date = signal['date']
             buy_price = signal['price']
             
-            # 매수 수량 계산
-            buy_amount = self.initial_capital
+            # VIX 대역별 매수비용 계산
+            vix_value = self.get_vix_value(buy_date)
+            buy_amount = self.get_vix_band_cost(vix_value)
             buy_qty = round(buy_amount / buy_price, 4) if buy_price > 0 else 0
             
             # 수익률 계산
@@ -299,7 +397,7 @@ class HMAMantraBacktest:
     
     def save_results(self, results, summary):
         """결과 저장 (수익금 통계 포함, 투자기간별 요약 표 추가)"""
-        output_dir = Path(f"test/backtest_results/{self.symbol}")
+        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') else Path(f"test/backtest_results/{self.symbol}")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 모든 value가 Series면 float(스칼라)로 변환
@@ -315,10 +413,14 @@ class HMAMantraBacktest:
 
         # 투자기간별 총 투자금액, 총 수익금, 투자수익률 계산
         n_signals = summary['총 신호 수']
-        invest_1m = n_signals * self.initial_capital
-        invest_3m = n_signals * self.initial_capital
-        invest_6m = n_signals * self.initial_capital
-        invest_now = n_signals * self.initial_capital
+        
+        # 실제 투자금액 계산 (VIX 대역별 매수비용 고려)
+        total_investment = sum(r['매수 금액'] for r in results if isinstance(r['매수 금액'], (int, float)))
+        
+        invest_1m = total_investment
+        invest_3m = total_investment
+        invest_6m = total_investment
+        invest_now = total_investment
         profit_1m = summary['총 1개월 수익금']
         profit_3m = summary['총 3개월 수익금']
         profit_6m = summary['총 6개월 수익금']
@@ -334,7 +436,17 @@ class HMAMantraBacktest:
         with open(md_path, 'w', encoding='utf-8') as f:
             f.write(f"# {self.symbol} HMA Mantra 백테스트 결과\n\n")
             f.write(f"**백테스트 기간**: {self.period}\n")
-            f.write(f"**매수 금액**: USD {self.initial_capital:,}\n")
+            
+            # 매수 금액 표시 (VIX 대역별 설정 고려)
+            if self.vix_bands:
+                f.write(f"**매수 금액**: VIX 대역별 설정\n")
+                f.write(f"  - VIX < 20 (low): USD {self.vix_bands.get('low', self.initial_capital):,}\n")
+                f.write(f"  - 20 ≤ VIX ≤ 30 (mid): USD {self.vix_bands.get('mid', self.initial_capital):,}\n")
+                f.write(f"  - VIX > 30 (high): USD {self.vix_bands.get('high', self.initial_capital):,}\n")
+                f.write(f"**총 투자금액**: USD {total_investment:,}\n")
+            else:
+                f.write(f"**매수 금액**: USD {self.initial_capital:,}\n")
+            
             f.write(f"**총 신호 수**: {summary['총 신호 수']}개\n\n")
             
             f.write("## 요약 통계\n\n")
@@ -386,7 +498,7 @@ class HMAMantraBacktest:
             return
         
         # 결과 디렉토리 생성
-        output_dir = Path(f"test/backtest_results/{self.symbol}")
+        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') else Path(f"test/backtest_results/{self.symbol}")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # High Yield Spread 데이터 불러오기 (FRED)
@@ -582,17 +694,34 @@ class HMAMantraBacktest:
 
 def main():
     """메인 함수"""
-    if len(sys.argv) < 2:
-        print("Usage: python hma_backtest_program.py <symbol> [period] [initial_capital]")
-        print("Example: python hma_backtest_program.py SMR 24mo 1000")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='HMA Mantra 백테스트 프로그램')
+    parser.add_argument('symbol', help='종목 심볼 (예: BAC, AAPL)')
+    parser.add_argument('period', nargs='?', default='24mo', help='분석 기간 (기본값: 24mo)')
+    parser.add_argument('initial_capital', nargs='?', type=float, default=1000, help='기본 매수 금액 (기본값: 1000)')
+    parser.add_argument('--vix-low', type=float, default=0, help='VIX 하한값 (기본값: 0)')
+    parser.add_argument('--vix-high', type=float, default=999, help='VIX 상한값 (기본값: 999)')
+    parser.add_argument('--vix-bands', help='VIX 대역별 매수비용 (예: low:1000,mid:800,high:500)')
+    parser.add_argument('--result-dir', help='결과 저장 디렉토리')
     
-    symbol = sys.argv[1]
-    period = sys.argv[2] if len(sys.argv) > 2 else "24mo"
-    initial_capital = float(sys.argv[3]) if len(sys.argv) > 3 else 1000
+    args = parser.parse_args()
+    
+    # VIX 대역 파싱
+    vix_bands = {}
+    if args.vix_bands:
+        backtest_temp = HMAMantraBacktest(args.symbol)
+        vix_bands = backtest_temp.parse_vix_bands(args.vix_bands)
+        print(f"VIX 대역 설정: {vix_bands}")
     
     try:
-        backtest = HMAMantraBacktest(symbol, period, initial_capital)
+        backtest = HMAMantraBacktest(
+            symbol=args.symbol,
+            period=args.period,
+            initial_capital=args.initial_capital,
+            vix_low=args.vix_low,
+            vix_high=args.vix_high,
+            vix_bands=vix_bands,
+            result_dir=args.result_dir
+        )
         results, summary = backtest.run()
         
     except Exception as e:
