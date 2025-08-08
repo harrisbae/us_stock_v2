@@ -81,8 +81,14 @@ def analyze_strategy_signal(ticker, period="12mo"):
         if '_' in period and len(period.split('_')) == 2:
             start_date, end_date = period.split('_')
             print(f"날짜 범위로 데이터 다운로드: {start_date} ~ {end_date}")
-            # 날짜 범위로 데이터 다운로드
-            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            
+            # yfinance는 end 날짜를 포함하지 않으므로 하루를 더해서 다운로드
+            from datetime import datetime, timedelta
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            end_date_plus_one = (end_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            # 날짜 범위로 데이터 다운로드 (종료일 포함을 위해 하루 추가)
+            data = yf.download(ticker, start=start_date, end=end_date_plus_one, progress=False)
         else:
             # 기존 period 방식으로 데이터 다운로드
             data = yf.download(ticker, period=period, progress=False)

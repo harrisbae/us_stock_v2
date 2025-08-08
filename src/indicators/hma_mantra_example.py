@@ -20,7 +20,11 @@ def calculate_volume_profile_signals(data):
     """Volume Profile 기반 매매 신호 생성"""
     try:
         # Volume Profile 계산
-        price_bins, volume_profile, poc_price, value_area_min, value_area_max = calculate_volume_profile(data)
+        result = calculate_volume_profile(data)
+        if len(result) == 7:  # 새로운 버전 (7개 값 반환)
+            price_bins, volume_profile, net_volume_profile, volume_ratios, poc_price, value_area_min, value_area_max = result
+        else:  # 기존 버전 (5개 값 반환)
+            price_bins, volume_profile, poc_price, value_area_min, value_area_max = result
         
         # 현재가
         current_price = data['Close'].iloc[-1]

@@ -163,6 +163,29 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
 
     # Volume Profile 계산
     price_bins, volume_profile, net_volume_profile, volume_ratios, poc_price, value_area_min, value_area_max = calculate_volume_profile(ohlcv_data)
+    
+    # 분석 기간이 1년 이상인 경우 최근 6개월 Volume Profile 추가 계산
+    analysis_period_days = (end_date - start_date).days
+    recent_6mo_data = None
+    recent_price_bins = None
+    recent_volume_profile = None
+    recent_net_volume_profile = None
+    recent_volume_ratios = None
+    recent_poc_price = None
+    recent_value_area_min = None
+    recent_value_area_max = None
+    
+    if analysis_period_days >= 365:  # 1년 이상
+        # 최근 6개월 데이터 추출
+        recent_6mo_start = end_date - pd.Timedelta(days=180)
+        recent_6mo_data = ohlcv_data[recent_6mo_start:end_date]
+        
+        # 최근 6개월 데이터가 충분한지 확인 (최소 30일 이상)
+        if len(recent_6mo_data) >= 30:
+            # 최근 6개월 Volume Profile 계산
+            recent_price_bins, recent_volume_profile, recent_net_volume_profile, \
+            recent_volume_ratios, recent_poc_price, recent_value_area_min, recent_value_area_max = \
+                calculate_volume_profile(recent_6mo_data)
 
     # 차트 생성 (2x1 레이아웃: 메인차트 + 거래량)
     fig = plt.figure(figsize=(20, 12))
@@ -283,6 +306,9 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     volume_33 = ohlcv_data['Volume'].quantile(0.33)
     volume_67 = ohlcv_data['Volume'].quantile(0.67)
     
+    # 교차점을 저장할 리스트
+    intersection_points = []
+    
     for dt in cond_dates:
         # 수직선
         ax_main.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.2, zorder=20)
@@ -312,6 +338,36 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
             ax_main.axhline(close, color='red', linestyle='-', linewidth=linewidth, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
+        
+        # 교차점 찾기: 분홍색 수직선과 녹색/빨간 수평선의 교차점
+        # 분홍색 수직선은 이미 그려져 있고, 수평선도 그려져 있음
+        # 교차점은 분홍색 수직선(dt)과 해당 날짜의 종가 수평선(close)의 교차점
+        
+        if close >= open_:
+            # 녹색 수평선과 분홍색 수직선의 교차점
+            intersection_points.append({
+                'date': dt,
+                'price': close,  # 해당 날짜의 종가
+                'type': 'green_vertical'
+            })
+        else:
+            # 빨간 수평선과 분홍색 수직선의 교차점
+            intersection_points.append({
+                'date': dt,
+                'price': close,  # 해당 날짜의 종가
+                'type': 'red_vertical'
+            })
+    
+    # 교차점에 X 마커 표시
+    for point in intersection_points:
+        if point['type'] == 'green_vertical':
+            # 녹색 수평선과 분홍색 수직선의 교차점
+            ax_main.plot(point['date'], point['price'], marker='x', color='black', 
+                        markersize=5, markeredgewidth=2, zorder=30)
+        elif point['type'] == 'red_vertical':
+            # 빨간 수평선과 분홍색 수직선의 교차점
+            ax_main.plot(point['date'], point['price'], marker='x', color='black', 
+                        markersize=5, markeredgewidth=2, zorder=30)
 
     # Volume Profile 오버레이 (메인차트 우측에 반투명하게)
     # 메인차트의 X축 범위 가져오기
@@ -372,12 +428,73 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_main.axhspan(value_area_min, value_area_max, alpha=0.1, color='green', 
                    xmin=poc_xmin, xmax=value_xmax, zorder=5, label=f'Value Area: {value_area_min:.2f}-{value_area_max:.2f}')
     
+    # 최근 6개월 Volume Profile 표시 (1년 이상인 경우)
+    if analysis_period_days >= 365 and recent_6mo_data is not None and len(recent_6mo_data) >= 30:
+        # 중앙에 최근 6개월 Volume Profile 배치
+        center_overlay_start = main_xlim[0] + (main_xlim[1] - main_xlim[0]) * 0.45  # 중앙
+        center_overlay_width = (main_xlim[1] - main_xlim[0]) * 0.10  # 10% 너비
+        
+        # 최근 6개월 Volume Profile 정규화
+        max_recent_volume = max(recent_volume_profile)
+        normalized_recent_volume = [v / max_recent_volume for v in recent_volume_profile]
+        
+        # 최근 6개월 Net Volume Profile 정규화
+        max_recent_net_volume = max(abs(min(recent_net_volume_profile)), abs(max(recent_net_volume_profile))) if recent_net_volume_profile else 1
+        normalized_recent_net_volume = [v / max_recent_net_volume for v in recent_net_volume_profile]
+        
+        # 최근 6개월 Volume Profile 막대 그리기
+        recent_bin_heights = recent_price_bins[1] - recent_price_bins[0]
+        for i, (price, vol, net_vol, ratio) in enumerate(zip(recent_price_bins[:-1], 
+                                                            normalized_recent_volume, 
+                                                            normalized_recent_net_volume, 
+                                                            recent_volume_ratios)):
+            bar_width = vol * center_overlay_width * 0.8  # 막대 너비를 거래량에 비례하게
+            
+            # 색상 설정 (연한 색상으로 구분)
+            if net_vol > 0:
+                color = 'lightgreen'  # 연한 녹색
+            elif net_vol < 0:
+                color = 'lightcoral'  # 연한 빨강
+            else:
+                color = 'lightgray'   # 연한 회색
+            
+            # 중앙에 막대 그리기 (투명도 낮춤)
+            ax_main.barh(price, bar_width, height=recent_bin_heights, left=center_overlay_start, 
+                        alpha=0.3, color=color, zorder=8)
+        
+        # 최근 6개월 POC (검은색 점선) - 우측 끝까지 연장
+        recent_poc_xmin = (center_overlay_start - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
+        recent_poc_xmax = 1.0  # 우측 끝까지 연장
+        ax_main.axhline(recent_poc_price, color='black', linestyle=':', alpha=0.8, linewidth=2, 
+                       xmin=recent_poc_xmin, xmax=recent_poc_xmax, zorder=14, 
+                       label=f'최근 6개월 POC: {recent_poc_price:.2f}')
+        
+        # 최근 6개월 POC 가격 텍스트 표시
+        ax_main.text(center_overlay_start + center_overlay_width * 0.5, recent_poc_price, 
+                    f'{recent_poc_price:.2f}', fontsize=8, color='black', ha='center', va='center',
+                    bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', pad=2), zorder=16)
+        
+        # 최근 6개월 Value Area 표시 (Volume Profile 영역에만)
+        recent_value_xmax = (center_overlay_start + center_overlay_width - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
+        ax_main.axhspan(recent_value_area_min, recent_value_area_max, alpha=0.05, color='blue', 
+                       xmin=recent_poc_xmin, xmax=recent_value_xmax, zorder=4, 
+                       label=f'최근 6개월 Value Area: {recent_value_area_min:.2f}-{recent_value_area_max:.2f}')
+    
     # Net Volume Profile 범례 추가 (투명도 조정)
     legend_elements = [
-        plt.Rectangle((0, 0), 1, 1, facecolor='green', alpha=0.4, label='상승 압력 (Net +)'),
-        plt.Rectangle((0, 0), 1, 1, facecolor='red', alpha=0.4, label='하락 압력 (Net -)'),
-        plt.Rectangle((0, 0), 1, 1, facecolor='gray', alpha=0.4, label='중립 (Net 0)')
+        plt.Rectangle((0, 0), 1, 1, facecolor='green', alpha=0.4, label='전체 기간 상승 압력'),
+        plt.Rectangle((0, 0), 1, 1, facecolor='red', alpha=0.4, label='전체 기간 하락 압력'),
+        plt.Rectangle((0, 0), 1, 1, facecolor='gray', alpha=0.4, label='전체 기간 중립')
     ]
+    
+    # 최근 6개월 범례 추가 (1년 이상인 경우)
+    if analysis_period_days >= 365 and recent_6mo_data is not None and len(recent_6mo_data) >= 30:
+        legend_elements.extend([
+            plt.Rectangle((0, 0), 1, 1, facecolor='lightgreen', alpha=0.3, label='최근 6개월 상승 압력'),
+            plt.Rectangle((0, 0), 1, 1, facecolor='lightcoral', alpha=0.3, label='최근 6개월 하락 압력'),
+            plt.Line2D([], [], color='black', linestyle=':', linewidth=2, label='최근 6개월 POC')
+        ])
+    
     ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.95), fontsize=8)
 
     # 거래량 차트 표시 (하단)
@@ -405,7 +522,13 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_volume.tick_params(axis='x', rotation=45)
 
     # 메인차트 설정
-    ax_main.set_title(f'{ticker} - Main Chart with Volume Profile Overlay ({start_date.strftime("%Y-%m-%d")} ~ {end_date.strftime("%Y-%m-%d")})')
+    title = f'{ticker} - Main Chart with Volume Profile Overlay\n'
+    title += f'전체 기간: {start_date.strftime("%Y-%m-%d")} ~ {end_date.strftime("%Y-%m-%d")}'
+    if analysis_period_days >= 365 and recent_6mo_data is not None and len(recent_6mo_data) >= 30:
+        recent_6mo_start = end_date - pd.Timedelta(days=180)
+        title += f'\n최근 6개월: {recent_6mo_start.strftime("%Y-%m-%d")} ~ {end_date.strftime("%Y-%m-%d")}'
+    
+    ax_main.set_title(title)
     ax_main.set_ylabel('Price')
     ax_main.grid(True, alpha=0.3)
     ax_main.legend(loc='upper left', fontsize=8)

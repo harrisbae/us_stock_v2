@@ -44,3 +44,5 @@ XLP
 XLU
 #AI ETF
 WTAI
+#AI 광고
+ZETA
