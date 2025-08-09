@@ -126,6 +126,8 @@ def calculate_volume_profile(ohlcv_data, num_bins=50):
     
     return price_bins, volume_profile, net_volume_profile, volume_ratios, poc_price, value_area_min, value_area_max
 
+ 
+
 def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str = None, save_path: str = None, current_price: float = None):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
@@ -187,15 +189,19 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
             recent_volume_ratios, recent_poc_price, recent_value_area_min, recent_value_area_max = \
                 calculate_volume_profile(recent_6mo_data)
 
-    # 차트 생성 (2x1 레이아웃: 메인차트 + 거래량)
-    fig = plt.figure(figsize=(20, 12))
-    gs = GridSpec(2, 1, height_ratios=[3, 1], figure=fig, hspace=0.1)
+    # 차트 생성 (4x1 레이아웃: 메인차트 + 거래량 + RSI + MACD)
+    fig = plt.figure(figsize=(20, 14))
+    gs = GridSpec(4, 1, height_ratios=[3, 1, 1, 1], figure=fig, hspace=0.1)
     
     # 메인 차트 (상단)
     ax_main = fig.add_subplot(gs[0, 0])
     
-    # 거래량 차트 (하단)
+    # 거래량 차트
     ax_volume = fig.add_subplot(gs[1, 0], sharex=ax_main)
+    # RSI 차트
+    ax_rsi = fig.add_subplot(gs[2, 0], sharex=ax_main)
+    # MACD 차트
+    ax_macd = fig.add_subplot(gs[3, 0], sharex=ax_main)
 
     # 메인 차트 설정 (투명도 높임)
     candlestick_ohlc(ax_main, 
@@ -317,6 +323,11 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
                     ha='center', va='top', rotation=45,
                     bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=25)
         
+        # 서브플롯에도 동일 수직선 표시 (라벨 없음)
+        ax_volume.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
+        ax_rsi.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
+        ax_macd.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
+        
         # 종가 기준 수평선 (거래량에 따른 두께 적용)
         close = ohlcv_data.loc[dt, 'Close']
         open_ = ohlcv_data.loc[dt, 'Open']
@@ -428,6 +439,8 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_main.axhspan(value_area_min, value_area_max, alpha=0.1, color='green', 
                    xmin=poc_xmin, xmax=value_xmax, zorder=5, label=f'Value Area: {value_area_min:.2f}-{value_area_max:.2f}')
     
+    
+
     # 최근 6개월 Volume Profile 표시 (1년 이상인 경우)
     if analysis_period_days >= 365 and recent_6mo_data is not None and len(recent_6mo_data) >= 30:
         # 중앙에 최근 6개월 Volume Profile 배치
@@ -497,7 +510,7 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     
     ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.95), fontsize=8)
 
-    # 거래량 차트 표시 (하단)
+    # 거래량 차트 표시
     # 거래량 막대 (양봉/음봉 구분)
     colors = ['green' if close >= open_ else 'red' for close, open_ in zip(ohlcv_data['Close'], ohlcv_data['Open'])]
     ax_volume.bar(ohlcv_data.index, ohlcv_data['Volume'], color=colors, alpha=0.7, width=0.8)
@@ -517,6 +530,30 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_volume.legend(fontsize=8)
     ax_volume.grid(True, alpha=0.3)
     
+    # RSI 차트 표시
+    ax_rsi.plot(ohlcv_data.index, rsi14, color='tab:blue', linewidth=1.2, label='RSI(14)')
+    # 보조로 RSI(3) 얇게 표시
+    ax_rsi.plot(ohlcv_data.index, rsi3, color='tab:orange', linewidth=0.8, alpha=0.6, label='RSI(3)')
+    ax_rsi.axhline(70, color='red', linestyle='--', linewidth=0.8, alpha=0.6)
+    ax_rsi.axhline(50, color='gray', linestyle=':', linewidth=0.8, alpha=0.6)
+    ax_rsi.axhline(30, color='green', linestyle='--', linewidth=0.8, alpha=0.6)
+    ax_rsi.set_ylim(0, 100)
+    ax_rsi.set_title('RSI')
+    ax_rsi.set_ylabel('RSI')
+    ax_rsi.legend(fontsize=8, loc='upper left')
+    ax_rsi.grid(True, alpha=0.3)
+
+    # MACD 차트 표시
+    macd_colors = ['green' if v >= 0 else 'red' for v in hist]
+    ax_macd.bar(ohlcv_data.index, hist, color=macd_colors, alpha=0.5, width=0.8, label='Histogram')
+    ax_macd.plot(ohlcv_data.index, macd, color='tab:blue', linewidth=1.2, label='MACD')
+    ax_macd.plot(ohlcv_data.index, macd_signal, color='tab:orange', linewidth=1.0, label='Signal')
+    ax_macd.axhline(0, color='black', linewidth=0.8, alpha=0.6)
+    ax_macd.set_title('MACD (12,26,9)')
+    ax_macd.set_ylabel('MACD')
+    ax_macd.legend(fontsize=8, loc='upper left')
+    ax_macd.grid(True, alpha=0.3)
+
     # x축 날짜 포맷 설정
     ax_volume.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax_volume.tick_params(axis='x', rotation=45)
@@ -538,7 +575,7 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_main.tick_params(axis='x', rotation=45)
 
     # 레이아웃 조정
-    plt.subplots_adjust(left=0.08, right=0.95, top=0.95, bottom=0.08, hspace=0.1)
+    plt.subplots_adjust(left=0.08, right=0.95, top=0.95, bottom=0.06, hspace=0.12)
 
     # 저장 또는 표시
     if save_path:
