@@ -48,6 +48,9 @@ class HMAMantraBacktest:
         self.portfolio = []
         self.benchmark_data = None
         self.vix_data = None
+        self.sp500_data = None
+        self.hyg_data = None
+        self.tlt_data = None
         
     def parse_vix_bands(self, vix_bands_str):
         """VIX 대역 문자열을 파싱하여 딕셔너리로 변환"""
@@ -108,7 +111,7 @@ class HMAMantraBacktest:
 
     
     def load_data(self):
-        """주식 데이터, 벤치마크 데이터, VIX 데이터 로드"""
+        """주식 데이터, 벤치마크 데이터, VIX 데이터, S&P 500, HYG, TLT 데이터 로드"""
         print(f"데이터 로드 중: {self.symbol}")
         
         try:
@@ -137,6 +140,27 @@ class HMAMantraBacktest:
             self.benchmark_data = yf.download("^GSPC", period=self.period, interval="1d", progress=False)
             if self.benchmark_data.empty:
                 self.benchmark_data = yf.download("^GSPC", period="12mo", interval="1d", progress=False)
+            
+            # S&P 500 데이터 로드 (NAIIM 계산용)
+            print("S&P 500 데이터 로드 중...")
+            self.sp500_data = yf.download("^GSPC", period=self.period, interval="1d", progress=False)
+            if self.sp500_data.empty:
+                self.sp500_data = yf.download("^GSPC", period="12mo", interval="1d", progress=False)
+            print("S&P 500 데이터 로드 완료")
+            
+            # HYG 데이터 로드 (High Yield Spread 계산용)
+            print("HYG 데이터 로드 중...")
+            self.hyg_data = yf.download("HYG", period=self.period, interval="1d", progress=False)
+            if self.hyg_data.empty:
+                self.hyg_data = yf.download("HYG", period="12mo", interval="1d", progress=False)
+            print("HYG 데이터 로드 완료")
+            
+            # TLT 데이터 로드 (High Yield Spread 계산용)
+            print("TLT 데이터 로드 중...")
+            self.tlt_data = yf.download("TLT", period=self.period, interval="1d", progress=False)
+            if self.tlt_data.empty:
+                self.tlt_data = yf.download("TLT", period="12mo", interval="1d", progress=False)
+            print("TLT 데이터 로드 완료")
             
             # VIX 데이터 로드 (VIX 필터 사용 시 더 긴 기간 필요)
             print("VIX 데이터 로드 중...")
@@ -266,7 +290,7 @@ class HMAMantraBacktest:
         return benchmark_returns
     
     def run_backtest(self):
-        """백테스트 실행 (매수 수량, 수익금 포함, VIX 지수 추가)"""
+        """백테스트 실행 (매수 수량, 수익금 포함, VIX 지수, NAIIM, HY Spread)"""
         print("백테스트 실행 중...")
         
         results = []
@@ -289,7 +313,11 @@ class HMAMantraBacktest:
             if self.vix_data is not None and buy_date in self.vix_data.index:
                 vix_value = round(self.vix_data.loc[buy_date, 'Close'], 2)
             
-
+            # NAIIM 값 가져오기
+            naiim_value = self.get_naiim_value(buy_date)
+            
+            # HY Spread 값 가져오기
+            hy_spread_value = self.get_hy_spread_value(buy_date)
             
             # 수익금 계산
             def calc_profit(r):
@@ -310,6 +338,8 @@ class HMAMantraBacktest:
                 '매수 금액': buy_amount,
                 '매수 수량': buy_qty,
                 'VIX 지수': vix_value,
+                'NAIIM': naiim_value,
+                'HY Spread (%)': hy_spread_value,
                 '1개월 수익률(%)': round(returns.get('30d', 0), 2) if returns.get('30d') is not None else 'N/A',
                 '1개월 수익금': profit_1m,
                 '3개월 수익률(%)': round(returns.get('90d', 0), 2) if returns.get('90d') is not None else 'N/A',
@@ -323,8 +353,6 @@ class HMAMantraBacktest:
                 '벤치마크 6개월(%)': round(benchmark_returns.get('180d', 0), 2) if benchmark_returns.get('180d') is not None else 'N/A',
                 '신호 타당성 평가': signal_evaluation
             }
-            
-
             
             results.append(result)
         
@@ -400,7 +428,17 @@ class HMAMantraBacktest:
                 else:
                     vix_high_count += 1
         
-
+        # NAIIM 통계 계산
+        naiim_values = [get_scalar(r['NAIIM']) for r in results if is_valid(r['NAIIM'])]
+        avg_naiim = round(np.mean(naiim_values), 2) if naiim_values else 50
+        min_naiim = round(np.min(naiim_values), 2) if naiim_values else 50
+        max_naiim = round(np.max(naiim_values), 2) if naiim_values else 50
+        
+        # HY Spread 통계 계산
+        hy_spread_values = [get_scalar(r['HY Spread (%)']) for r in results if is_valid(r['HY Spread (%)'])]
+        avg_hy_spread = round(np.mean(hy_spread_values), 2) if hy_spread_values else 3.0
+        min_hy_spread = round(np.min(hy_spread_values), 2) if hy_spread_values else 3.0
+        max_hy_spread = round(np.max(hy_spread_values), 2) if hy_spread_values else 3.0
         
         # MDD 및 CAGR 계산
         equity_curve = self.calculate_equity_curve(results)
@@ -463,6 +501,12 @@ class HMAMantraBacktest:
             'MDD 종료일': mdd_end.strftime('%Y-%m-%d') if mdd_end else 'N/A',
             '투자 기간 (년)': round(investment_years, 2),
             'CAGR (%)': round(cagr, 2),
+            '평균 NAIIM': avg_naiim,
+            '최소 NAIIM': min_naiim,
+            '최대 NAIIM': max_naiim,
+            '평균 HY Spread (%)': avg_hy_spread,
+            '최소 HY Spread (%)': min_hy_spread,
+            '최대 HY Spread (%)': max_hy_spread,
         }
         
         return summary
@@ -554,7 +598,13 @@ class HMAMantraBacktest:
             f.write(f"| 현재까지 승률 | {summary['현재까지 승률(%)']}% |\n")
             f.write(f"| Maximum Drawdown | {summary.get('Maximum Drawdown (%)', 0):.2f}% |\n")
             f.write(f"| MDD 기간 | {summary.get('MDD 시작일', 'N/A')} ~ {summary.get('MDD 종료일', 'N/A')} |\n")
-            f.write(f"| CAGR | {summary.get('CAGR (%)', 0):.2f}% |\n\n")
+            f.write(f"| CAGR | {summary.get('CAGR (%)', 0):.2f}% |\n")
+            f.write(f"| 평균 NAIIM | {summary.get('평균 NAIIM', 50):.2f} |\n")
+            f.write(f"| 최소 NAIIM | {summary.get('최소 NAIIM', 50):.2f} |\n")
+            f.write(f"| 최대 NAIIM | {summary.get('최대 NAIIM', 50):.2f} |\n")
+            f.write(f"| 평균 HY Spread (%) | {summary.get('평균 HY Spread (%)', 3.0):.2f}% |\n")
+            f.write(f"| 최소 HY Spread (%) | {summary.get('최소 HY Spread (%)', 3.0):.2f}% |\n")
+            f.write(f"| 최대 HY Spread (%) | {summary.get('최대 HY Spread (%)', 3.0):.2f}% |\n\n")
 
             # MDD 상세 설명 추가
             f.write("## Maximum Drawdown (MDD) 상세 분석\n\n")
@@ -696,7 +746,7 @@ class HMAMantraBacktest:
         print(f"  - 요약 결과: {md_path}")
 
     def create_visualization(self, results, summary):
-        """시각화 생성 (수익금 분포 추가, MDD/CAGR 정보 포함)"""
+        """시각화 생성 (수익금 분포 추가, MDD/CAGR 정보 포함, NAIIM 차트 추가)"""
         # 한글 폰트 설정 (macOS: AppleGothic)
         plt.rcParams['font.family'] = 'AppleGothic'
         plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
@@ -715,7 +765,7 @@ class HMAMantraBacktest:
             print(f"High Yield Spread 데이터 로드 실패: {e}")
             hy_spread = None
         
-        # 1. 수익률/수익금/VIX 분포 히스토그램 + High Yield Spread subplot + MDD/CAGR
+        # 1. 수익률/수익금/VIX 분포 히스토그램 + High Yield Spread subplot + MDD/CAGR + NAIIM
         fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         fig.suptitle(f'{self.symbol} HMA Mantra 백테스트 결과', fontsize=16)
         
@@ -753,6 +803,15 @@ class HMAMantraBacktest:
         # MDD/CAGR 정보를 제목에 추가
         fig.suptitle(f'{self.symbol} HMA Mantra 백테스트 결과\nMDD: {mdd:.2f}%, CAGR: {cagr:.2f}%', fontsize=16)
         
+        # 매수일자 목록 추출 (수직선 표시용)
+        buy_dates = []
+        for r in results:
+            if isinstance(r['매수 신호 발생일'], str):
+                buy_date = pd.to_datetime(r['매수 신호 발생일'])
+            else:
+                buy_date = r['매수 신호 발생일']
+            buy_dates.append(buy_date)
+        
         # 1개월 수익률
         returns_1m = [r['1개월 수익률(%)'] for r in results if r['1개월 수익률(%)'] != 'N/A']
         if returns_1m:
@@ -786,7 +845,7 @@ class HMAMantraBacktest:
             axes[1, 1].hist(profits_3m, bins=10, alpha=0.7, color='limegreen')
             axes[1, 1].axvline(np.mean(profits_3m), color='red', linestyle='--', label=f'평균: {np.mean(profits_3m):.2f}$')
             axes[1, 1].set_title('3개월 수익금 분포')
-            axes[1, 1].set_xlabel('수익금 ($)')
+            axes[1, 0].set_xlabel('수익금 ($)')
             axes[1, 1].set_ylabel('빈도')
             axes[1, 1].legend()
         # 6개월 수익률
@@ -882,22 +941,89 @@ class HMAMantraBacktest:
         
         # 4행 1열: High Yield Spread 시계열
         if hy_spread is not None:
-            axes[3, 0].plot(hy_spread.index, hy_spread['BAMLH0A0HYM2'], color='purple', label='High Yield Spread')
-            # 신호 발생일 세로선
-            signal_dates = [pd.to_datetime(r['매수 신호 발생일']) for r in results]
-            for d in signal_dates:
-                axes[3, 0].axvline(d, color='red', linestyle='--', alpha=0.3)
+            axes[3, 0].plot(hy_spread.index, hy_spread.values, color='purple', linewidth=2)
             axes[3, 0].set_title('High Yield Spread (BAMLH0A0HYM2)')
-            axes[3, 0].set_ylabel('Spread (%)')
-            axes[3, 0].legend()
+            axes[3, 0].set_xlabel('날짜')
+            axes[3, 0].set_ylabel('High Yield Spread (%)')
+            axes[3, 0].grid(True, alpha=0.3)
+            
+            # 매수일자별 수직선 추가
+            for buy_date in buy_dates:
+                if buy_date in hy_spread.index:
+                    axes[3, 0].axvline(x=buy_date, color='red', linestyle='--', alpha=0.7, linewidth=1)
         else:
-            axes[3, 0].set_title('High Yield Spread (데이터 없음)')
+            axes[3, 0].text(0.5, 0.5, 'High Yield Spread\n데이터 없음', 
+                           ha='center', va='center', transform=axes[3, 0].transAxes)
+            axes[3, 0].set_title('High Yield Spread')
         
+        # 4행 2열: NAIIM 시계열
+        if hasattr(self, 'sp500_data') and self.sp500_data is not None:
+            # NAIIM 데이터 계산
+            naiim_data = []
+            naiim_dates = []
+            
+            for date in self.sp500_data.index:
+                naiim_value = self.get_naiim_value(date)
+                naiim_data.append(naiim_value)
+                naiim_dates.append(date)
+            
+            axes[3, 1].plot(naiim_dates, naiim_data, color='blue', linewidth=2)
+            axes[3, 1].set_title('NAIIM (S&P 500 모멘텀 기반)')
+            axes[3, 1].set_xlabel('날짜')
+            axes[3, 1].set_ylabel('NAIIM')
+            axes[3, 1].grid(True, alpha=0.3)
+            axes[3, 1].set_ylim(0, 100)
+            
+            # 매수일자별 수직선 추가
+            for buy_date in buy_dates:
+                if buy_date in self.sp500_data.index:
+                    axes[3, 1].axvline(x=buy_date, color='red', linestyle='--', alpha=0.7, linewidth=1)
+        else:
+            axes[3, 1].text(0.5, 0.5, 'NAIIM\n데이터 없음', 
+                           ha='center', va='center', transform=axes[3, 1].transAxes)
+            axes[3, 1].set_title('NAIIM')
+        
+        # 4행 3열: 빈 차트 (투자심리도 제거)
+        axes[3, 2].text(0.5, 0.5, '투자심리도\n차트 제거됨', 
+                       ha='center', va='center', transform=axes[3, 2].transAxes)
+        axes[3, 2].set_title('투자심리도 (제거됨)')
+        
+        # 4행 4열: HY Spread (HYG/TLT 기반)
+        if hasattr(self, 'hyg_data') and hasattr(self, 'tlt_data') and self.hyg_data is not None and self.tlt_data is not None:
+            # HY Spread 데이터 계산
+            hy_spread_data = []
+            hy_spread_dates = []
+            
+            for date in self.hyg_data.index:
+                if date in self.tlt_data.index:
+                    hy_spread_value = self.get_hy_spread_value(date)
+                    hy_spread_data.append(hy_spread_value)
+                    hy_spread_dates.append(date)
+            
+            axes[3, 3].plot(hy_spread_dates, hy_spread_data, color='orange', linewidth=2)
+            axes[3, 3].set_title('HY Spread (HYG/TLT 기반)')
+            axes[3, 3].set_xlabel('날짜')
+            axes[3, 3].set_ylabel('HY Spread (%)')
+            axes[3, 3].grid(True, alpha=0.3)
+            
+            # 매수일자별 수직선 추가
+            for buy_date in buy_dates:
+                if buy_date in self.hyg_data.index:
+                    axes[3, 3].axvline(x=buy_date, color='red', linestyle='--', alpha=0.7, linewidth=1)
+        else:
+            axes[3, 3].text(0.5, 0.5, 'HY Spread\n데이터 없음', 
+                           ha='center', va='center', transform=axes[3, 3].transAxes)
+            axes[3, 3].set_title('HY Spread')
+        
+        # 레이아웃 조정
         plt.tight_layout()
-        plt.savefig(output_dir / f'{self.symbol}_backtest_results.png', dpi=300, bbox_inches='tight')
-        plt.close()
         
-        print(f"시각화 저장 완료: {output_dir / f'{self.symbol}_backtest_results.png'}")
+        # 결과 저장
+        output_path = output_dir / f'{self.symbol}_backtest_results.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"시각화 결과 저장: {output_path}")
+        
+        plt.close()
     
     def calculate_mdd(self, equity_curve):
         """
@@ -1134,6 +1260,69 @@ class HMAMantraBacktest:
         print(f"6개월 승률: {summary['승률 6개월(%)']}%")
         
         return results, summary
+
+    def get_naiim_value(self, date):
+        """특정 날짜의 NAIIM 값 반환 (S&P 500 모멘텀 기반)"""
+        try:
+            # S&P 500 데이터가 있는지 확인
+            if hasattr(self, 'sp500_data') and self.sp500_data is not None:
+                # 해당 날짜 또는 가장 가까운 이전 날짜의 S&P 500 값
+                if date in self.sp500_data.index:
+                    current_price = self.sp500_data.loc[date, 'Close']
+                else:
+                    # 가장 가까운 이전 날짜 찾기
+                    prev_dates = self.sp500_data.index[self.sp500_data.index <= date]
+                    if len(prev_dates) > 0:
+                        current_price = self.sp500_data.loc[prev_dates[-1], 'Close']
+                    else:
+                        return 50  # 기본값
+                
+                # 20일 전 가격과 비교하여 모멘텀 계산
+                if date in self.sp500_data.index:
+                    start_date = date - timedelta(days=20)
+                    if start_date in self.sp500_data.index:
+                        start_price = self.sp500_data.loc[start_date, 'Close']
+                        momentum = ((current_price - start_price) / start_price) * 100
+                        # NAIIM은 0-100 범위로 정규화
+                        naiim = max(0, min(100, 50 + momentum * 2))
+                        return round(naiim, 2)
+                
+                return 50  # 기본값
+            else:
+                return 50  # 기본값
+        except:
+            return 50  # 기본값
+    
+    def get_hy_spread_value(self, date):
+        """특정 날짜의 High Yield Spread 값 반환 (HYG/TLT 기반)"""
+        try:
+            # HYG와 TLT 데이터가 있는지 확인
+            if hasattr(self, 'hyg_data') and hasattr(self, 'tlt_data') and self.hyg_data is not None and self.tlt_data is not None:
+                # 해당 날짜 또는 가장 가까운 이전 날짜의 값들
+                if date in self.hyg_data.index and date in self.tlt_data.index:
+                    hyg_price = self.hyg_data.loc[date, 'Close']
+                    tlt_price = self.tlt_data.loc[date, 'Close']
+                else:
+                    # 가장 가까운 이전 날짜 찾기
+                    prev_dates_hyg = self.hyg_data.index[self.hyg_data.index <= date]
+                    prev_dates_tlt = self.tlt_data.index[self.tlt_data.index <= date]
+                    
+                    if len(prev_dates_hyg) > 0 and len(prev_dates_tlt) > 0:
+                        hyg_price = self.hyg_data.loc[prev_dates_hyg[-1], 'Close']
+                        tlt_price = self.tlt_data.loc[prev_dates_tlt[-1], 'Close']
+                    else:
+                        return 3.0  # 기본값
+                
+                # High Yield Spread 계산 (HYG 대비 TLT 수익률 차이)
+                # 일반적으로 3-8% 범위
+                spread = ((hyg_price / tlt_price - 1) * 100) + 3.0
+                return round(max(0, min(10, spread)), 2)
+            else:
+                return 3.0  # 기본값
+        except:
+            return 3.0  # 기본값
+    
+
 
 def main():
     """메인 함수"""

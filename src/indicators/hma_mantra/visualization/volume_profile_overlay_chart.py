@@ -126,6 +126,95 @@ def _detect_rsi_divergences(ohlcv_data: pd.DataFrame,
 
     return divergences
 
+def _get_market_sentiment_summary(vix_value, naaim_value, pcr_value):
+    """VIX, NAIIM, PCR을 종합하여 시장 심리 요약을 생성합니다."""
+    if vix_value is None and naaim_value is None and pcr_value is None:
+        return "시장 데이터 부족"
+    
+    summary_parts = []
+    
+    # VIX 해석
+    if vix_value is not None:
+        if vix_value < 20:
+            vix_sentiment = "VIX:[G](안정)"
+        elif vix_value < 30:
+            vix_sentiment = "VIX:[O](중간)"
+        else:
+            vix_sentiment = "VIX:[R](불안)"
+        summary_parts.append(vix_sentiment)
+    
+    # NAIIM 해석
+    if naaim_value is not None:
+        if naaim_value < 30:
+            naaim_sentiment = "NAIIM:[R](보수)"
+        elif naaim_value < 50:
+            naaim_sentiment = "NAIIM:[O](중간)"
+        else:
+            naaim_sentiment = "NAIIM:[B](적극)"
+        summary_parts.append(naaim_sentiment)
+    
+    # PCR 해석
+    if pcr_value is not None:
+        if pcr_value < 0.7:
+            pcr_sentiment = "PCR:[G](매수)"
+        elif pcr_value < 1.0:
+            pcr_sentiment = "PCR:[O](균형)"
+        else:
+            pcr_sentiment = "PCR:[R](매도)"
+        summary_parts.append(pcr_sentiment)
+    
+    # 종합 판단
+    if len(summary_parts) >= 2:
+        bullish_count = sum(1 for part in summary_parts if '[G]' in part or '[B]' in part)
+        bearish_count = sum(1 for part in summary_parts if '[R]' in part)
+        
+        if bullish_count > bearish_count:
+            overall_sentiment = " -> [UP] 매수우세"
+        elif bearish_count > bullish_count:
+            overall_sentiment = " -> [DOWN] 매도우세"
+        else:
+            overall_sentiment = " -> [EQ] 중립"
+        
+        summary_parts.append(overall_sentiment)
+    
+    return " | ".join(summary_parts)
+
+def _get_strategy_guide(vix_value, naaim_value, pcr_value):
+    """VIX, NAIIM, PCR 구간별 전략 가이드를 생성합니다."""
+    strategy_parts = []
+    
+    # VIX 전략
+    if vix_value is not None:
+        if vix_value < 20:
+            vix_strategy = "VIX<20: 매수기회(안정)"
+        elif vix_value < 30:
+            vix_strategy = "VIX 20-30: 관망(중간)"
+        else:
+            vix_strategy = "VIX>30: 방어(불안)"
+        strategy_parts.append(vix_strategy)
+    
+    # NAIIM 전략
+    if naaim_value is not None:
+        if naaim_value < 30:
+            naaim_strategy = "NAIIM<30: 매수(보수)"
+        elif naaim_value < 50:
+            naaim_strategy = "NAIIM 30-50: 중립(균형)"
+        else:
+            naaim_strategy = "NAIIM>50: 주의(적극)"
+        strategy_parts.append(naaim_strategy)
+    
+    # PCR 전략
+    if pcr_value is not None:
+        if pcr_value < 0.7:
+            pcr_strategy = "PCR<0.7: 매수(콜우세)"
+        elif pcr_value < 1.0:
+            pcr_strategy = "PCR 0.7-1.0: 중립(균형)"
+        else:
+            pcr_strategy = "PCR>1.0: 매도(풋우세)"
+        strategy_parts.append(pcr_strategy)
+    
+    return " | ".join(strategy_parts)
+
 def _detect_macd_divergences(ohlcv_data: pd.DataFrame,
                              macd_hist: pd.Series,
                              pivot_span_left: int = 3,
@@ -343,6 +432,46 @@ def plot_main_chart_with_volume_profile_overlay(
     start_date = ohlcv_data.index[0]
     end_date = ohlcv_data.index[-1]
     vix, tnx, dxy = get_market_data(start_date, end_date)
+    
+    # NAIIM 데이터 가져오기 (실제 데이터 우선, 없으면 시뮬레이션)
+    try:
+        from pathlib import Path
+        
+        naaim_file = Path("data_cache/naaim_data.csv")
+        if naaim_file.exists():
+            naaim_df = pd.read_csv(naaim_file)
+            naaim_df['Date'] = pd.to_datetime(naaim_df['Date'])
+            naaim_df.set_index('Date', inplace=True)
+            naaim = naaim_df.loc[start_date:end_date]
+            print(f"실제 NAIIM 데이터 로드 완료: {len(naaim)}개 데이터")
+        else:
+            naaim = None
+            print("실제 NAIIM 데이터 파일이 없습니다.")
+    except Exception as e:
+        print(f"NAIIM 데이터 로드 오류: {e}")
+        naaim = None
+    
+    # PCR 데이터 계산 (옵션이 있는 종목만)
+    pcr = None
+    if ticker and not ticker.endswith('.KS'):  # 한국 종목 제외
+        try:
+            import yfinance as yf
+            
+            stock = yf.Ticker(ticker)
+            options = stock.options
+            if options:
+                nearest_expiry = options[0]
+                calls = stock.option_chain(nearest_expiry).calls
+                puts = stock.option_chain(nearest_expiry).puts
+                
+                total_call_volume = calls['volume'].sum()
+                total_put_volume = puts['volume'].sum()
+                
+                if total_call_volume > 0:
+                    pcr = total_put_volume / total_call_volume
+                    print(f"{ticker} PCR 계산 완료: {pcr:.3f}")
+        except Exception as e:
+            print(f"{ticker} PCR 계산 오류: {e}")
 
     # 기술적 지표 계산
     hma = calculate_hma(ohlcv_data['Close'])
@@ -389,12 +518,75 @@ def plot_main_chart_with_volume_profile_overlay(
             recent_volume_ratios, recent_poc_price, recent_value_area_min, recent_value_area_max = \
                 calculate_volume_profile(recent_6mo_data)
 
+    # 시장 심리 종합해석 생성
+    vix_final = None
+    naaim_final = None
+    
+    if not vix.empty:
+        vix_end_date = vix.index[vix.index <= end_date][-1] if len(vix.index[vix.index <= end_date]) > 0 else vix.index[-1]
+        vix_final = float(vix.loc[vix_end_date].iloc[0])
+        print(f"VIX 최종값: {vix_final}")
+    
+    if naaim is not None and not naaim.empty:
+        naaim_end_date = naaim.index[naaim.index <= end_date][-1] if len(naaim.index[naaim.index <= end_date]) > 0 else naaim.index[-1]
+        naaim_final = float(naaim.loc[naaim_end_date].iloc[0])
+        print(f"NAIIM 최종값: {naaim_final}")
+    
+    print(f"PCR 값: {pcr}")
+    market_summary = _get_market_sentiment_summary(vix_final, naaim_final, pcr)
+    strategy_guide = _get_strategy_guide(vix_final, naaim_final, pcr)
+    
+    print(f"시장 심리 요약: {market_summary}")
+    print(f"전략 가이드: {strategy_guide}")
+    
     # 차트 생성 (4x1 레이아웃: 메인차트 + 거래량 + RSI + MACD)
     fig = plt.figure(figsize=(20, 14))
     gs = GridSpec(4, 1, height_ratios=[3, 1, 1, 1], figure=fig, hspace=0.1)
     
     # 메인 차트 (상단)
     ax_main = fig.add_subplot(gs[0, 0])
+    
+    # 차트 타이틀에 시장 심리 종합해석 추가
+    title_text = f"{ticker} HMA Mantra Analysis"
+    if market_summary and market_summary != "시장 데이터 부족":
+        title_text += f" | {market_summary}"
+    
+    print(f"설정할 타이틀: {title_text}")
+    
+    # 메인 차트 타이틀은 간단하게 설정
+    ax_main.set_title(f"{ticker} HMA Mantra Analysis", fontsize=14, fontweight='bold', pad=15)
+    
+    # 전체 차트 상단에 시장 심리 종합해석과 전략 가이드를 별도로 표시
+    if market_summary and market_summary != "시장 데이터 부족":
+        # 기본 타이틀 제거
+        fig.suptitle("", fontsize=1, y=0.99)
+        
+        # 시장 심리 요약을 상단 중앙에 박스 형태로 표시
+        ax_summary = fig.add_axes([0.1, 0.95, 0.8, 0.03])
+        ax_summary.set_facecolor('lightblue')
+        ax_summary.set_xlim(0, 1)
+        ax_summary.set_ylim(0, 1)
+        ax_summary.axis('off')
+        
+        # 시장 심리 요약 텍스트를 박스 안에 표시
+        ax_summary.text(0.5, 0.5, market_summary, 
+                       fontsize=12, fontweight='bold', ha='center', va='center',
+                       bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
+                                edgecolor='navy', linewidth=2))
+        
+        # 전략 가이드를 시장 심리 요약 아래에 표시
+        if strategy_guide:
+            ax_strategy = fig.add_axes([0.1, 0.91, 0.8, 0.03])
+            ax_strategy.set_facecolor('lightyellow')
+            ax_strategy.set_xlim(0, 1)
+            ax_strategy.set_ylim(0, 1)
+            ax_strategy.axis('off')
+            
+            # 전략 가이드 텍스트를 박스 안에 표시
+            ax_strategy.text(0.5, 0.5, strategy_guide, 
+                           fontsize=11, fontweight='bold', ha='center', va='center',
+                           bbox=dict(boxstyle="round,pad=0.5", facecolor='lightyellow', 
+                                    edgecolor='orange', linewidth=2))
     
     # 거래량 차트
     ax_volume = fig.add_subplot(gs[1, 0], sharex=ax_main)
@@ -409,26 +601,78 @@ def plot_main_chart_with_volume_profile_overlay(
                       zip(ohlcv_data.index, ohlcv_data[['Open', 'High', 'Low', 'Close']].values)],
                      width=0.6, colorup='green', colordown='red', alpha=0.9)
     
-    # VIX 값 우측 상단에 표시
+    # 시장 지표들을 수평으로 우측 상단에 표시
+    indicators = []
+    
+    # VIX 값 추가
     if not vix.empty:
-        # 기간의 마지막 날짜에 해당하는 VIX 값 찾기
         end_date = ohlcv_data.index[-1]
         vix_end_date = vix.index[vix.index <= end_date][-1] if len(vix.index[vix.index <= end_date]) > 0 else vix.index[-1]
-        vix_value = float(vix.loc[vix_end_date].iloc[0])  # 스칼라 값으로 변환
+        vix_value = float(vix.loc[vix_end_date].iloc[0])
         
-        # VIX 값에 따른 색상 설정
         if vix_value < 20:
-            vix_color = 'green'  # 낮은 변동성
+            vix_color = 'green'
         elif vix_value < 30:
-            vix_color = 'orange'  # 중간 변동성
+            vix_color = 'orange'
         else:
-            vix_color = 'red'  # 높은 변동성
+            vix_color = 'red'
         
-        # 우측 상단에 VIX 값 표시
-        ax_main.text(0.98, 0.98, f'VIX: {vix_value:.2f}\n{vix_end_date.strftime("%Y-%m-%d")}', 
-                    transform=ax_main.transAxes, fontsize=12, ha='right', va='top',
-                    bbox=dict(facecolor=vix_color, alpha=0.8, edgecolor='black', pad=5),
-                    color='white', fontweight='bold')
+        indicators.append({
+            'text': f'VIX: {vix_value:.2f}',
+            'color': vix_color,
+            'date': vix_end_date.strftime("%Y-%m-%d")
+        })
+    
+    # NAIIM 값 추가
+    if naaim is not None and not naaim.empty:
+        try:
+            naaim_end_date = naaim.index[naaim.index <= end_date][-1] if len(naaim.index[naaim.index <= end_date]) > 0 else naaim.index[-1]
+            naaim_value = float(naaim.loc[naaim_end_date].iloc[0])
+            
+            if naaim_value < 30:
+                naaim_color = 'red'
+            elif naaim_value < 50:
+                naaim_color = 'orange'
+            else:
+                naaim_color = 'blue'
+            
+            indicators.append({
+                'text': f'NAIIM: {naaim_value:.1f}',
+                'color': naaim_color,
+                'date': naaim_end_date.strftime("%Y-%m-%d")
+            })
+        except Exception as e:
+            print(f"NAIIM 표시 오류: {e}")
+    
+    # PCR 값 추가
+    if pcr is not None:
+        try:
+            if pcr < 0.7:
+                pcr_color = 'green'
+            elif pcr < 1.0:
+                pcr_color = 'orange'
+            else:
+                pcr_color = 'red'
+            
+            indicators.append({
+                'text': f'PCR: {pcr:.3f}',
+                'color': pcr_color,
+                'date': None
+            })
+        except Exception as e:
+            print(f"PCR 표시 오류: {e}")
+    
+    # 수평으로 지표들 표시 (전략 가이드와 겹치지 않도록 위치 조정)
+    if indicators:
+        # 지표들을 수평으로 배치 (간격을 0.15에서 0.12로 줄이고, 더 우측 상단에 배치)
+        for i, indicator in enumerate(indicators):
+            x_pos = 0.99 - (len(indicators) - 1 - i) * 0.12  # 더 우측에 붙이고 간격 좁힘
+            y_pos = 0.88  # 전략 가이드와 겹치지 않도록 조정
+            
+            ax_main.text(x_pos, y_pos, indicator['text'], 
+                        transform=ax_main.transAxes, fontsize=11, ha='right', va='top',
+                        bbox=dict(facecolor=indicator['color'], alpha=0.8, edgecolor='black', pad=4),
+                        color='white', fontweight='bold')
 
     # HMA와 만트라 밴드
     ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=1.5, label='HMA')

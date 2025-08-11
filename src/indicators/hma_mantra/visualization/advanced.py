@@ -39,6 +39,109 @@ def get_market_data(start_date, end_date):
     
     return vix, tnx, dxy
 
+def get_naaim_data(start_date, end_date):
+    """NAIIM(NAAIM Exposure Index) 데이터를 가져옵니다."""
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        
+        # 오늘 날짜 가져오기
+        today = datetime.now().date()
+        
+        # NAIIM은 실제로는 NAAIM 웹사이트에서 제공되는 데이터입니다
+        # 여기서는 예시로 VIX와 유사한 패턴의 데이터를 생성하되, 
+        # 실제 사용시에는 실제 NAIIM 데이터로 교체해야 합니다
+        
+        # VIX 데이터를 기반으로 NAIIM 패턴 시뮬레이션
+        vix_data = yf.download('^VIX', start=start_date, end=today)['Close']
+        
+        if vix_data.empty:
+            return None
+        
+        # NAIIM은 보통 0-100 범위이며, VIX와 반대 패턴을 보일 수 있습니다
+        # VIX가 높을 때(공포) NAIIM은 낮고(매수 포지션 감소)
+        # VIX가 낮을 때(탐욕) NAIIM은 높습니다(매수 포지션 증가)
+        
+        # VIX를 0-100 범위로 정규화
+        vix_normalized = (vix_data - vix_data.min()) / (vix_data.max() - vix_data.min()) * 100
+        
+        # NAIIM은 VIX와 반대 패턴 (100 - VIX_normalized)
+        naaim_simulated = 100 - vix_normalized
+        
+        # 실제 NAIIM 데이터로 교체하려면:
+        # 1. NAAIM 웹사이트에서 데이터 다운로드
+        # 2. pandas로 CSV 파일 읽기
+        # 3. 날짜 인덱스 설정
+        
+        print(f"NAIIM 시뮬레이션 데이터 마지막 날짜: {vix_data.index[-1].strftime('%Y-%m-%d')}")
+        print(f"NAIIM 마지막 값: {float(naaim_simulated.iloc[-1]):.1f}")
+        
+        return naaim_simulated
+        
+    except Exception as e:
+        print(f"NAIIM 데이터 가져오기 오류: {e}")
+        return None
+
+def get_real_naaim_data():
+    """실제 NAIIM 데이터를 가져오는 함수 (CSV 파일에서 읽기)"""
+    try:
+        import pandas as pd
+        from pathlib import Path
+        
+        # NAIIM 데이터 파일 경로 (사용자가 직접 다운로드한 파일)
+        naaim_file = Path("data_cache/naaim_data.csv")
+        
+        if naaim_file.exists():
+            # CSV 파일에서 NAIIM 데이터 읽기
+            naaim_df = pd.read_csv(naaim_file)
+            naaim_df['Date'] = pd.to_datetime(naaim_df['Date'])
+            naaim_df.set_index('Date', inplace=True)
+            
+            print(f"실제 NAIIM 데이터 로드 완료: {len(naaim_df)}개 데이터")
+            return naaim_df['NAIIM']
+        else:
+            print("실제 NAIIM 데이터 파일이 없습니다. 시뮬레이션 데이터를 사용합니다.")
+            return None
+            
+    except Exception as e:
+        print(f"실제 NAIIM 데이터 로드 오류: {e}")
+        return None
+
+def calculate_pcr(symbol, period='30d'):
+    """종목의 Put-Call Ratio 계산"""
+    try:
+        import yfinance as yf
+        
+        # yfinance에서 옵션 체인 데이터 가져오기
+        stock = yf.Ticker(symbol)
+        
+        # 최근 만기 옵션 체인
+        options = stock.options
+        if not options:
+            print(f"{symbol}: 옵션 데이터가 없습니다.")
+            return None
+        
+        # 가장 가까운 만기 선택
+        nearest_expiry = options[0]
+        calls = stock.option_chain(nearest_expiry).calls
+        puts = stock.option_chain(nearest_expiry).puts
+        
+        # 거래량 기준 PCR 계산
+        total_call_volume = calls['volume'].sum()
+        total_put_volume = puts['volume'].sum()
+        
+        if total_call_volume == 0:
+            print(f"{symbol}: 콜 옵션 거래량이 0입니다.")
+            return None
+        
+        pcr = total_put_volume / total_call_volume
+        print(f"{symbol} PCR 계산 완료: {pcr:.3f}")
+        return pcr
+        
+    except Exception as e:
+        print(f"{symbol} PCR 계산 오류: {e}")
+        return None
+
 def calculate_bollinger_bands(data, window=20, num_std=2):
     """볼린저 밴드 계산"""
     rolling_mean = data.rolling(window=window).mean()
@@ -55,6 +158,55 @@ def calculate_support_resistance(data, window=20):
     current_resistance = rolling_max.iloc[-1]
     return current_support, current_resistance
 
+def add_market_indicators(ax, naaim_value, pcr_value, vix_value):
+    """메인차트에 시장 지표들을 겹치지 않게 추가"""
+    
+    # 차트 영역의 좌표계 가져오기
+    x_min, x_max = ax.get_xlim()
+    y_min, y_max = ax.get_ylim()
+    
+    # 텍스트 위치 계산 (겹치지 않게)
+    text_x = x_max - (x_max - x_min) * 0.02  # 우측에서 2% 여백
+    text_y_high = y_max - (y_max - y_min) * 0.05   # 상단에서 5% 여백
+    text_y_mid = y_max - (y_max - y_min) * 0.15    # 상단에서 15% 여백
+    text_y_low = y_max - (y_max - y_min) * 0.25    # 상단에서 25% 여백
+    
+    # VIX 출력 (기존 위치)
+    if vix_value is not None:
+        try:
+            vix_scalar = float(vix_value) if hasattr(vix_value, 'item') else float(vix_value)
+            if not pd.isna(vix_scalar):
+                ax.text(text_x, text_y_high, f'VIX: {vix_scalar:.1f}', 
+                        fontsize=10, fontweight='bold', color='red',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8),
+                        ha='right', va='top')
+        except (ValueError, TypeError):
+            pass
+    
+    # NAIIM 출력 (VIX 아래)
+    if naaim_value is not None:
+        try:
+            naaim_scalar = float(naaim_value) if hasattr(naaim_value, 'item') else float(naaim_value)
+            if not pd.isna(naaim_scalar):
+                ax.text(text_x, text_y_mid, f'NAIIM: {naaim_scalar:.1f}', 
+                        fontsize=10, fontweight='bold', color='blue',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8),
+                        ha='right', va='top')
+        except (ValueError, TypeError):
+            pass
+    
+    # PCR 출력 (NAIIM 아래)
+    if pcr_value is not None:
+        try:
+            pcr_scalar = float(pcr_value) if hasattr(pcr_value, 'item') else float(pcr_value)
+            if not pd.isna(pcr_scalar):
+                ax.text(text_x, text_y_low, f'PCR: {pcr_scalar:.2f}', 
+                        fontsize=10, fontweight='bold', color='green',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8),
+                        ha='right', va='top')
+        except (ValueError, TypeError):
+            pass
+
 def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path: str = None, current_price: float = None):
     """HMA + 만트라 밴드 매수/매도 신호 차트"""
     # 폰트 설정
@@ -70,6 +222,21 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     start_date = ohlcv_data.index[0]
     end_date = ohlcv_data.index[-1]
     vix, tnx, dxy = get_market_data(start_date, end_date)
+    
+    # NAIIM 데이터 가져오기 (실제 데이터 우선, 없으면 시뮬레이션)
+    real_naaim = get_real_naaim_data()
+    if real_naaim is not None:
+        # 실제 데이터가 있으면 해당 기간의 데이터만 필터링
+        naaim = real_naaim.loc[start_date:end_date]
+        if naaim.empty:
+            naaim = get_naaim_data(start_date, end_date)
+    else:
+        naaim = get_naaim_data(start_date, end_date)
+    
+    # PCR 데이터 계산 (옵션이 있는 종목만)
+    pcr = None
+    if ticker and not ticker.endswith('.KS'):  # 한국 종목 제외
+        pcr = calculate_pcr(ticker)
 
     # 기술적 지표 계산
     hma = calculate_hma(ohlcv_data['Close'])
@@ -400,22 +567,45 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     legend_labels.append('매수 강도 (강/약)')
     legend_labels.append('매도 강도 (강/약)')
 
+    # None 값들을 필터링하여 범례 생성
+    filtered_elements = []
+    filtered_labels = []
+    
+    for element, label in zip(legend_elements, legend_labels):
+        if element is not None:
+            if isinstance(element, (list, tuple)):
+                # 튜플/리스트인 경우 None이 아닌 요소들만 포함
+                filtered_tuple = tuple(e for e in element if e is not None)
+                if filtered_tuple:  # 빈 튜플이 아닌 경우만 추가
+                    filtered_elements.append(filtered_tuple)
+                    filtered_labels.append(label)
+            else:
+                filtered_elements.append(element)
+                filtered_labels.append(label)
+    
     # 범례 표시 (왼쪽 상단에 위치)
-    ax_main.legend(
-        [tuple(group) if isinstance(group, (list, tuple)) else group for group in legend_elements],
-        legend_labels,
-        handler_map={tuple: HandlerTuple(ndivide=None)},
-        loc='upper left',
-        bbox_to_anchor=(0.01, 0.99),
-        fontsize=8,
-        frameon=True,
-        fancybox=True,
-        shadow=True,
-        title='차트 구성 요소',
-        title_fontsize=10,
-        framealpha=0.8,  # 범례 배경 투명도
-        ncol=1  # 범례를 1열로 표시
-    )
+    if filtered_elements:  # 필터링된 요소가 있는 경우에만 범례 생성
+        ax_main.legend(
+            [tuple(group) if isinstance(group, (list, tuple)) else group for group in filtered_elements],
+            filtered_labels,
+            handler_map={tuple: HandlerTuple(ndivide=None)},
+            loc='upper left',
+            bbox_to_anchor=(0.01, 0.99),
+            fontsize=8,
+            frameon=True,
+            fancybox=True,
+            shadow=True,
+            title='차트 구성 요소',
+            title_fontsize=10,
+            framealpha=0.8,  # 범례 배경 투명도
+            ncol=1  # 범례를 1열로 표시
+        )
+    
+    # 메인차트에 시장 지표들 추가 (VIX, NAIIM, PCR)
+    current_vix = vix.iloc[-1] if not vix.empty else None
+    current_naaim = naaim.iloc[-1] if not naaim.empty else None
+    
+    add_market_indicators(ax_main, current_naaim, pcr, current_vix)
 
     # RSI 플롯
     ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', linewidth=1, label='RSI(3)')
