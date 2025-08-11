@@ -16,6 +16,198 @@ from ..utils import get_available_font
 import matplotlib.patches as mpatches
 import pandas_datareader.data as web
 
+def _find_pivots(series: pd.Series, left: int = 3, right: int = 3):
+    """좌우 span을 기준으로 피벗 고점/저점을 탐지합니다.
+    반환: (pivot_highs, pivot_lows) 각 리스트는 (index_pos, value) 튜플로 구성
+    """
+    values = series.values
+    pivot_highs = []
+    pivot_lows = []
+    n = len(values)
+    for i in range(left, n - right):
+        window = values[i - left:i + right + 1]
+        center = values[i]
+        if center == np.max(window):
+            pivot_highs.append((i, center))
+        if center == np.min(window):
+            pivot_lows.append((i, center))
+    return pivot_highs, pivot_lows
+
+def _detect_rsi_divergences(ohlcv_data: pd.DataFrame,
+                            rsi_series: pd.Series,
+                            pivot_span_left: int = 3,
+                            pivot_span_right: int = 3,
+                            valid_window_bars: int = 20,
+                            include_hidden: bool = True):
+    """RSI 기반 다이버전스(일반/히든) 탐지.
+    반환: 리스트[dict] with keys: kind('BULL'|'BEAR'), subtype('regular'|'hidden'),
+          i1,i2 (index positions), date1,date2, price1,price2
+    """
+    close = ohlcv_data['Close']
+    pivot_highs_price, pivot_lows_price = _find_pivots(close, pivot_span_left, pivot_span_right)
+    pivot_highs_rsi, pivot_lows_rsi = _find_pivots(rsi_series, pivot_span_left, pivot_span_right)
+
+    # index position -> pivot value lookup for RSI
+    highs_rsi_map = {i: v for i, v in pivot_highs_rsi}
+    lows_rsi_map = {i: v for i, v in pivot_lows_rsi}
+
+    divergences = []
+    last_idx = len(close) - 1
+
+    # 정배(regular) 상승: 가격 LL, RSI HL (저점 기준)
+    for (i1, p1), (i2, p2) in zip(pivot_lows_price[:-1], pivot_lows_price[1:]):
+        if i2 <= i1:
+            continue
+        if last_idx - i2 > valid_window_bars:
+            continue
+        # 대응하는 RSI 저점이 존재하는지 확인 (근접 인덱스 사용)
+        if i1 in lows_rsi_map and i2 in lows_rsi_map:
+            r1 = lows_rsi_map[i1]
+            r2 = lows_rsi_map[i2]
+            if p2 < p1 and r2 > r1:  # 가격 LL, RSI HL
+                divergences.append({
+                    'kind': 'BULL', 'subtype': 'regular',
+                    'i1': i1, 'i2': i2,
+                    'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                    'price1': p1, 'price2': p2
+                })
+
+    # 정배(regular) 하락: 가격 HH, RSI LH (고점 기준)
+    for (i1, p1), (i2, p2) in zip(pivot_highs_price[:-1], pivot_highs_price[1:]):
+        if i2 <= i1:
+            continue
+        if last_idx - i2 > valid_window_bars:
+            continue
+        if i1 in highs_rsi_map and i2 in highs_rsi_map:
+            r1 = highs_rsi_map[i1]
+            r2 = highs_rsi_map[i2]
+            if p2 > p1 and r2 < r1:  # 가격 HH, RSI LH
+                divergences.append({
+                    'kind': 'BEAR', 'subtype': 'regular',
+                    'i1': i1, 'i2': i2,
+                    'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                    'price1': p1, 'price2': p2
+                })
+
+    if include_hidden:
+        # 히든 상승: 가격 HL, RSI LL (저점 기준)
+        for (i1, p1), (i2, p2) in zip(pivot_lows_price[:-1], pivot_lows_price[1:]):
+            if i2 <= i1:
+                continue
+            if last_idx - i2 > valid_window_bars:
+                continue
+            if i1 in lows_rsi_map and i2 in lows_rsi_map:
+                r1 = lows_rsi_map[i1]
+                r2 = lows_rsi_map[i2]
+                if p2 > p1 and r2 < r1:  # 가격 HL, RSI LL
+                    divergences.append({
+                        'kind': 'BULL', 'subtype': 'hidden',
+                        'i1': i1, 'i2': i2,
+                        'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                        'price1': p1, 'price2': p2
+                    })
+
+        # 히든 하락: 가격 LH, RSI HH (고점 기준)
+        for (i1, p1), (i2, p2) in zip(pivot_highs_price[:-1], pivot_highs_price[1:]):
+            if i2 <= i1:
+                continue
+            if last_idx - i2 > valid_window_bars:
+                continue
+            if i1 in highs_rsi_map and i2 in highs_rsi_map:
+                r1 = highs_rsi_map[i1]
+                r2 = highs_rsi_map[i2]
+                if p2 < p1 and r2 > r1:  # 가격 LH, RSI HH
+                    divergences.append({
+                        'kind': 'BEAR', 'subtype': 'hidden',
+                        'i1': i1, 'i2': i2,
+                        'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                        'price1': p1, 'price2': p2
+                    })
+
+    return divergences
+
+def _detect_macd_divergences(ohlcv_data: pd.DataFrame,
+                             macd_hist: pd.Series,
+                             pivot_span_left: int = 3,
+                             pivot_span_right: int = 3,
+                             valid_window_bars: int = 20,
+                             include_hidden: bool = True):
+    """MACD 히스토그램 기반 다이버전스(일반/히든) 탐지.
+    반환 구조는 _detect_rsi_divergences와 동일.
+    """
+    close = ohlcv_data['Close']
+    pivot_highs_price, pivot_lows_price = _find_pivots(close, pivot_span_left, pivot_span_right)
+    pivot_highs_hist, pivot_lows_hist = _find_pivots(macd_hist, pivot_span_left, pivot_span_right)
+
+    highs_hist_map = {i: v for i, v in pivot_highs_hist}
+    lows_hist_map = {i: v for i, v in pivot_lows_hist}
+
+    divergences = []
+    last_idx = len(close) - 1
+
+    # 정배(regular) 상승: 가격 LL, 히스토그램 HL (저점 기준)
+    for (i1, p1), (i2, p2) in zip(pivot_lows_price[:-1], pivot_lows_price[1:]):
+        if i2 <= i1 or last_idx - i2 > valid_window_bars:
+            continue
+        if i1 in lows_hist_map and i2 in lows_hist_map:
+            h1 = lows_hist_map[i1]
+            h2 = lows_hist_map[i2]
+            if p2 < p1 and h2 > h1:
+                divergences.append({
+                    'kind': 'BULL', 'subtype': 'regular',
+                    'i1': i1, 'i2': i2,
+                    'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                    'price1': p1, 'price2': p2
+                })
+
+    # 정배(regular) 하락: 가격 HH, 히스토그램 LH (고점 기준)
+    for (i1, p1), (i2, p2) in zip(pivot_highs_price[:-1], pivot_highs_price[1:]):
+        if i2 <= i1 or last_idx - i2 > valid_window_bars:
+            continue
+        if i1 in highs_hist_map and i2 in highs_hist_map:
+            h1 = highs_hist_map[i1]
+            h2 = highs_hist_map[i2]
+            if p2 > p1 and h2 < h1:
+                divergences.append({
+                    'kind': 'BEAR', 'subtype': 'regular',
+                    'i1': i1, 'i2': i2,
+                    'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                    'price1': p1, 'price2': p2
+                })
+
+    if include_hidden:
+        # 히든 상승: 가격 HL, 히스토그램 LL (저점 기준)
+        for (i1, p1), (i2, p2) in zip(pivot_lows_price[:-1], pivot_lows_price[1:]):
+            if i2 <= i1 or last_idx - i2 > valid_window_bars:
+                continue
+            if i1 in lows_hist_map and i2 in lows_hist_map:
+                h1 = lows_hist_map[i1]
+                h2 = lows_hist_map[i2]
+                if p2 > p1 and h2 < h1:
+                    divergences.append({
+                        'kind': 'BULL', 'subtype': 'hidden',
+                        'i1': i1, 'i2': i2,
+                        'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                        'price1': p1, 'price2': p2
+                    })
+
+        # 히든 하락: 가격 LH, 히스토그램 HH (고점 기준)
+        for (i1, p1), (i2, p2) in zip(pivot_highs_price[:-1], pivot_highs_price[1:]):
+            if i2 <= i1 or last_idx - i2 > valid_window_bars:
+                continue
+            if i1 in highs_hist_map and i2 in highs_hist_map:
+                h1 = highs_hist_map[i1]
+                h2 = highs_hist_map[i2]
+                if p2 < p1 and h2 > h1:
+                    divergences.append({
+                        'kind': 'BEAR', 'subtype': 'hidden',
+                        'i1': i1, 'i2': i2,
+                        'date1': ohlcv_data.index[i1], 'date2': ohlcv_data.index[i2],
+                        'price1': p1, 'price2': p2
+                    })
+
+    return divergences
+
 def get_market_data(start_date, end_date):
     """시장 데이터(VIX, TNX, DXY)를 가져옵니다."""
     import yfinance as yf
@@ -128,7 +320,15 @@ def calculate_volume_profile(ohlcv_data, num_bins=50):
 
  
 
-def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str = None, save_path: str = None, current_price: float = None):
+def plot_main_chart_with_volume_profile_overlay(
+    data: pd.DataFrame,
+    ticker: str = None,
+    save_path: str = None,
+    current_price: float = None,
+    rsi_divergence_window: int = 20,
+    rsi_pivot_span: int = 3,
+    include_hidden_divergence: bool = True,
+):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
     plt.rcParams['font.family'] = 'AppleGothic'  # macOS용 한글 폰트
@@ -508,6 +708,20 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
             plt.Line2D([], [], color='black', linestyle=':', linewidth=2, label='최근 6개월 POC')
         ])
     
+    # 다이버전스 범례 추가 (RSI & MACD)
+    legend_elements.extend([
+        # RSI Regular/Hidden
+        plt.Line2D([], [], color='green', linestyle='-', linewidth=1.5, marker='^', label='Bull Div (RSI)'),
+        plt.Line2D([], [], color='red', linestyle='-', linewidth=1.5, marker='v', label='Bear Div (RSI)'),
+        plt.Line2D([], [], color='green', linestyle=':', linewidth=1.5, marker='^', label='Bull Div (RSI, Hidden)'),
+        plt.Line2D([], [], color='red', linestyle=':', linewidth=1.5, marker='v', label='Bear Div (RSI, Hidden)'),
+        # MACD Regular/Hidden
+        plt.Line2D([], [], color='forestgreen', linestyle='-', linewidth=1.2, marker='^', label='Bull Div (MACD)'),
+        plt.Line2D([], [], color='darkred', linestyle='-', linewidth=1.2, marker='v', label='Bear Div (MACD)'),
+        plt.Line2D([], [], color='forestgreen', linestyle=':', linewidth=1.2, marker='^', label='Bull Div (MACD, Hidden)'),
+        plt.Line2D([], [], color='darkred', linestyle=':', linewidth=1.2, marker='v', label='Bear Div (MACD, Hidden)'),
+    ])
+    
     ax_main.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.95), fontsize=8)
 
     # 거래량 차트 표시
@@ -553,6 +767,87 @@ def plot_main_chart_with_volume_profile_overlay(data: pd.DataFrame, ticker: str 
     ax_macd.set_ylabel('MACD')
     ax_macd.legend(fontsize=8, loc='upper left')
     ax_macd.grid(True, alpha=0.3)
+
+    # =====================
+    # RSI 다이버전스 탐지/표시 (메인차트에만)
+    # =====================
+    try:
+        rsi_divs = _detect_rsi_divergences(
+            ohlcv_data,
+            rsi14,
+            pivot_span_left=rsi_pivot_span,
+            pivot_span_right=rsi_pivot_span,
+            valid_window_bars=rsi_divergence_window,
+            include_hidden=include_hidden_divergence,
+        )
+
+        for d in rsi_divs:
+            date1, date2 = d['date1'], d['date2']
+            p1, p2 = d['price1'], d['price2']
+            if d['kind'] == 'BULL':
+                color = 'green'
+                marker = '^'
+                y_text_offset = -0.01
+                label = 'Bull Div (RSI)' if d['subtype'] == 'regular' else 'Bull Div (RSI, Hidden)'
+                linestyle = '-' if d['subtype'] == 'regular' else ':'
+            else:
+                color = 'red'
+                marker = 'v'
+                y_text_offset = 0.01
+                label = 'Bear Div (RSI)' if d['subtype'] == 'regular' else 'Bear Div (RSI, Hidden)'
+                linestyle = '-' if d['subtype'] == 'regular' else ':'
+
+            # 가격 피벗을 선으로 연결
+            ax_main.plot([date1, date2], [p1, p2], color=color, linestyle=linestyle, linewidth=1.5, alpha=0.9, zorder=35)
+            # 시그널 마커 (두 번째 피벗 위치)
+            ax_main.plot(date2, p2, marker=marker, color=color, markersize=9, markeredgecolor='black', zorder=36)
+            # 라벨(두 번째 피벗 상/하단에 배치)
+            ylim = ax_main.get_ylim()
+            y_offset = (ylim[1] - ylim[0]) * y_text_offset
+            ax_main.text(date2, p2 + y_offset, label, fontsize=7, color=color,
+                         ha='left', va='bottom' if d['kind'] == 'BULL' else 'top',
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1), zorder=37)
+    except Exception:
+        pass
+
+    # =====================
+    # MACD 히스토그램 다이버전스 탐지/표시 (메인차트에만)
+    # =====================
+    try:
+        macd_divs = _detect_macd_divergences(
+            ohlcv_data,
+            hist,
+            pivot_span_left=rsi_pivot_span,
+            pivot_span_right=rsi_pivot_span,
+            valid_window_bars=rsi_divergence_window,
+            include_hidden=include_hidden_divergence,
+        )
+
+        for d in macd_divs:
+            date1, date2 = d['date1'], d['date2']
+            p1, p2 = d['price1'], d['price2']
+            if d['kind'] == 'BULL':
+                color = 'forestgreen'
+                marker = '^'
+                y_text_offset = -0.015
+                label = 'Bull Div (MACD)' if d['subtype'] == 'regular' else 'Bull Div (MACD, Hidden)'
+                linestyle = '-' if d['subtype'] == 'regular' else ':'
+            else:
+                color = 'darkred'
+                marker = 'v'
+                y_text_offset = 0.015
+                label = 'Bear Div (MACD)' if d['subtype'] == 'regular' else 'Bear Div (MACD, Hidden)'
+                linestyle = '-' if d['subtype'] == 'regular' else ':'
+
+            ax_main.plot([date1, date2], [p1, p2], color=color, linestyle=linestyle, linewidth=1.2, alpha=0.85, zorder=34)
+            ax_main.plot(date2, p2, marker=marker, color=color, markersize=8, markeredgecolor='black', zorder=35)
+            ylim = ax_main.get_ylim()
+            y_offset = (ylim[1] - ylim[0]) * y_text_offset
+            ax_main.text(date2, p2 + y_offset, label, fontsize=7, color=color,
+                         ha='left', va='bottom' if d['kind'] == 'BULL' else 'top',
+                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=1), zorder=36)
+    except Exception:
+        pass
 
     # x축 날짜 포맷 설정
     ax_volume.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))

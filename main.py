@@ -48,6 +48,10 @@ def main():
     analyzer = TechnicalAnalysis(data)
     data = analyzer.calculate_all_indicators()
     
+    # 고급 기술적 지표 추가
+    print("  - 고급 지표 계산 중...")
+    analyzer.add_advanced_indicators()
+    
     # 추세 분석 추가
     analyzer.add_trend_analysis()
     

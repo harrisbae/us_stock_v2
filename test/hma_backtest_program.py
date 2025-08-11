@@ -74,10 +74,10 @@ class HMAMantraBacktest:
         # VIX 대역별 비용 결정
         if vix_value < 20:
             return self.vix_bands.get('low', self.vix_bands.get('0-20', self.initial_capital))
-        elif vix_value <= 30:
-            return self.vix_bands.get('mid', self.vix_bands.get('20-30', self.initial_capital))
+        elif vix_value <= 25:
+            return self.vix_bands.get('mid', self.vix_bands.get('20-25', self.initial_capital))
         else:
-            return self.vix_bands.get('high', self.vix_bands.get('30+', self.initial_capital))
+            return self.vix_bands.get('high', self.vix_bands.get('25+', self.initial_capital))
     
     def get_vix_value(self, date):
         """특정 날짜의 VIX 값 반환"""
@@ -104,7 +104,9 @@ class HMAMantraBacktest:
         """VIX 조건 확인"""
         vix_value = self.get_vix_value(date)
         return self.vix_low <= vix_value <= self.vix_high
-        
+    
+
+    
     def load_data(self):
         """주식 데이터, 벤치마크 데이터, VIX 데이터 로드"""
         print(f"데이터 로드 중: {self.symbol}")
@@ -217,12 +219,18 @@ class HMAMantraBacktest:
             if len(future_data) > 0:
                 sell_price = future_data['Close'].iloc[-1]
                 period_return = (sell_price - buy_price) / buy_price * 100
+                # Ticker 객체가 아닌 스칼라 값 반환
+                if isinstance(period_return, pd.Series):
+                    period_return = period_return.values[0]
                 returns[f'{period}d'] = period_return
             else:
                 returns[f'{period}d'] = None
         # 현재까지 보유 수익률
         last_price = self.data['Close'].iloc[-1]
         returns['to_now'] = (last_price - buy_price) / buy_price * 100
+        # Ticker 객체가 아닌 스칼라 값 반환
+        if isinstance(returns['to_now'], pd.Series):
+            returns['to_now'] = returns['to_now'].values[0]
         return returns
     
     def calculate_benchmark_returns(self, buy_date, hold_periods=[30, 90, 180]):
@@ -247,6 +255,9 @@ class HMAMantraBacktest:
                 sell_benchmark = future_benchmark['Close'].iloc[-1]
                 if buy_benchmark is not None:
                     benchmark_return = (sell_benchmark - buy_benchmark) / buy_benchmark * 100
+                    # Ticker 객체가 아닌 스칼라 값 반환
+                    if isinstance(benchmark_return, pd.Series):
+                        benchmark_return = benchmark_return.values[0]
                     benchmark_returns[f'{period}d'] = benchmark_return
                 else:
                     benchmark_returns[f'{period}d'] = None
@@ -277,6 +288,8 @@ class HMAMantraBacktest:
             vix_value = 'N/A'
             if self.vix_data is not None and buy_date in self.vix_data.index:
                 vix_value = round(self.vix_data.loc[buy_date, 'Close'], 2)
+            
+
             
             # 수익금 계산
             def calc_profit(r):
@@ -311,6 +324,8 @@ class HMAMantraBacktest:
                 '신호 타당성 평가': signal_evaluation
             }
             
+
+            
             results.append(result)
         
         return results
@@ -338,7 +353,7 @@ class HMAMantraBacktest:
             return "평가 불가"
     
     def generate_summary_statistics(self, results):
-        """요약 통계 생성 (현재까지 수익률, 수익금 포함)"""
+        """요약 통계 생성 (현재까지 수익률, 수익금 포함, MDD, CAGR 추가)"""
         if not results:
             return {}
 
@@ -370,11 +385,62 @@ class HMAMantraBacktest:
         min_vix = round(np.min(vix_values), 2) if vix_values else 0
         max_vix = round(np.max(vix_values), 2) if vix_values else 0
         
+        # VIX 대역별 매수 횟수 계산
+        vix_low_count = 0
+        vix_mid_count = 0
+        vix_high_count = 0
+        
+        for r in results:
+            vix_val = get_scalar(r['VIX 지수'])
+            if is_valid(vix_val):
+                if vix_val < 20:
+                    vix_low_count += 1
+                elif vix_val <= 25:
+                    vix_mid_count += 1
+                else:
+                    vix_high_count += 1
+        
+
+        
+        # MDD 및 CAGR 계산
+        equity_curve = self.calculate_equity_curve(results)
+        mdd, mdd_start, mdd_end = self.calculate_mdd(equity_curve)
+        
+        # 투자 기간 계산 (첫 거래일부터 마지막 거래일까지)
+        if results:
+            first_date = min(r['매수 신호 발생일'] for r in results)
+            last_date = max(r.get('매도일', pd.Timestamp.now().date()) for r in results)
+            
+            # 날짜 타입 통일
+            if isinstance(first_date, str):
+                first_date = pd.to_datetime(first_date).date()
+            elif isinstance(first_date, pd.Timestamp):
+                first_date = first_date.date()
+                
+            if isinstance(last_date, str):
+                last_date = pd.to_datetime(last_date).date()
+            elif isinstance(last_date, pd.Timestamp):
+                last_date = last_date.date()
+                
+            investment_years = (last_date - first_date).days / 365.25
+        else:
+            investment_years = 0
+        
+        # 초기 투자금액과 최종 포트폴리오 가치 계산
+        initial_investment = sum(r['매수 금액'] for r in results if isinstance(r['매수 금액'], (int, float)))
+        total_profit_now = round(np.sum(profits_now), 2) if profits_now else 0
+        final_value = initial_investment + total_profit_now
+        
+        cagr = self.calculate_cagr(initial_investment, final_value, investment_years)
+        
         summary = {
             '총 신호 수': len(results),
             '평균 VIX 지수': avg_vix,
             '최소 VIX 지수': min_vix,
             '최대 VIX 지수': max_vix,
+            'VIX Low (<20) 매수 횟수': vix_low_count,
+            'VIX Mid (20-25) 매수 횟수': vix_mid_count,
+            'VIX High (>25) 매수 횟수': vix_high_count,
             '평균 1개월 수익률(%)': round(np.mean(returns_1m), 2) if returns_1m else 0,
             '평균 3개월 수익률(%)': round(np.mean(returns_3m), 2) if returns_3m else 0,
             '평균 6개월 수익률(%)': round(np.mean(returns_6m), 2) if returns_6m else 0,
@@ -391,13 +457,19 @@ class HMAMantraBacktest:
             '승률 3개월(%)': round(len([r for r in returns_3m if r > 0]) / len(returns_3m) * 100, 2) if returns_3m else 0,
             '승률 6개월(%)': round(len([r for r in returns_6m if r > 0]) / len(returns_6m) * 100, 2) if returns_6m else 0,
             '현재까지 승률(%)': round(len([r for r in returns_now if r > 0]) / len(returns_now) * 100, 2) if returns_now else 0,
+            # MDD 및 CAGR 추가
+            'Maximum Drawdown (%)': round(mdd, 2),
+            'MDD 시작일': mdd_start.strftime('%Y-%m-%d') if mdd_start else 'N/A',
+            'MDD 종료일': mdd_end.strftime('%Y-%m-%d') if mdd_end else 'N/A',
+            '투자 기간 (년)': round(investment_years, 2),
+            'CAGR (%)': round(cagr, 2),
         }
         
         return summary
     
     def save_results(self, results, summary):
         """결과 저장 (수익금 통계 포함, 투자기간별 요약 표 추가)"""
-        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') else Path(f"test/backtest_results/{self.symbol}")
+        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') and self.result_dir else Path(f"test/backtest_results/{self.symbol}")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 모든 value가 Series면 float(스칼라)로 변환
@@ -410,6 +482,11 @@ class HMAMantraBacktest:
         df_results = pd.DataFrame(results)
         csv_path = output_dir / f'{self.symbol}_backtest_detailed.csv'
         df_results.to_csv(csv_path, index=False, encoding='utf-8-sig')
+        
+        # 요약 통계를 CSV로 저장
+        summary_df = pd.DataFrame([summary])
+        summary_csv_path = output_dir / f'{self.symbol}_backtest_summary.csv'
+        summary_df.to_csv(summary_csv_path, index=False, encoding='utf-8-sig')
 
         # 투자기간별 총 투자금액, 총 수익금, 투자수익률 계산
         n_signals = summary['총 신호 수']
@@ -441,13 +518,14 @@ class HMAMantraBacktest:
             if self.vix_bands:
                 f.write(f"**매수 금액**: VIX 대역별 설정\n")
                 f.write(f"  - VIX < 20 (low): USD {self.vix_bands.get('low', self.initial_capital):,}\n")
-                f.write(f"  - 20 ≤ VIX ≤ 30 (mid): USD {self.vix_bands.get('mid', self.initial_capital):,}\n")
-                f.write(f"  - VIX > 30 (high): USD {self.vix_bands.get('high', self.initial_capital):,}\n")
+                f.write(f"  - 20 ≤ VIX ≤ 25 (mid): USD {self.vix_bands.get('mid', self.initial_capital):,}\n")
+                f.write(f"  - VIX > 25 (high): USD {self.vix_bands.get('high', self.initial_capital):,}\n")
                 f.write(f"**총 투자금액**: USD {total_investment:,}\n")
             else:
                 f.write(f"**매수 금액**: USD {self.initial_capital:,}\n")
             
-            f.write(f"**총 신호 수**: {summary['총 신호 수']}개\n\n")
+            f.write(f"**총 신호 수**: {summary['총 신호 수']}개\n")
+            f.write(f"**투자 기간**: {summary.get('투자 기간 (년)', 0):.2f}년\n\n")
             
             f.write("## 요약 통계\n\n")
             f.write("| 지표 | 값 |\n")
@@ -455,6 +533,9 @@ class HMAMantraBacktest:
             f.write(f"| 평균 VIX 지수 | {summary['평균 VIX 지수']} |\n")
             f.write(f"| 최소 VIX 지수 | {summary['최소 VIX 지수']} |\n")
             f.write(f"| 최대 VIX 지수 | {summary['최대 VIX 지수']} |\n")
+            f.write(f"| VIX Low (<20) 매수 횟수 | {summary['VIX Low (<20) 매수 횟수']}회 |\n")
+            f.write(f"| VIX Mid (20-25) 매수 횟수 | {summary['VIX Mid (20-25) 매수 횟수']}회 |\n")
+            f.write(f"| VIX High (>25) 매수 횟수 | {summary['VIX High (>25) 매수 횟수']}회 |\n")
             f.write(f"| 평균 1개월 수익률 | {summary['평균 1개월 수익률(%)']}% |\n")
             f.write(f"| 평균 3개월 수익률 | {summary['평균 3개월 수익률(%)']}% |\n")
             f.write(f"| 평균 6개월 수익률 | {summary['평균 6개월 수익률(%)']}% |\n")
@@ -470,7 +551,132 @@ class HMAMantraBacktest:
             f.write(f"| 1개월 승률 | {summary['승률 1개월(%)']}% |\n")
             f.write(f"| 3개월 승률 | {summary['승률 3개월(%)']}% |\n")
             f.write(f"| 6개월 승률 | {summary['승률 6개월(%)']}% |\n")
-            f.write(f"| 현재까지 승률 | {summary['현재까지 승률(%)']}% |\n\n")
+            f.write(f"| 현재까지 승률 | {summary['현재까지 승률(%)']}% |\n")
+            f.write(f"| Maximum Drawdown | {summary.get('Maximum Drawdown (%)', 0):.2f}% |\n")
+            f.write(f"| MDD 기간 | {summary.get('MDD 시작일', 'N/A')} ~ {summary.get('MDD 종료일', 'N/A')} |\n")
+            f.write(f"| CAGR | {summary.get('CAGR (%)', 0):.2f}% |\n\n")
+
+            # MDD 상세 설명 추가
+            f.write("## Maximum Drawdown (MDD) 상세 분석\n\n")
+            
+            mdd = summary.get('Maximum Drawdown (%)', 0)
+            mdd_start = summary.get('MDD 시작일', 'N/A')
+            mdd_end = summary.get('MDD 종료일', 'N/A')
+            
+            f.write(f"**MDD 값**: {mdd:.2f}%\n")
+            f.write(f"**MDD 기간**: {mdd_start} ~ {mdd_end}\n\n")
+            
+            if mdd <= -100:
+                f.write("### ⚠️ MDD -100%의 의미\n\n")
+                f.write("**MDD -100%는 포트폴리오 가치가 완전히 사라졌음을 의미합니다.**\n\n")
+                f.write("**발생 가능한 케이스들**:\n\n")
+                f.write("#### 케이스 1: 개별 종목 폭락\n")
+                f.write("- 특정 종목이 급격히 하락하여 투자금액을 초과하는 손실 발생\n")
+                f.write("- 예시: $1,000 투자 → 종목 가격 50% 하락 → $500 손실\n")
+                f.write("- 하지만 이 경우 MDD는 -50%가 되어야 함\n\n")
+                
+                f.write("#### 케이스 2: 레버리지/마진 거래\n")
+                f.write("- 레버리지나 마진 거래로 인한 추가 손실\n")
+                f.write("- 예시: $1,000 투자 + $1,000 마진 → $2,000 손실 → MDD -100%\n\n")
+                
+                f.write("#### 케이스 3: 계산 로직 문제\n")
+                f.write("- 백테스트 계산 과정에서 포트폴리오 가치가 잘못 계산됨\n")
+                f.write("- 현재가 기준 재평가 시점의 문제\n")
+                f.write("- 거래 데이터 누락 또는 중복 계산\n\n")
+                
+                f.write("#### 케이스 4: 극단적 시장 상황\n")
+                f.write("- 급격한 시장 하락으로 모든 포지션이 동시에 손실\n")
+                f.write("- 하지만 이는 매우 드문 경우\n\n")
+                
+                f.write("**현재 상황 분석**:\n")
+                f.write("- AAPL은 비교적 안정적인 종목\n")
+                f.write("- 6개월 기간 동안 극단적 하락 없음\n")
+                f.write("- **MDD -100%는 계산 로직상의 문제일 가능성이 높음**\n\n")
+                
+                f.write("**권장 조치**:\n")
+                f.write("1. 백테스트 계산 로직 점검\n")
+                f.write("2. 포트폴리오 가치 계산 과정 검증\n")
+                f.write("3. 실제 MDD 재계산 필요\n\n")
+            else:
+                f.write(f"### MDD {mdd:.2f}% 분석\n\n")
+                if mdd > -20:
+                    f.write("**우수한 리스크 관리**: MDD가 -20% 이하로 잘 관리되고 있습니다.\n")
+                elif mdd > -50:
+                    f.write("**적정한 리스크 수준**: MDD가 -50% 이하로 관리되고 있습니다.\n")
+                else:
+                    f.write("**높은 리스크 수준**: MDD가 -50%를 초과하여 리스크 관리가 필요합니다.\n")
+                f.write("\n")
+
+            # CAGR vs MDD 전략 분류 및 분석
+            f.write("## 전략 분석 (CAGR vs MDD)\n\n")
+            
+            # 전략 분류 결정
+            cagr = summary.get('CAGR (%)', 0)
+            mdd = summary.get('Maximum Drawdown (%)', 0)
+            
+            if cagr > 15 and mdd > -20:
+                strategy_type = "🟢 CAGR↑ & MDD↓ = 이상적인 전략"
+                strategy_desc = "높은 수익률과 낮은 리스크를 모두 달성한 우수한 전략입니다."
+                risk_level = "낮음"
+                recommendation = "현재 전략을 유지하고 지속적으로 모니터링하세요."
+            elif cagr > 15 and mdd <= -20:
+                strategy_type = "🟡 CAGR↑ & MDD↑ = 고수익·고위험 전략"
+                strategy_desc = "높은 수익률을 달성했지만 리스크도 높은 전략입니다."
+                risk_level = "높음"
+                recommendation = "수익률은 우수하지만 MDD를 줄이는 것이 중요합니다."
+            elif cagr <= 15 and mdd > -20:
+                strategy_type = "🔵 CAGR↓ & MDD↓ = 안정적이지만 수익 낮음"
+                strategy_desc = "리스크는 낮지만 수익률이 낮은 안정적인 전략입니다."
+                risk_level = "낮음"
+                recommendation = "안정성을 유지하면서 수익률 개선을 모색하세요."
+            else:
+                strategy_type = "🔴 CAGR↓ & MDD↑ = 피해야 할 전략"
+                strategy_desc = "낮은 수익률과 높은 리스크를 가진 전략입니다."
+                risk_level = "매우 높음"
+                recommendation = "전략을 근본적으로 재검토하고 개선이 필요합니다."
+            
+            f.write(f"**전략 분류**: {strategy_type}\n\n")
+            f.write(f"**특징**: {strategy_desc}\n")
+            f.write(f"**리스크 수준**: {risk_level}\n")
+            f.write(f"**권장사항**: {recommendation}\n\n")
+            
+            # 전략 개선 방향
+            f.write("### 전략 개선 방향\n\n")
+            if cagr > 15 and mdd <= -20:
+                f.write("**1순위: MDD 감소 (즉시 적용)**\n")
+                f.write("- 손절 기준 설정 (-5% ~ -10%)\n")
+                f.write("- 포지션 사이징 최적화\n")
+                f.write("- 진입 조건 세분화 (RSI, MACD 등 추가)\n\n")
+                f.write("**2순위: CAGR 유지 (중기)**\n")
+                f.write("- 진입 조건 개선\n")
+                f.write("- 시장 환경별 전략 조정\n\n")
+                f.write("**3순위: 전략 최적화 (장기)**\n")
+                f.write("- 다양한 시장 환경에서 검증\n")
+                f.write("- 다른 전략과의 조합 검토\n\n")
+            elif cagr <= 15 and mdd > -20:
+                f.write("**1순위: 수익률 개선 (즉시 적용)**\n")
+                f.write("- 진입 조건 최적화\n")
+                f.write("- 홀딩 기간 조정\n")
+                f.write("- 시장 환경별 전략 차별화\n\n")
+            elif cagr <= 15 and mdd <= -20:
+                f.write("**1순위: 전략 근본 재검토 (즉시 적용)**\n")
+                f.write("- 백테스팅 파라미터 재설정\n")
+                f.write("- 다른 전략 모델 검토\n")
+                f.write("- 시장 환경 분석 및 대응\n\n")
+            
+            # 투자자별 권장사항
+            f.write("### 투자자별 권장사항\n\n")
+            if cagr > 15 and mdd > -20:
+                f.write("**🟢 모든 투자자에게 적합**: 현재 전략을 유지하고 지속적으로 모니터링하세요.\n\n")
+            elif cagr > 15 and mdd <= -20:
+                f.write("**🟡 적극적 투자자**: 현재 전략이 적합하지만 리스크 관리 강화가 필요합니다.\n")
+                f.write("**🟡 중립적 투자자**: 리스크 관리 개선 후 점진적 투자를 고려하세요.\n")
+                f.write("**🔴 보수적 투자자**: MDD가 -20% 이하로 개선된 후 고려하세요.\n\n")
+            elif cagr <= 15 and mdd > -20:
+                f.write("**🟡 보수적 투자자**: 안정성은 우수하지만 수익률 개선이 필요합니다.\n")
+                f.write("**🔴 적극적 투자자**: 더 높은 수익률을 추구하는 전략을 고려하세요.\n\n")
+            else:
+                f.write("**🔴 모든 투자자에게 부적합**: 전략을 근본적으로 재검토하고 개선이 필요합니다.\n\n")
 
             # 투자기간별 요약 표
             f.write("## 투자기간별 총 투자금액, 총 수익금, 투자수익률\n\n")
@@ -486,10 +692,11 @@ class HMAMantraBacktest:
         
         print(f"결과 저장 완료:")
         print(f"  - 상세 결과: {csv_path}")
+        print(f"  - 요약 통계: {summary_csv_path}")
         print(f"  - 요약 결과: {md_path}")
 
-    def create_visualization(self, results):
-        """시각화 생성 (수익금 분포 추가)"""
+    def create_visualization(self, results, summary):
+        """시각화 생성 (수익금 분포 추가, MDD/CAGR 정보 포함)"""
         # 한글 폰트 설정 (macOS: AppleGothic)
         plt.rcParams['font.family'] = 'AppleGothic'
         plt.rcParams['axes.unicode_minus'] = False  # 마이너스 깨짐 방지
@@ -498,7 +705,7 @@ class HMAMantraBacktest:
             return
         
         # 결과 디렉토리 생성
-        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') else Path(f"test/backtest_results/{self.symbol}")
+        output_dir = Path(self.result_dir) if hasattr(self, 'result_dir') and self.result_dir else Path(f"test/backtest_results/{self.symbol}")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # High Yield Spread 데이터 불러오기 (FRED)
@@ -508,9 +715,43 @@ class HMAMantraBacktest:
             print(f"High Yield Spread 데이터 로드 실패: {e}")
             hy_spread = None
         
-        # 1. 수익률/수익금/VIX 분포 히스토그램 + High Yield Spread subplot
+        # 1. 수익률/수익금/VIX 분포 히스토그램 + High Yield Spread subplot + MDD/CAGR
         fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         fig.suptitle(f'{self.symbol} HMA Mantra 백테스트 결과', fontsize=16)
+        
+        # MDD 및 CAGR 정보 표시 (summary에서 가져오기)
+        mdd = summary.get('Maximum Drawdown (%)', 0)
+        mdd_start = summary.get('MDD 시작일', 'N/A')
+        mdd_end = summary.get('MDD 종료일', 'N/A')
+        
+        # 투자 기간 계산
+        if results:
+            first_date = min(r['매수 신호 발생일'] for r in results)
+            last_date = max(r.get('매도일', pd.Timestamp.now().date()) for r in results)
+            
+            # 날짜 타입 통일
+            if isinstance(first_date, str):
+                first_date = pd.to_datetime(first_date).date()
+            elif isinstance(first_date, pd.Timestamp):
+                first_date = first_date.date()
+                
+            if isinstance(last_date, str):
+                last_date = pd.to_datetime(last_date).date()
+            elif isinstance(last_date, pd.Timestamp):
+                last_date = last_date.date()
+                
+            investment_years = (last_date - first_date).days / 365.25
+        else:
+            investment_years = 0
+        
+        # 초기 투자금액과 최종 포트폴리오 가치
+        initial_investment = sum(r['매수 금액'] for r in results if isinstance(r['매수 금액'], (int, float)))
+        final_value = initial_investment + summary.get('총 현재까지 수익금', 0) if 'summary' in locals() else initial_investment
+        
+        cagr = self.calculate_cagr(initial_investment, final_value, investment_years)
+        
+        # MDD/CAGR 정보를 제목에 추가
+        fig.suptitle(f'{self.symbol} HMA Mantra 백테스트 결과\nMDD: {mdd:.2f}%, CAGR: {cagr:.2f}%', fontsize=16)
         
         # 1개월 수익률
         returns_1m = [r['1개월 수익률(%)'] for r in results if r['1개월 수익률(%)'] != 'N/A']
@@ -658,6 +899,208 @@ class HMAMantraBacktest:
         
         print(f"시각화 저장 완료: {output_dir / f'{self.symbol}_backtest_results.png'}")
     
+    def calculate_mdd(self, equity_curve):
+        """
+        Maximum Drawdown (MDD) 계산 (개선된 버전)
+        
+        Args:
+            equity_curve (pd.Series): 일별 포트폴리오 가치 변화
+            
+        Returns:
+            tuple: (MDD, MDD 시작일, MDD 종료일)
+        """
+        if equity_curve.empty or len(equity_curve) < 2:
+            return 0, None, None
+            
+        # 누적 최고점 계산
+        running_max = equity_curve.expanding().max()
+        
+        # Drawdown 계산 (백분율)
+        drawdown = (equity_curve - running_max) / running_max * 100
+        
+        # MDD 찾기 (가장 큰 손실)
+        mdd = drawdown.min()
+        mdd_end_idx = drawdown.idxmin()
+        
+        # MDD 시작일 찾기 (MDD 종료일 이전의 최고점)
+        if mdd_end_idx is not None:
+            # MDD 종료일 이전의 최고점 찾기
+            before_mdd = equity_curve.loc[:mdd_end_idx]
+            if len(before_mdd) > 0:
+                mdd_start_idx = before_mdd.idxmax()
+            else:
+                mdd_start_idx = mdd_end_idx
+        else:
+            mdd_start_idx = None
+            
+        # 디버깅 정보 출력
+        print(f"=== MDD 계산 디버깅 ===")
+        print(f"포트폴리오 가치 범위: ${equity_curve.min():.2f} ~ ${equity_curve.max():.2f}")
+        print(f"계산된 MDD: {mdd:.2f}%")
+        print(f"MDD 시작일: {mdd_start_idx}")
+        print(f"MDD 종료일: {mdd_end_idx}")
+        
+        if mdd_start_idx and mdd_end_idx:
+            start_value = equity_curve.loc[mdd_start_idx]
+            end_value = equity_curve.loc[mdd_end_idx]
+            print(f"MDD 시작 시 가치: ${start_value:.2f}")
+            print(f"MDD 종료 시 가치: ${end_value:.2f}")
+            print(f"실제 손실: ${end_value - start_value:.2f}")
+            print(f"실제 손실률: {((end_value - start_value) / start_value * 100):.2f}%")
+        print("========================\n")
+        
+        return mdd, mdd_start_idx, mdd_end_idx
+    
+    def calculate_cagr(self, initial_value, final_value, years):
+        """
+        Compound Annual Growth Rate (CAGR) 계산
+        
+        Args:
+            initial_value (float): 초기 가치
+            final_value (float): 최종 가치
+            years (float): 투자 기간 (년)
+            
+        Returns:
+            float: CAGR (%)
+        """
+        if years <= 0 or initial_value <= 0:
+            return 0
+            
+        if final_value <= 0:
+            return -100
+            
+        cagr = (pow(final_value / initial_value, 1 / years) - 1) * 100
+        return cagr
+    
+    def calculate_equity_curve(self, results):
+        """
+        일별 포트폴리오 가치 변화 계산 (완전히 새로 작성된 버전)
+        
+        Args:
+            results (list): 백테스트 결과 리스트
+            
+        Returns:
+            pd.Series: 일별 포트폴리오 가치
+        """
+        if not results:
+            return pd.Series()
+            
+        # 모든 매수 신호를 시간순으로 정렬
+        positions = []
+        for r in results:
+            buy_date = r['매수 신호 발생일']
+            # buy_date가 문자열인 경우 datetime으로 변환
+            if isinstance(buy_date, str):
+                buy_date = pd.to_datetime(buy_date).date()
+            elif isinstance(buy_date, pd.Timestamp):
+                buy_date = buy_date.date()
+                
+            buy_price = r['매수 가격']
+            buy_amount = r['매수 금액']
+            shares = buy_amount / buy_price
+            
+            # 각 기간별 수익률을 이용해 포트폴리오 가치 변화 추적
+            returns_1m = r.get('1개월 수익률(%)', 0)
+            returns_3m = r.get('3개월 수익률(%)', 0)
+            returns_6m = r.get('6개월 수익률(%)', 0)
+            returns_now = r.get('현재까지 수익률(%)', 0)
+            
+            # 수익률이 문자열인 경우 처리
+            if isinstance(returns_1m, str) and returns_1m != 'N/A':
+                returns_1m = float(returns_1m)
+            if isinstance(returns_3m, str) and returns_3m != 'N/A':
+                returns_3m = float(returns_3m)
+            if isinstance(returns_6m, str) and returns_6m != 'N/A':
+                returns_6m = float(returns_6m)
+            if isinstance(returns_now, str) and returns_now != 'N/A':
+                returns_now = float(returns_now)
+                
+            positions.append({
+                'buy_date': buy_date,
+                'shares': shares,
+                'buy_price': buy_price,
+                'buy_amount': buy_amount,
+                'returns_1m': returns_1m,
+                'returns_3m': returns_3m,
+                'returns_6m': returns_6m,
+                'returns_now': returns_now
+            })
+        
+        if not positions:
+            return pd.Series()
+        
+        # 일별 포트폴리오 가치 계산
+        dates = []
+        values = []
+        
+        # 백테스트 기간 동안의 일별 가치 계산
+        start_date = min(pos['buy_date'] for pos in positions)
+        end_date = pd.Timestamp.now().date()
+        date_range = pd.date_range(start_date, end_date, freq='D')
+        
+        for date in date_range:
+            date_obj = date.date()
+            total_value = 0
+            
+            for position in positions:
+                if date_obj >= position['buy_date']:
+                    # 매수일로부터 경과일수 계산
+                    days_since_buy = (date_obj - position['buy_date']).days
+                    
+                    # 기간별 수익률 적용 (더 정확한 손실 반영)
+                    if days_since_buy <= 30:
+                        # 1개월 이내 - 1개월 수익률 적용
+                        if isinstance(position['returns_1m'], (int, float)) and position['returns_1m'] != 'N/A':
+                            current_price = position['buy_price'] * (1 + position['returns_1m'] / 100)
+                        else:
+                            current_price = position['buy_price']
+                    elif days_since_buy <= 90:
+                        # 3개월 이내 - 3개월 수익률 적용
+                        if isinstance(position['returns_3m'], (int, float)) and position['returns_3m'] != 'N/A':
+                            current_price = position['buy_price'] * (1 + position['returns_3m'] / 100)
+                        else:
+                            current_price = position['buy_price']
+                    elif days_since_buy <= 180:
+                        # 6개월 이내 - 6개월 수익률 적용
+                        if isinstance(position['returns_6m'], (int, float)) and position['returns_6m'] != 'N/A':
+                            current_price = position['buy_price'] * (1 + position['returns_6m'] / 100)
+                        else:
+                            current_price = position['buy_price']
+                    else:
+                        # 6개월 이후 - 현재까지 수익률 적용
+                        if isinstance(position['returns_now'], (int, float)) and position['returns_now'] != 'N/A':
+                            current_price = position['buy_price'] * (1 + position['returns_now'] / 100)
+                        else:
+                            current_price = position['buy_price']
+                    
+                    total_value += position['shares'] * current_price
+            
+            dates.append(date_obj)
+            values.append(total_value)
+        
+        # 디버깅: 포트폴리오 가치 변화 확인
+        print(f"=== 포트폴리오 가치 변화 디버깅 ===")
+        print(f"총 포지션 수: {len(positions)}")
+        for i, pos in enumerate(positions):
+            print(f"포지션 {i+1}: {pos['buy_date']} - 주식수: {pos['shares']:.4f} - 매수가: ${pos['buy_price']:.2f}")
+            print(f"  수익률: 1M={pos['returns_1m']}%, 3M={pos['returns_3m']}%, 6M={pos['returns_6m']}%, 현재={pos['returns_now']}%")
+        
+        if values:
+            print(f"초기 포트폴리오 가치: ${values[0]:.2f}")
+            print(f"최종 포트폴리오 가치: ${values[-1]:.2f}")
+            print(f"최소 포트폴리오 가치: ${min(values):.2f}")
+            print(f"최대 포트폴리오 가치: ${max(values):.2f}")
+            print(f"포트폴리오 가치 변화: {((values[-1] - values[0]) / values[0] * 100):.2f}%")
+            
+            # MDD 계산을 위한 추가 정보
+            running_max = pd.Series(values).expanding().max()
+            drawdown = (pd.Series(values) - running_max) / running_max * 100
+            mdd = drawdown.min()
+            print(f"계산된 MDD: {mdd:.2f}%")
+        print("==========================================\n")
+        
+        return pd.Series(values, index=dates)
+
     def run(self):
         """전체 백테스트 실행"""
         print(f"=== {self.symbol} HMA Mantra 백테스트 시작 ===")
@@ -682,7 +1125,7 @@ class HMAMantraBacktest:
         self.save_results(results, summary)
         
         # 6. 시각화 생성
-        self.create_visualization(results)
+        self.create_visualization(results, summary)
         
         # 7. 결과 출력
         print("\n=== 백테스트 완료 ===")

@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from functools import lru_cache
+import warnings
+warnings.filterwarnings('ignore')
 
 class TechnicalAnalysis:
     def __init__(self, data=None):
@@ -11,54 +14,62 @@ class TechnicalAnalysis:
             data (pd.DataFrame): OHLCV 데이터 (Open, High, Low, Close, Volume)
         """
         self.data = data
+        self._cache = {}
+        self._indicators_calculated = False
         
     def set_data(self, data):
         """데이터 설정"""
         self.data = data
+        self._cache.clear()
+        self._indicators_calculated = False
         
-    def calculate_all_indicators(self):
-        """모든 기술적 지표 계산"""
+    def calculate_all_indicators(self, use_cache=True):
+        """모든 기술적 지표 계산 (캐싱 지원)"""
         if self.data is None:
             print("ERROR: 데이터가 없습니다.")
             return None
             
-        # 이동평균선
-        self.add_moving_averages()
+        if use_cache and self._indicators_calculated:
+            return self.data
+            
+        # 벡터화된 연산으로 모든 지표를 한 번에 계산
+        self._calculate_indicators_vectorized()
         
-        # 볼린저 밴드
-        self.add_bollinger_bands()
-        
-        # RSI
-        self.add_rsi()
-        
-        # MACD
-        self.add_macd()
-        
-        # OBV
-        self.add_obv()
-        
-        # MFI
-        self.add_mfi()
-        
+        self._indicators_calculated = True
         return self.data
         
-    def add_moving_averages(self, periods=[5, 20, 60, 120, 200]):
-        """이동평균선 추가"""
+    def _calculate_indicators_vectorized(self):
+        """벡터화된 연산으로 모든 지표를 효율적으로 계산"""
+        # 이동평균선 (벡터화)
+        periods = [5, 20, 60, 120, 200]
         for period in periods:
-            self.data[f'MA{period}'] = self.data['Close'].rolling(window=period).mean()
+            self.data[f'MA{period}'] = self.data['Close'].rolling(window=period, min_periods=1).mean()
             
         # 거래량 이동평균
-        self.data['Volume_MA20'] = self.data['Volume'].rolling(window=20).mean()
+        self.data['Volume_MA20'] = self.data['Volume'].rolling(window=20, min_periods=1).mean()
         
-        return self.data
+        # 볼린저 밴드 (벡터화)
+        self._add_bollinger_bands_vectorized()
         
-    def add_bollinger_bands(self, period=20, std_dev=2):
-        """볼린저 밴드 추가"""
+        # RSI (벡터화)
+        self._add_rsi_vectorized()
+        
+        # MACD (벡터화)
+        self._add_macd_vectorized()
+        
+        # OBV (벡터화)
+        self._add_obv_vectorized()
+        
+        # MFI (벡터화)
+        self._add_mfi_vectorized()
+        
+    def _add_bollinger_bands_vectorized(self, period=20, std_dev=2):
+        """볼린저 밴드 벡터화 계산"""
         # 중간 밴드 (20일 이동평균)
-        middle_band = self.data['Close'].rolling(window=period).mean()
+        middle_band = self.data['Close'].rolling(window=period, min_periods=1).mean()
         
         # 표준편차
-        rolling_std = self.data['Close'].rolling(window=period).std()
+        rolling_std = self.data['Close'].rolling(window=period, min_periods=1).std()
         
         # 상단 밴드
         self.data['BB_Upper'] = middle_band + (rolling_std * std_dev)
@@ -69,33 +80,32 @@ class TechnicalAnalysis:
         # 하단 밴드
         self.data['BB_Lower'] = middle_band - (rolling_std * std_dev)
         
-        # %B 지표
-        self.data['BB_PB'] = (self.data['Close'] - self.data['BB_Lower']) / (self.data['BB_Upper'] - self.data['BB_Lower'])
+        # %B 지표 (0으로 나누기 방지)
+        bb_range = self.data['BB_Upper'] - self.data['BB_Lower']
+        self.data['BB_PB'] = np.where(bb_range != 0, 
+                                     (self.data['Close'] - self.data['BB_Lower']) / bb_range, 
+                                     0.5)
         
-        return self.data
-        
-    def add_rsi(self, period=14):
-        """RSI(Relative Strength Index) 추가"""
+    def _add_rsi_vectorized(self, period=14):
+        """RSI 벡터화 계산"""
         delta = self.data['Close'].diff()
         
-        # 상승과 하락 분리
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
+        # 상승과 하락 분리 (벡터화)
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
         
-        # 평균 계산
-        avg_gain = gain.rolling(window=period).mean()
-        avg_loss = loss.rolling(window=period).mean()
+        # 평균 계산 (벡터화)
+        avg_gain = pd.Series(gain).rolling(window=period, min_periods=1).mean()
+        avg_loss = pd.Series(loss).rolling(window=period, min_periods=1).mean()
         
-        # RS 계산
-        rs = avg_gain / avg_loss
+        # RS 계산 (0으로 나누기 방지)
+        rs = np.where(avg_loss != 0, avg_gain / avg_loss, 0)
         
         # RSI 계산
         self.data['RSI'] = 100 - (100 / (1 + rs))
         
-        return self.data
-        
-    def add_macd(self, fast=12, slow=26, signal=9):
-        """MACD(Moving Average Convergence Divergence) 추가"""
+    def _add_macd_vectorized(self, fast=12, slow=26, signal=9):
+        """MACD 벡터화 계산"""
         # 빠른 지수이동평균
         ema_fast = self.data['Close'].ewm(span=fast, min_periods=fast).mean()
         
@@ -108,70 +118,150 @@ class TechnicalAnalysis:
         # 시그널 라인
         self.data['MACD_Signal'] = self.data['MACD'].ewm(span=signal, min_periods=signal).mean()
         
-        # 히스토그램
-        self.data['MACD_Hist'] = self.data['MACD'] - self.data['MACD_Signal']
+        # MACD 히스토그램
+        self.data['MACD_Histogram'] = self.data['MACD'] - self.data['MACD_Signal']
         
-        return self.data
+    def _add_obv_vectorized(self):
+        """OBV 벡터화 계산"""
+        # 가격 변화 방향
+        price_change = self.data['Close'].diff()
         
-    def add_obv(self):
-        """OBV(On-Balance Volume) 추가"""
+        # OBV 계산 (벡터화)
         obv = np.zeros(len(self.data))
+        obv[0] = self.data['Volume'].iloc[0]
         
         for i in range(1, len(self.data)):
-            if self.data['Close'].iloc[i] > self.data['Close'].iloc[i-1]:
+            if price_change.iloc[i] > 0:
                 obv[i] = obv[i-1] + self.data['Volume'].iloc[i]
-            elif self.data['Close'].iloc[i] < self.data['Close'].iloc[i-1]:
+            elif price_change.iloc[i] < 0:
                 obv[i] = obv[i-1] - self.data['Volume'].iloc[i]
             else:
                 obv[i] = obv[i-1]
                 
         self.data['OBV'] = obv
         
-        return self.data
-        
-    def add_mfi(self, period=14):
-        """MFI(Money Flow Index) 추가"""
-        # 임시 데이터프레임 생성
-        df = self.data.copy()
-        
+    def _add_mfi_vectorized(self, period=14):
+        """MFI 벡터화 계산"""
         # 전형적 가격 (Typical Price)
-        df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+        typical_price = (self.data['High'] + self.data['Low'] + self.data['Close']) / 3
         
         # 자금 흐름 (Money Flow)
-        df['MF'] = df['TP'] * df['Volume']
+        money_flow = typical_price * self.data['Volume']
         
-        # 자금 흐름 방향 (긍정적/부정적)
-        df['Direction'] = 0  # 기본값
-        df.loc[df['TP'] > df['TP'].shift(1), 'Direction'] = 1  # 상승
-        df.loc[df['TP'] < df['TP'].shift(1), 'Direction'] = -1  # 하락
+        # 양의 자금 흐름과 음의 자금 흐름
+        positive_flow = np.zeros(len(self.data))
+        negative_flow = np.zeros(len(self.data))
         
-        # 긍정적 자금 흐름과 부정적 자금 흐름 분리
-        df['Positive_MF'] = 0.0
-        df['Negative_MF'] = 0.0
+        for i in range(1, len(self.data)):
+            if typical_price.iloc[i] > typical_price.iloc[i-1]:
+                positive_flow[i] = money_flow.iloc[i]
+            elif typical_price.iloc[i] < typical_price.iloc[i-1]:
+                negative_flow[i] = money_flow.iloc[i]
         
-        df.loc[df['Direction'] > 0, 'Positive_MF'] = df['MF']
-        df.loc[df['Direction'] < 0, 'Negative_MF'] = df['MF']
+        # 이동평균
+        positive_mf = pd.Series(positive_flow).rolling(window=period, min_periods=1).sum()
+        negative_mf = pd.Series(negative_flow).rolling(window=period, min_periods=1).sum()
         
-        # n기간 동안의 긍정적/부정적 자금 흐름 합계
-        df['Positive_MF_Sum'] = df['Positive_MF'].rolling(window=period).sum()
-        df['Negative_MF_Sum'] = df['Negative_MF'].rolling(window=period).sum()
+        # MFI 계산 (0으로 나누기 방지)
+        mfi = np.where(negative_mf != 0, 
+                      100 - (100 / (1 + positive_mf / negative_mf)), 
+                      50)
         
-        # 자금 비율 (Money Ratio)
-        # 0으로 나누는 문제 방지
-        df['Money_Ratio'] = df.apply(
-            lambda x: x['Positive_MF_Sum'] / x['Negative_MF_Sum'] 
-            if x['Negative_MF_Sum'] > 0 else 
-            (100 if x['Positive_MF_Sum'] > 0 else 50),  # 분모가 0이면 특별 처리
-            axis=1
-        )
+        self.data['MFI'] = mfi
         
-        # MFI 계산
-        df['MFI'] = 100 - (100 / (1 + df['Money_Ratio']))
+    def add_advanced_indicators(self):
+        """고급 기술적 지표 추가"""
+        self._add_stochastic()
+        self._add_williams_r()
+        self._add_atr()
+        self._add_adx()
+        self._add_cci()
         
-        # MFI 값을 원본 데이터프레임에 복사
-        self.data['MFI'] = df['MFI']
+    def _add_stochastic(self, k_period=14, d_period=3):
+        """Stochastic Oscillator 추가"""
+        # 최고가와 최저가의 범위
+        highest_high = self.data['High'].rolling(window=k_period, min_periods=1).max()
+        lowest_low = self.data['Low'].rolling(window=k_period, min_periods=1).min()
         
-        return self.data
+        # %K 계산
+        k_percent = np.where(highest_high != lowest_low,
+                            100 * (self.data['Close'] - lowest_low) / (highest_high - lowest_low),
+                            50)
+        
+        # %D 계산 (3기간 이동평균)
+        self.data['Stoch_K'] = k_percent
+        self.data['Stoch_D'] = pd.Series(k_percent).rolling(window=d_period, min_periods=1).mean()
+        
+    def _add_williams_r(self, period=14):
+        """Williams %R 추가"""
+        highest_high = self.data['High'].rolling(window=period, min_periods=1).max()
+        lowest_low = self.data['Low'].rolling(window=period, min_periods=1).min()
+        
+        # Williams %R 계산
+        williams_r = np.where(highest_high != lowest_low,
+                             -100 * (highest_high - self.data['Close']) / (highest_high - lowest_low),
+                             -50)
+        
+        self.data['Williams_R'] = williams_r
+        
+    def _add_atr(self, period=14):
+        """Average True Range (ATR) 추가"""
+        # True Range 계산
+        high_low = self.data['High'] - self.data['Low']
+        high_close_prev = np.abs(self.data['High'] - self.data['Close'].shift(1))
+        low_close_prev = np.abs(self.data['Low'] - self.data['Close'].shift(1))
+        
+        # True Range는 세 값 중 최대값
+        true_range = np.maximum(high_low, np.maximum(high_close_prev, low_close_prev))
+        
+        # ATR은 True Range의 이동평균
+        self.data['ATR'] = true_range.rolling(window=period, min_periods=1).mean()
+        
+    def _add_adx(self, period=14):
+        """Average Directional Index (ADX) 추가"""
+        # 방향성 이동 (Directional Movement)
+        high_diff = self.data['High'].diff()
+        low_diff = self.data['Low'].diff()
+        
+        # +DM과 -DM 계산
+        plus_dm = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0)
+        minus_dm = np.where((low_diff > high_diff) & (low_diff > 0), -low_diff, 0)
+        
+        # True Range (ATR과 동일)
+        high_low = self.data['High'] - self.data['Low']
+        high_close_prev = np.abs(self.data['High'] - self.data['Close'].shift(1))
+        low_close_prev = np.abs(self.data['Low'] - self.data['Close'].shift(1))
+        true_range = np.maximum(high_low, np.maximum(high_close_prev, low_close_prev))
+        
+        # +DI와 -DI 계산
+        plus_di = 100 * pd.Series(plus_dm).rolling(window=period, min_periods=1).mean() / true_range.rolling(window=period, min_periods=1).mean()
+        minus_di = 100 * pd.Series(minus_dm).rolling(window=period, min_periods=1).mean() / true_range.rolling(window=period, min_periods=1).mean()
+        
+        # DX 계산
+        dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
+        
+        # ADX 계산
+        self.data['ADX'] = dx.rolling(window=period, min_periods=1).mean()
+        self.data['Plus_DI'] = plus_di
+        self.data['Minus_DI'] = minus_di
+        
+    def _add_cci(self, period=20):
+        """Commodity Channel Index (CCI) 추가"""
+        # 전형적 가격
+        typical_price = (self.data['High'] + self.data['Low'] + self.data['Close']) / 3
+        
+        # 전형적 가격의 이동평균
+        tp_sma = typical_price.rolling(window=period, min_periods=1).mean()
+        
+        # 평균 편차
+        mean_deviation = np.abs(typical_price - tp_sma).rolling(window=period, min_periods=1).mean()
+        
+        # CCI 계산
+        cci = np.where(mean_deviation != 0,
+                      (typical_price - tp_sma) / (0.015 * mean_deviation),
+                      0)
+        
+        self.data['CCI'] = cci
     
     def add_trend_analysis(self):
         """가격 추세 분석 추가"""
