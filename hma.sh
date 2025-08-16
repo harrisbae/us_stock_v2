@@ -14,6 +14,7 @@ SYMBOL=""
 SYMBOL_FILE=""
 ANALYSIS_TYPE="technical"  # 기본값: 기술적 분석
 VOLUME_PROFILE_TYPE="none"  # 기본값: Volume Profile 없음
+USE_CURRENT_DATE=false  # 현재일시 기준 데이터 수집 옵션 추가
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -62,6 +63,10 @@ while [[ $# -gt 0 ]]; do
       SYMBOL_FILE="$2"
       shift 2
       ;;
+    --current)
+      USE_CURRENT_DATE=true
+      shift
+      ;;
     *)
       echo "알 수 없는 옵션: $1"
       exit 1
@@ -74,7 +79,47 @@ if [ ! -z "$DAYS" ]; then
   PERIOD="${DAYS}d"
 fi
 
-# 날짜 범위 처리
+# 현재일시 기준 데이터 수집 처리
+if [ "$USE_CURRENT_DATE" = true ]; then
+  echo "현재일시 기준으로 데이터를 수집합니다."
+  # 현재 한국 시간 기준으로 오늘 날짜 계산
+  CURRENT_DATE=$(TZ=Asia/Seoul date +"%Y-%m-%d")
+  TO_DATE="$CURRENT_DATE"
+  
+  # PERIOD에서 숫자와 단위 분리하여 FROM_DATE 계산
+  if [[ "$PERIOD" =~ ^([0-9]+)([dmy]|mo)$ ]]; then
+    amount=${BASH_REMATCH[1]}
+    unit=${BASH_REMATCH[2]}
+    
+    # Python을 사용하여 현재일시로부터 이전 날짜 계산
+    FROM_DATE=$(python3 -c "
+from datetime import datetime, timedelta
+import sys
+
+current_date = '$CURRENT_DATE'
+amount = $amount
+unit = '$unit'
+
+# 현재일시를 기준으로 FROM_DATE 계산
+current = datetime.strptime(current_date, '%Y-%m-%d')
+
+if unit == 'd':
+    from_date = current - timedelta(days=amount)
+elif unit == 'm' or unit == 'mo':
+    from_date = current - timedelta(days=amount * 30)
+elif unit == 'y':
+    from_date = current - timedelta(days=amount * 365)
+else:
+    from_date = current - timedelta(days=amount)
+
+print(from_date.strftime('%Y-%m-%d'))
+")
+    echo "현재일시: $CURRENT_DATE"
+    echo "분석 기간: $FROM_DATE ~ $TO_DATE (${PERIOD})"
+  fi
+fi
+
+# 날짜 범위 처리 (기존 로직)
 if [ ! -z "$FROM_DATE" ] || [ ! -z "$TO_DATE" ]; then
   # --to와 -p가 모두 지정된 경우: --to 날짜로부터 -p 기간만큼 이전 계산
   if [ ! -z "$TO_DATE" ] && [ ! -z "$PERIOD" ] && [ "$PERIOD" != "120d" ] && [ -z "$FROM_DATE" ]; then
@@ -269,7 +314,7 @@ fi
 
 # 매수/매도 신호 종합 기능
 SUMMARY_FILE="output/analysis/summary_signal.txt"
-echo "종목,신호,날짜" > "$SUMMARY_FILE"
+echo "종목,신호(HMA),T-POC강도,C-POC강도,PCR전략,투자액션(RSI+ISI),날짜,현재가,C-POC범위,T-POC범위" > "$SUMMARY_FILE"
 
 # 현재 날짜 가져오기 (한국 시간 기준)
 CURRENT_DATE=$(TZ=Asia/Seoul date +"%Y-%m-%d")
@@ -279,7 +324,8 @@ if [ ! -z "$SYMBOL_FILE" ]; then
     [[ $symbol =~ ^#.*$ ]] && continue
     [[ -z "${symbol// }" ]] && continue
     
-    SIGNAL_FILE="output/hma_mantra/$symbol/${symbol}_signal.txt"
+    # 가장 최근에 생성된 신호 파일 찾기
+  SIGNAL_FILE=$(find "output/hma_mantra/$symbol/" -name "*_signal.txt" -type f | sort | tail -1)
     if [ -f "$SIGNAL_FILE" ]; then
       # 신호 요약 섹션에서 마지막 줄의 신호만 추출
       SIGNAL=$(grep "=== 신호 요약 ===" -A 1 "$SIGNAL_FILE" | tail -1 | tr -d '\r')
@@ -287,13 +333,27 @@ if [ ! -z "$SYMBOL_FILE" ]; then
         # 신호 요약이 없으면 파일의 마지막 줄 사용
         SIGNAL=$(tail -1 "$SIGNAL_FILE" | tr -d '\r')
       fi
-      echo "$symbol,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+      # 현재가 추출
+      CURRENT_PRICE=$(grep "현재가:" "$SIGNAL_FILE" | sed 's/.*현재가: //' | tr -d '\r')
+      
+      # PCR 전략과 투자액션 추출
+      PCR_STRATEGY=$(grep "PCR 전략:" "$SIGNAL_FILE" | sed 's/.*PCR 전략: //' | tr -d '\r')
+      INVESTMENT_ACTION=$(grep "투자액션(RSI+ISI):" "$SIGNAL_FILE" | sed 's/.*투자액션(RSI+ISI): //' | tr -d '\r')
+      
+      # POC 정보 추출
+      C_POC_RANGE=$(grep "C-POC:" "$SIGNAL_FILE" | sed 's/.*C-POC: [0-9.]* (\([^)]*\)), 강도: \([^)]*\).*/\1/' | tr -d '\r')
+      C_POC_STRENGTH=$(grep "C-POC:" "$SIGNAL_FILE" | sed 's/.*강도: \([^)]*\).*/\1/' | tr -d '\r')
+      T_POC_RANGE=$(grep "T-POC:" "$SIGNAL_FILE" | sed 's/.*T-POC: [0-9.]* (\([^)]*\)), 강도: \([^)]*\).*/\1/' | tr -d '\r')
+      T_POC_STRENGTH=$(grep "T-POC:" "$SIGNAL_FILE" | sed 's/.*강도: \([^)]*\).*/\1/' | tr -d '\r')
+      
+      echo "$symbol,$SIGNAL,$T_POC_STRENGTH,$C_POC_STRENGTH,$PCR_STRATEGY,$INVESTMENT_ACTION,$CURRENT_DATE,$CURRENT_PRICE,$C_POC_RANGE,$T_POC_RANGE" >> "$SUMMARY_FILE"
     else
-      echo "$symbol,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+      echo "$symbol,NO_SIGNAL,,,,,,$CURRENT_DATE,,,,," >> "$SUMMARY_FILE"
     fi
   done < "$SYMBOL_FILE"
 else
-  SIGNAL_FILE="output/hma_mantra/$SYMBOL/${SYMBOL}_signal.txt"
+  # 가장 최근에 생성된 신호 파일 찾기
+  SIGNAL_FILE=$(find "output/hma_mantra/$SYMBOL/" -name "*_signal.txt" -type f | sort | tail -1)
   if [ -f "$SIGNAL_FILE" ]; then
     # 신호 요약 섹션에서 마지막 줄의 신호만 추출
     SIGNAL=$(grep "=== 신호 요약 ===" -A 1 "$SIGNAL_FILE" | tail -1 | tr -d '\r')
@@ -301,9 +361,22 @@ else
       # 신호 요약이 없으면 파일의 마지막 줄 사용
       SIGNAL=$(tail -1 "$SIGNAL_FILE" | tr -d '\r')
     fi
-    echo "$SYMBOL,$SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+            # 현재가 추출
+        CURRENT_PRICE=$(grep "현재가:" "$SIGNAL_FILE" | sed 's/.*현재가: //' | tr -d '\r')
+        
+        # PCR 전략과 투자액션 추출
+        PCR_STRATEGY=$(grep "PCR 전략:" "$SIGNAL_FILE" | sed 's/.*PCR 전략: //' | tr -d '\r')
+        INVESTMENT_ACTION=$(grep "투자액션(RSI+ISI):" "$SIGNAL_FILE" | sed 's/.*투자액션(RSI+ISI): //' | tr -d '\r')
+        
+        # POC 정보 추출
+        C_POC_RANGE=$(grep "C-POC:" "$SIGNAL_FILE" | sed 's/.*C-POC: [0-9.]* (\([^)]*\)), 강도: \([^)]*\).*/\1/' | tr -d '\r')
+        C_POC_STRENGTH=$(grep "C-POC:" "$SIGNAL_FILE" | sed 's/.*강도: \([^)]*\).*/\1/' | tr -d '\r')
+        T_POC_RANGE=$(grep "T-POC:" "$SIGNAL_FILE" | sed 's/.*T-POC: [0-9.]* (\([^)]*\)), 강도: \([^)]*\).*/\1/' | tr -d '\r')
+        T_POC_STRENGTH=$(grep "T-POC:" "$SIGNAL_FILE" | sed 's/.*강도: \([^)]*\).*/\1/' | tr -d '\r')
+        
+        echo "$SYMBOL,$SIGNAL,$T_POC_STRENGTH,$C_POC_STRENGTH,$PCR_STRATEGY,$INVESTMENT_ACTION,$CURRENT_DATE,$CURRENT_PRICE,$C_POC_RANGE,$T_POC_RANGE" >> "$SUMMARY_FILE"
   else
-    echo "$SYMBOL,NO_SIGNAL,$CURRENT_DATE" >> "$SUMMARY_FILE"
+    echo "$SYMBOL,NO_SIGNAL,,,,,,$CURRENT_DATE,,,,," >> "$SUMMARY_FILE"
   fi
 fi
 

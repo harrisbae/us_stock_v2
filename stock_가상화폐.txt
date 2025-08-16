@@ -1,0 +1,15 @@
+# 이더리움 ETF
+# 블랙록(BlackRock): 
+ETHA
+# 프랭클린(Franklin): 
+EZET
+# 반에크(VanEck): 
+ETHV
+# 피델리티(Fidelity): 
+FETH
+# 비트와이즈(Bitwise): 
+ETHW
+#비트마인 이머전 테크놀로지스(BitMine Immersion Technologies Inc.): 
+BMNR
+#샤프링크 게이밍(Sharplink Gaming): 
+SBET

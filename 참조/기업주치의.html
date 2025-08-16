@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>기업 재무 데이터 분석기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Slate and Blue with a touch of gray for backgrounds -->
+    <!-- Application Structure Plan: The SPA is designed with a clear, sequential user flow: 1) A landing/input form to initiate the process, 2) A loading state to simulate data collection, and 3) A dynamic dashboard to display the analysis results. This structure simplifies a complex process for the user, focusing on the core value proposition of fintech scraping: speed and clarity. The dashboard is divided into key metrics, financial trends (line chart), and a qualitative summary, providing a holistic view of the company's health. -->
+    <!-- Visualization & Content Choices:
+        - Key Metrics (KPIs): Goal=Inform -> Presentation=HTML Cards -> Interaction=None -> Justification=Quickly highlights critical financial numbers for at-a-glance understanding.
+        - Financial Trends: Goal=Change/Trend Analysis -> Presentation=Line Chart -> Interaction=Tooltips on hover -> Justification=Line charts are ideal for visualizing time-series data like revenue and profit over multiple years, showing growth or decline patterns. Library=Chart.js (Canvas).
+        - Expense Breakdown: Goal=Organize/Compare -> Presentation=Bar Chart -> Interaction=Tooltips on hover -> Justification=Bar charts are excellent for comparing different categories of data, such as various expenses, to easily identify the largest cost centers. Library=Chart.js (Canvas).
+        - Financial Summary: Goal=Inform/Summarize -> Presentation=Text Block -> Interaction=None -> Justification=Provides a qualitative, expert-like summary of the quantitative data, synthesizing the findings into a clear and actionable diagnosis.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; height: 350px; max-height: 50vh; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .loading-spinner { border-top-color: #3B82F6; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; }
+        @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="min-h-screen flex items-center justify-center p-6 md:p-12">
+        <div id="landing-page" class="bg-white p-8 md:p-12 rounded-2xl shadow-xl max-w-2xl w-full text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-600 mb-4">
+                기업 재무 상태 정밀 분석 솔루션
+            </h1>
+            <p class="text-lg text-slate-600 mb-8">
+                기업의 동의를 기반으로 회계 및 뱅킹 데이터를 안전하게 수집하고, <br class="hidden md:inline">
+                정교한 분석을 통해 금융 상태를 진단합니다.
+            </p>
+            <div class="space-y-4">
+                <input id="company-name" type="text" placeholder="분석할 기업명 입력" class="w-full px-6 py-4 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="start-analysis-btn" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition duration-300">
+                    데이터 수집 및 분석 시작
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 mt-4">
+                *본 프로그램은 시뮬레이션이며 실제 데이터에 연결되지 않습니다.
+            </p>
+        </div>
+
+        <div id="loading-page" class="hidden flex-col items-center justify-center text-center">
+            <div class="loading-spinner w-16 h-16 border-4 border-slate-200 rounded-full"></div>
+            <p class="text-lg font-medium text-slate-600 mt-4">데이터를 안전하게 수집하고 있습니다...</p>
+            <p class="text-sm text-slate-400 mt-2">이 작업은 잠시 시간이 걸릴 수 있습니다.</p>
+        </div>
+        
+        <div id="analysis-dashboard" class="hidden bg-white p-8 md:p-12 rounded-2xl shadow-xl w-full">
+            <h2 class="text-3xl md:text-4xl font-bold text-blue-600 mb-4 text-center">
+                <span id="analyzed-company-name"></span> 재무 건강 보고서
+            </h2>
+            <p class="text-lg text-slate-600 text-center mb-8">
+                수집된 데이터를 기반으로 분석된 기업의 주요 재무 지표와 현황입니다.
+            </p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+                <div class="bg-blue-50 p-6 rounded-xl shadow-sm text-center">
+                    <p class="text-sm text-blue-600 font-semibold mb-1">총 매출액</p>
+                    <p id="kpi-revenue" class="text-2xl font-bold text-slate-800">...</p>
+                </div>
+                <div class="bg-blue-50 p-6 rounded-xl shadow-sm text-center">
+                    <p class="text-sm text-blue-600 font-semibold mb-1">영업 이익</p>
+                    <p id="kpi-profit" class="text-2xl font-bold text-slate-800">...</p>
+                </div>
+                <div class="bg-blue-50 p-6 rounded-xl shadow-sm text-center">
+                    <p class="text-sm text-blue-600 font-semibold mb-1">유동 비율</p>
+                    <p id="kpi-liquidity" class="text-2xl font-bold text-slate-800">...</p>
+                </div>
+                <div class="bg-blue-50 p-6 rounded-xl shadow-sm text-center">
+                    <p class="text-sm text-blue-600 font-semibold mb-1">부채 비율</p>
+                    <p id="kpi-debt" class="text-2xl font-bold text-slate-800">...</p>
+                </div>
+            </div>
+
+            <h3 class="text-2xl font-bold mb-4">재무 추세 분석</h3>
+            <p class="text-slate-600 mb-6">
+                최근 5년간의 매출과 영업 이익 추이를 통해 기업의 성장성과 수익성 변화를 한눈에 파악할 수 있습니다.
+            </p>
+            <div class="chart-container mb-12">
+                <canvas id="revenueProfitChart"></canvas>
+            </div>
+            
+            <h3 class="text-2xl font-bold mb-4">비용 구조 분석</h3>
+            <p class="text-slate-600 mb-6">
+                주요 비용 항목의 비중을 분석하여 효율적인 경영을 위한 개선점을 찾을 수 있습니다.
+            </p>
+            <div class="chart-container mb-12">
+                <canvas id="expenseChart"></canvas>
+            </div>
+            
+            <div class="bg-slate-100 p-8 rounded-xl border border-slate-200">
+                <h3 class="text-2xl font-bold text-blue-700 mb-4">👨‍⚕️ 금융 주치의의 종합 의견</h3>
+                <p id="financial-summary" class="text-slate-700 leading-relaxed">
+                    ...
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const landingPage = document.getElementById('landing-page');
+            const loadingPage = document.getElementById('loading-page');
+            const dashboard = document.getElementById('analysis-dashboard');
+            const startBtn = document.getElementById('start-analysis-btn');
+            const companyInput = document.getElementById('company-name');
+            const analyzedCompanyName = document.getElementById('analyzed-company-name');
+            const kpiRevenue = document.getElementById('kpi-revenue');
+            const kpiProfit = document.getElementById('kpi-profit');
+            const kpiLiquidity = document.getElementById('kpi-liquidity');
+            const kpiDebt = document.getElementById('kpi-debt');
+            const financialSummary = document.getElementById('financial-summary');
+            
+            const financialData = {
+                companyName: "가상 기업 '미래산업'",
+                years: ['2020', '2021', '2022', '2023', '2024'],
+                revenue: [50, 75, 90, 85, 110],
+                profit: [5, 8, 12, 10, 15],
+                expenses: {
+                    labels: ['인건비', '원재료비', '판매관리비', '이자비용', '기타'],
+                    data: [45, 20, 15, 5, 15]
+                },
+                ratios: {
+                    liquidity: '185%',
+                    debt: '150%'
+                },
+                summary: "최근 5년간의 데이터 분석 결과, '미래산업'은 꾸준한 매출 성장과 함께 수익성이 개선되고 있는 긍정적인 추세를 보이고 있습니다. 2023년 잠시 주춤했으나 2024년 다시 큰 폭으로 회복하며 안정적인 경영 능력을 입증했습니다. 다만, 부채 비율이 업계 평균보다 다소 높아 자금 조달 시 안정성을 고려한 전략이 필요해 보입니다. 전체적으로 재무 건전성이 양호한 상태로, 신규 투자 유치 또는 금융권 대출을 통한 추가적인 성장이 가능할 것으로 진단됩니다."
+            };
+
+            startBtn.addEventListener('click', function() {
+                const companyName = companyInput.value.trim();
+                if (companyName === "") {
+                    alert("분석할 기업명을 입력해주세요.");
+                    return;
+                }
+
+                landingPage.classList.add('hidden');
+                loadingPage.classList.remove('hidden');
+
+                setTimeout(function() {
+                    loadingPage.classList.add('hidden');
+                    dashboard.classList.remove('hidden');
+                    
+                    // 대시보드 데이터 채우기
+                    analyzedCompanyName.textContent = companyName;
+                    kpiRevenue.textContent = `${financialData.revenue[financialData.revenue.length - 1]}억 원`;
+                    kpiProfit.textContent = `${financialData.profit[financialData.profit.length - 1]}억 원`;
+                    kpiLiquidity.textContent = financialData.ratios.liquidity;
+                    kpiDebt.textContent = financialData.ratios.debt;
+                    financialSummary.textContent = financialData.summary;
+
+                    // 차트 생성
+                    createCharts();
+                }, 2000); // 2초간 로딩 시뮬레이션
+            });
+
+            function createCharts() {
+                // 매출 및 이익 추세 차트
+                const ctx1 = document.getElementById('revenueProfitChart').getContext('2d');
+                new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: financialData.years,
+                        datasets: [
+                            {
+                                label: '매출액 (억 원)',
+                                data: financialData.revenue,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                            },
+                            {
+                                label: '영업 이익 (억 원)',
+                                data: financialData.profit,
+                                borderColor: 'rgb(249, 115, 22)',
+                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '금액 (억 원)',
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // 비용 구조 차트
+                const ctx2 = document.getElementById('expenseChart').getContext('2d');
+                new Chart(ctx2, {
+                    type: 'bar',
+                    data: {
+                        labels: financialData.expenses.labels,
+                        datasets: [{
+                            label: '비용 비중',
+                            data: financialData.expenses.data,
+                            backgroundColor: [
+                                'rgba(59, 130, 246, 0.8)',
+                                'rgba(234, 179, 8, 0.8)',
+                                'rgba(139, 92, 246, 0.8)',
+                                'rgba(244, 63, 94, 0.8)',
+                                'rgba(100, 116, 139, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgb(59, 130, 246)',
+                                'rgb(234, 179, 8)',
+                                'rgb(139, 92, 246)',
+                                'rgb(244, 63, 94)',
+                                'rgb(100, 116, 139)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false,
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

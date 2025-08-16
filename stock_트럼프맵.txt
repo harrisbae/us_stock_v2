@@ -1,0 +1,55 @@
+# 📊 트럼프 트레이딩 Map 종목 정리 (2025-08-09 기준)
+# AI 패권
+TSLA
+NVDA
+AMZN
+MSFT
+GOOGL
+ORCL
+TSM
+ARM
+# 전력/인프라
+GEV
+VST
+OKLO
+SMR
+# 에너지 패권
+EQT
+LNG
+KMI
+# 금융 & 핀테크
+JPM
+GS
+BLK
+AFRM
+SOFI
+# 암호화폐 패권
+MSTR
+HOOD
+COIN
+# 드론 / UAM (고변동)
+JOBY
+ACHR
+RCAT
+UMAC
+# AIS / W (고변동)
+PLTR
+RDDT
+SOUN
+CRNC
+# 우주 (고변동)
+DXYZ
+RKLB
+LUNR
+PL
+# 양자 (고변동)
+IONQ
+QBTS
+RGTI
+# 불법이민
+GEO
+AXON
+# 방산/항공
+GE
+RTX
+BA
