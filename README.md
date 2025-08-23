@@ -73,9 +73,17 @@ stock_tech_v1/
 6. MFI
 7. 가격 추세
 
-### 2.4 출력 파일
+### 2.4 차트 시각화 개선
+- **현재가 수직선 스타일 선택**
+  - 얇은 수직선 (`thin`): 캔들바 가독성 향상
+  - 하단 시작 수직선 (`bottom_start`): 시각적 연결성 향상
+- **Volume Profile 오버레이**: 거래량 분포를 메인 차트에 반투명하게 표시
+- **투자심리도 및 RSI 통합 표시**: 현재가 하단에 투자 전략 정보 제공
+
+### 2.5 출력 파일
 - 차트 이미지: `{종목코드}_technical_analysis.png`
 - 기술적 지표 데이터: `{종목코드}_data.csv`
+- 신호 분석 결과: `{종목코드}_signal.txt`
 
 ## 3. 사용 방법
 
@@ -161,7 +169,39 @@ output/
    - 에러 처리 강화
    - 성능 최적화
 
-## 6. 한국 주식 외국인 거래량 데이터 사용법
+## 6. 현재가 수직선 스타일 사용법
+
+### 6.1 기본 사용법
+```python
+from src.indicators.hma_mantra.visualization.volume_profile_overlay_chart import plot_main_chart_with_volume_profile_overlay
+
+# 기본값: 얇은 수직선 (캔들바 가독성 향상)
+plot_main_chart_with_volume_profile_overlay(
+    data=stock_data,
+    ticker='AAPL',
+    save_path='output/chart.png'
+)
+
+# 하단 시작 수직선 (시각적 연결성 향상)
+plot_main_chart_with_volume_profile_overlay(
+    data=stock_data,
+    ticker='AAPL',
+    save_path='output/chart.png',
+    current_price_line_style='bottom_start'
+)
+```
+
+### 6.2 스타일 옵션
+- **`thin`** (기본값): 수직선 두께 0.5, 전체 차트 높이에 걸쳐 표시
+- **`bottom_start`**: 수직선 두께 1.0, 현재 캔들바 하단에서 시작하여 차트 하단까지 표시
+
+### 6.3 테스트 실행
+```bash
+# 현재가 수직선 스타일 테스트
+python test_current_price_line.py
+```
+
+## 7. 한국 주식 외국인 거래량 데이터 사용법
 
 한국 주식에 대한 외국인 거래량 데이터를 활용하기 위해서는 다음과 같은 사전 준비가 필요합니다:
 
@@ -188,7 +228,7 @@ output/
    - 외국인 순매수 신호는 매수 점수에 최대 10점 반영됩니다
    - 외국인 순매수 비율이 높을 경우 추가 점수가 부여됩니다
 
-## 7. 주의사항
+## 8. 주의사항
 
 - 이 분석 도구는 투자 판단을 위한 참고용으로만 사용하세요.
 - 과거 데이터 기반 분석이므로 미래 주가를 정확히 예측하지 못할 수 있습니다.

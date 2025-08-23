@@ -341,22 +341,22 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
                                    box_low, box_high, 
                                    color='red', alpha=0.12, zorder=0)
     
-    # 수평선 및 가격 표시 추가
+    # 수평선 및 가격 표시 추가 - thin 스타일
     # 현재가 라인
-    ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.8, alpha=0.5)
+    ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], current_price, 
                 f'현재가: {current_price:.2f}\n{ohlcv_data.index[-1].strftime("%Y-%m-%d")}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
     
     # 지지선
-    ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.8, alpha=0.5)
+    ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], support, f'지지선: {support:.2f}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
     
     # 저항선
-    ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.8, alpha=0.5)
+    ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], resistance, f'저항선: {resistance:.2f}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -611,9 +611,9 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
     ax_rsi.plot(ohlcv_data.index, rsi3, color='blue', linewidth=1, label='RSI(3)')
     ax_rsi.plot(ohlcv_data.index, rsi14, color='purple', linewidth=2, label='RSI(14)')
     ax_rsi.plot(ohlcv_data.index, rsi50, color='green', linewidth=1, label='RSI(50)')
-    ax_rsi.axhline(y=70, color='red', linestyle='--', alpha=0.5)
-    ax_rsi.axhline(y=30, color='green', linestyle='--', alpha=0.5)
-    ax_rsi.axhline(y=50, color='black', linestyle='--', alpha=0.5)  # 50 수평선 추가
+    ax_rsi.axhline(y=70, color='red', linestyle='--', linewidth=0.3, alpha=0.5)
+    ax_rsi.axhline(y=30, color='green', linestyle='--', linewidth=0.3, alpha=0.5)
+    ax_rsi.axhline(y=50, color='black', linestyle='--', linewidth=0.3, alpha=0.5)  # 50 수평선 추가
     ax_rsi.set_ylim([0, 100])
     ax_rsi.set_ylabel('RSI')
     ax_rsi.grid(True, alpha=0.3)
@@ -765,9 +765,9 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
         vix_box_cur = float(vix.iloc[-1].item())
         # 박스권 영역을 투명한 빨간색으로 표시
         ax_vix.fill_between(vix.index[-20:], vix_box_low, vix_box_high, color='red', alpha=0.12, zorder=0)
-        # 수평선(점선) 모두 검은색
-        ax_vix.axhline(vix_box_high, color='black', linestyle=':', linewidth=1, alpha=0.7)
-        ax_vix.axhline(vix_box_low, color='black', linestyle=':', linewidth=1, alpha=0.7)
+        # 수평선(점선) 모두 검은색 - thin 스타일
+        ax_vix.axhline(vix_box_high, color='black', linestyle=':', linewidth=0.3, alpha=0.7)
+        ax_vix.axhline(vix_box_low, color='black', linestyle=':', linewidth=0.3, alpha=0.7)
         ax_vix.axhline(vix_box_cur, color='black', linestyle=':', linewidth=1, alpha=0.7)
         # 텍스트 위치 우측으로 약간 이동 (x좌표를 vix.index[-1]에서 +1로 이동)
         from matplotlib.dates import date2num, num2date
@@ -924,15 +924,15 @@ def plot_hma_mantra_md_signals(data: pd.DataFrame, ticker: str = None, save_path
                 ax.text(dt, ax.get_ylim()[0], dt.strftime('%Y-%m-%d'), fontsize=6, color='magenta',
                         ha='center', va='top', rotation=45,
                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=25)
-        # 메인차트에 종가 기준 수평선 (양봉/음봉 구분)
+        # 메인차트에 종가 기준 수평선 (양봉/음봉 구분) - thin 스타일
         close = ohlcv_data.loc[dt, 'Close']
         open_ = ohlcv_data.loc[dt, 'Open']
         if close >= open_:
-            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.3, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
         else:
-            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.3, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
 

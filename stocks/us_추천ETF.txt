@@ -1,0 +1,16 @@
+##주요 추천 종목 및 ETF
+#티커	종목명/ETF명	섹터	추천 이유
+#NVDA	엔비디아	정보기술	AI 인프라의 핵심 하드웨어 시장을 지배.
+NVDA
+#XLK	Technology Select Sector SPDR Fund	정보기술	AI 장기 성장 스토리에 대한 분산 투자.
+XLK
+#IYC	iShares U.S. Consumer Discretionary ETF	경기소비재	금리 인하로 인한 경기 순환적 상승 잠재력 포착.
+IYC
+#LEN	레나	경기소비재	모기지 금리 하락 시 직접적인 수혜 예상.
+LEN
+#XLF	Financial Select Sector SPDR Fund	금융	경기 회복에 따른 금융 부문 전반의 성장 기대.
+XLF
+#XLV	Health Care Select Sector SPDR Fund	헬스케어	정책 위험을 분산하고 저평가된 밸류에이션에 투자.
+XLV
+#XLU	Utilities Select Sector SPDR Fund	유틸리티	AI 데이터 센터의 전력 수요 증가라는 메가트렌드에 대한 분산 투자.
+XLU

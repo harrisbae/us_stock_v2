@@ -189,19 +189,19 @@ def plot_main_chart_with_volume_profile(data: pd.DataFrame, ticker: str = None, 
     current_price = ohlcv_data['Close'].iloc[-1]
     support, resistance = calculate_support_resistance(ohlcv_data)
     
-    # 수평선 및 가격 표시
-    ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.8, alpha=0.5)
+    # 수평선 및 가격 표시 - thin 스타일
+    ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], current_price, 
                 f'현재가: {current_price:.2f}\n{ohlcv_data.index[-1].strftime("%Y-%m-%d")}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
     
-    ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.8, alpha=0.5)
+    ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], support, f'지지선: {support:.2f}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
     
-    ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.8, alpha=0.5)
+    ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.3, alpha=0.5)
     ax_main.text(ohlcv_data.index[-1], resistance, f'저항선: {resistance:.2f}', 
                 rotation=45, fontsize=6, ha='left', va='bottom',
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -252,15 +252,15 @@ def plot_main_chart_with_volume_profile(data: pd.DataFrame, ticker: str = None, 
                     ha='center', va='top', rotation=45,
                     bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=25)
         
-        # 종가 기준 수평선
+        # 종가 기준 수평선 - thin 스타일
         close = ohlcv_data.loc[dt, 'Close']
         open_ = ohlcv_data.loc[dt, 'Open']
         if close >= open_:
-            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='lime', linestyle='-', linewidth=0.3, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
         else:
-            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.6, alpha=0.8, xmin=0, xmax=1, zorder=21)
+            ax_main.axhline(close, color='red', linestyle='-', linewidth=0.3, alpha=0.8, xmin=0, xmax=1, zorder=21)
             ax_main.text(ohlcv_data.index[-1], close, f'{close:.2f}', fontsize=7, color='black', ha='left', va='center',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=0.5), zorder=22)
 
@@ -310,8 +310,8 @@ def plot_main_chart_with_volume_profile(data: pd.DataFrame, ticker: str = None, 
     # Volume Profile의 bottom과 top을 메인차트와 정확히 일치
     ax_volume_profile.set_ylim(bottom=main_ylim[0], top=main_ylim[1])
     
-    # POC (Point of Control) 표시
-    ax_volume_profile.axhline(poc_price, color='red', linestyle='--', alpha=0.8, linewidth=2, label=f'POC: {poc_price:.2f}')
+    # POC (Point of Control) 표시 - thin 스타일
+    ax_volume_profile.axhline(poc_price, color='red', linestyle='--', alpha=0.8, linewidth=0.5, label=f'POC: {poc_price:.2f}')
     
     # POC 가격 텍스트 표시
     ax_volume_profile.text(ax_volume_profile.get_xlim()[1] * 0.8, poc_price, f'{poc_price:.2f}', 

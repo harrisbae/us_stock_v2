@@ -1,5 +1,4 @@
-
- # US 주요 종목
+# US 주요 종목
 COIN
 CRCL
 CRWV
