@@ -1120,7 +1120,7 @@ def calculate_buffett_indicator():
             end_date = datetime.now().date()
             start_date = end_date - timedelta(days=7)  # 최근 1주일 데이터
             
-            wilshire = yf.download('^W5000FLT', start=start_date, end=end_date)
+            wilshire = yf.download('^W5000', start=start_date, end=end_date)
             if not wilshire.empty:
                 # 시가총액은 지수 값에 비례하므로 근사값 계산
                 # 2025년 8월 기준: Wilshire 5000 지수가 약 60,000 수준으로 상승

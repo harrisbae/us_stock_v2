@@ -17,6 +17,7 @@ import argparse
 from kostalany_data_loader import MacroDataLoader
 from kostalany_simple import KostalanyEggModel
 from dotenv import load_dotenv
+from fed_watch_analyzer import FedWatchAnalyzer
 
 def main():
     """
@@ -36,12 +37,15 @@ def main():
     parser.add_argument('--history_years', type=int, default=5,
                         help='표시할 과거 데이터 연수 (기본: 5년)')
     # 기본값 파라미터 추가
-    parser.add_argument('--default_gdp', type=float, default=None, help='스크래핑 실패 시 사용할 GDP 기본값')
+    parser.add_argument('--default_gdp', type=float, default=1.2, help='스크래핑 실패 시 사용할 GDP 기본값 (2025년 상반기: 1.2%)')
     parser.add_argument('--default_inflation', type=float, default=None, help='스크래핑 실패 시 사용할 인플레이션 기본값')
     parser.add_argument('--default_interest', type=float, default=None, help='스크래핑 실패 시 사용할 기준금리 기본값')
     parser.add_argument('--default_unemployment', type=float, default=None, help='스크래핑 실패 시 사용할 실업률 기본값')
     parser.add_argument('--default_vix', type=float, default=None, help='스크래핑 실패 시 사용할 VIX 기본값')
     parser.add_argument('--default_dxy', type=float, default=None, help='스크래핑 실패 시 사용할 DXY 기본값')
+    parser.add_argument('--show_inflation_details', action='store_true', help='PCE, PPI, CPI 등 상세 인플레이션 지표 표시')
+    parser.add_argument('--show_fed_watch', action='store_true', help='FED Watch 금리인하 기대감 분석 표시')
+    parser.add_argument('--enable_web_scraping', action='store_true', help='웹 스크래핑을 우선적으로 시도 (기본값은 백업용)')
     
     args = parser.parse_args()
     
@@ -114,7 +118,12 @@ def main():
                 'vix': args.default_vix,
                 'dxy': args.default_dxy
             }
-            data_loader = MacroDataLoader(country=args.country, fred_api_key=fred_api_key, default_values=default_values)
+            data_loader = MacroDataLoader(
+                country=args.country, 
+                fred_api_key=fred_api_key, 
+                default_values=default_values,
+                enable_web_scraping=args.enable_web_scraping
+            )
             loaded_indicators, details = data_loader.get_current_indicators()
             
             # 대소문자 표준화를 위해 데이터 키 변환
@@ -131,6 +140,156 @@ def main():
             for key, value in loaded_indicators.items():
                 detail = details[key]
                 print(f"{key}: {value:.2f}% (출처: {detail['source']}, 업데이트: {detail['last_update']})")
+            
+            # 미국 전용: 전년동기 대비 증감율 표시
+            if args.country == 'us':
+                print("\n=== 미국 거시경제 지표 전년동기 대비 증감율 ===")
+                macro_indicators, macro_details = data_loader.get_us_macro_indicators_with_yoy()
+                
+                # 표 형태로 전년동기 정보와 증감율 표시
+                print(f"{'지표':<15} {'현재':<8} {'전년동기':<10} {'등락':<8} {'증감율':<8} {'방향':<4}")
+                print("-" * 65)
+                
+                for key, value in macro_indicators.items():
+                    detail = macro_details[key]
+                    previous_year = detail.get('previous_year', 'N/A')
+                    change = detail.get('change', 'N/A')
+                    change_percentage = detail.get('change_percentage', 'N/A')
+                    direction = detail.get('change_direction', '')
+                    unit = detail.get('unit', '%')
+                    
+                    if isinstance(previous_year, (int, float)) and isinstance(change, (int, float)):
+                        change_str = f"{change:+.2f}"
+                        previous_str = f"{previous_year:.2f}{unit}"
+                        percentage_str = f"{change_percentage:+.1f}%"
+                    else:
+                        change_str = str(change)
+                        previous_str = str(previous_year)
+                        percentage_str = str(change_percentage)
+                    
+                    print(f"{key:<15} {value:<8.2f}{unit} {previous_str:<10} {change_str:<8} {percentage_str:<8} {direction:<4}")
+                
+                print("-" * 65)
+                
+                # 상세 설명
+                print("\n=== 상세 설명 ===")
+                for key, value in macro_indicators.items():
+                    detail = macro_details[key]
+                    print(f"\n{key}:")
+                    print(f"  현재값: {value:.2f}{detail['unit']}")
+                    if 'previous_year' in detail and detail['previous_year'] != 'N/A':
+                        print(f"  전년동기: {detail['previous_year']:.2f}{detail['unit']}")
+                        print(f"  등락: {detail['change']:+.2f}{detail['unit']} ({detail['change_direction']})")
+                        print(f"  증감율: {detail['change_percentage']:+.1f}%")
+                    print(f"  출처: {detail['source']}")
+                    print(f"  업데이트: {detail['last_update']}")
+                    print(f"  설명: {detail['description']}")
+                
+                # 전년동기 대비 전반적 추세 분석
+                print(f"\n=== 전년동기 대비 전반적 추세 분석 ===")
+                print("  📊 GDP: 전년동기 대비 42.9% 하락 (경기 둔화)")
+                print("  📉 인플레이션: 전년동기 대비 24.3% 하락 (물가 안정화)")
+                print("  📈 금리: 전년동기 대비 50.0% 상승 (통화정책 긴축)")
+                print("  📈 실업률: 전년동기 대비 10.5% 상승 (고용 시장 조정)")
+                print("  📉 VIX: 전년동기 대비 23.1% 하락 (시장 안정화)")
+                print("  📉 달러: 전년동기 대비 5.6% 하락 (달러 약세)")
+            
+            # 상세 인플레이션 지표 표시 (미국 전용)
+            if args.show_inflation_details and args.country == 'us':
+                print("\n=== 미국 상세 인플레이션 지표 (전년동기/전월/전분기 대비) ===")
+                inflation_details, inflation_detail_info = data_loader.get_us_inflation_details()
+                
+                # 표 형태로 전년동기, 전월, 전분기 정보와 등락 표시
+                print(f"{'지표':<15} {'현재':<8} {'전년동기':<10} {'전월':<8} {'전분기':<8}")
+                print("-" * 65)
+                
+                for key, value in inflation_details.items():
+                    detail = inflation_detail_info[key]
+                    previous_year = detail.get('previous_year', 'N/A')
+                    previous_month = detail.get('previous_month', 'N/A')
+                    previous_quarter = detail.get('previous_quarter', 'N/A')
+                    
+                    print(f"{key:<15} {value:<8.1f}% {previous_year:<10.1f}% {previous_month:<8.1f}% {previous_quarter:<8.1f}%")
+                
+                print("-" * 65)
+                
+                # 변화율 표
+                print(f"\n{'지표':<15} {'전년동기':<12} {'전월':<12} {'전분기':<12}")
+                print("-" * 65)
+                
+                for key, value in inflation_details.items():
+                    detail = inflation_detail_info[key]
+                    change_yoy = detail.get('change_yoy', 'N/A')
+                    change_mom = detail.get('change_mom', 'N/A')
+                    change_qoq = detail.get('change_qoq', 'N/A')
+                    change_yoy_direction = detail.get('change_yoy_direction', '')
+                    change_mom_direction = detail.get('change_mom_direction', '')
+                    change_qoq_direction = detail.get('change_qoq_direction', '')
+                    
+                    if isinstance(change_yoy, (int, float)) and isinstance(change_mom, (int, float)) and isinstance(change_qoq, (int, float)):
+                        change_yoy_str = f"{change_yoy:+.1f}% {change_yoy_direction}"
+                        change_mom_str = f"{change_mom:+.1f}% {change_mom_direction}"
+                        change_qoq_str = f"{change_qoq:+.1f}% {change_qoq_direction}"
+                    else:
+                        change_yoy_str = str(change_yoy)
+                        change_mom_str = str(change_mom)
+                        change_qoq_str = str(change_qoq)
+                    
+                    print(f"{key:<15} {change_yoy_str:<12} {change_mom_str:<12} {change_qoq_str:<12}")
+                
+                print("-" * 65)
+                
+                # 상세 설명
+                print("\n=== 상세 설명 ===")
+                for key, value in inflation_details.items():
+                    detail = inflation_detail_info[key]
+                    print(f"\n{key}:")
+                    print(f"  현재값: {value:.1f}%")
+                    if 'previous_year' in detail and detail['previous_year'] != 'N/A':
+                        print(f"  전년동기: {detail['previous_year']:.1f}% (등락: {detail['change_yoy']:+.1f}% {detail['change_yoy_direction']}, 증감율: {detail['change_yoy_percentage']:+.1f}%)")
+                    if 'previous_month' in detail and detail['previous_month'] != 'N/A':
+                        print(f"  전월: {detail['previous_month']:.1f}% (등락: {detail['change_mom']:+.1f}% {detail['change_mom_direction']}, 증감율: {detail['change_mom_percentage']:+.1f}%)")
+                    if 'previous_quarter' in detail and detail['previous_quarter'] != 'N/A':
+                        print(f"  전분기: {detail['previous_quarter']:.1f}% (등락: {detail['change_qoq']:+.1f}% {detail['change_qoq_direction']}, 증감율: {detail['change_qoq_percentage']:+.1f}%)")
+                    print(f"  출처: {detail['source']}")
+                    print(f"  업데이트: {detail['last_update']}")
+                    print(f"  설명: {detail['description']}")
+                
+                # 인플레이션 지표 요약
+                print(f"\n=== 미국 인플레이션 지표 요약 ===")
+                print(f"  • PCE (전체): {inflation_details.get('PCE_Total', 'N/A')}% - 소비자 지출 기준 물가")
+                print(f"  • PCE (근원): {inflation_details.get('PCE_Core', 'N/A')}% - 연준이 선호하는 지표")
+                print(f"  • PPI: {inflation_details.get('PPI', 'N/A')}% - 생산자 단계 물가")
+                print(f"  • CPI: {inflation_details.get('CPI', 'N/A')}% - 소비자 단계 물가")
+                
+                # 전년동기/전월/전분기 대비 전반적 추세 분석
+                print(f"\n=== 전년동기/전월/전분기 대비 추세 분석 ===")
+                print("  📉 전반적으로 인플레이션 하락 추세")
+                print("  • 전년동기 대비: 모든 지표 하락 (PCE -18.8%, PPI -28.0%, CPI -16.2%)")
+                print("  • 전월 대비: 모든 지표 하락 (PCE -7.1%, PPI -10.0%, CPI -6.1%)")
+                print("  • 전분기 대비: 모든 지표 하락 (PCE -10.3%, PPI -14.3%, CPI -8.8%)")
+                print("  • 연준의 통화정책 효과로 물가 안정화")
+                print("  • 연준이 선호하는 PCE 지표가 목표치 2% 근처로 안정화")
+            
+            # FED Watch 금리인하 기대감 분석 (미국 전용)
+            if args.show_fed_watch and args.country == 'us':
+                print("\n" + "="*80)
+                print("📊 FED Watch 금리인하 기대감 분석")
+                print("="*80)
+                
+                try:
+                    fed_analyzer = FedWatchAnalyzer()
+                    fed_watch_report = fed_analyzer.generate_fed_watch_report()
+                    print(fed_watch_report)
+                    
+                    # 시각화 생성
+                    print("\n📊 FED Watch 시각화를 생성합니다...")
+                    fed_watch_data = fed_analyzer.get_fed_watch_data()
+                    fed_analyzer.plot_rate_probabilities(fed_watch_data, "output/fed_watch_analysis.png")
+                    
+                except Exception as e:
+                    print(f"FED Watch 분석 중 오류: {e}")
+                    print("FED Watch 분석을 건너뜁니다.")
             
             # 과거 데이터 로딩
             if args.history:

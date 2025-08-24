@@ -1,0 +1,39 @@
+#Vanguard Value ETF (VTV) 포트폴리오 심층 분석: 보유 종목, 비율 및 핵심 지표
+#가치 평가 지표는 개별 종목을 평가하는 중요한 기준이 됩니다. VTV 포트폴리오의 평균적인 지표는 주가수익비율(PER) 19.6배, 주가순자산비율(PBR) 2.8배, 자기자본이익률(ROE) 14.7% 수준입니다
+#-금융: 약 21-24%
+#-헬스케어: 약 14%
+#-산업재: 약 14-16%
+#-필수소비재: 약 10%
+#-기술: 약 7-9%
+VTV
+#기업명	티커	포트폴리오 비중 (%)	섹터	PER (배)	PBR (배)	ROE (%)
+#JPMorgan Chase & Co.	JPM	3.61	금융	15.21	2.42	16.16
+JPM
+#Berkshire Hathaway Inc. Class B	BRK.B	3.27	금융	23.25	1.58	9.89
+BRK-A
+#Exxon Mobil Corporation	XOM	2.18	에너지	15.52	1.81	12.55
+XOM
+#Walmart Inc.	WMT	1.95	필수소비재	36.55	8.57	23.37
+WMT
+#Oracle Corporation	ORCL	1.93	기술	54.46	32.44	82.38
+ORCL
+#Johnson & Johnson	JNJ	1.8	헬스케어	17.89	N/A	30.39
+JNJ
+#The Home Depot, Inc.	HD	1.66	임의소비재	27.25	38.51	236.1
+HD
+#The Procter & Gamble Company	PG	1.6	필수소비재	23.79	N/A	30.78
+PG
+#AbbVie Inc.	ABBV	1.51	헬스케어	99.81	N/A	95.59
+ABBV
+#Bank of America Corporation	BAC	1.35	금융	14.44	1.33	11.57
+BAC
+#Chevron Corporation	CVX	1.35	에너지	19.18	N/A	9.09
+CVX
+#Wells Fargo & Company	WFC	1.19	금융	13.75	1.55	11.36
+WFC
+#Philip Morris International Inc.	PM	1.16	필수소비재	N/A	N/A	N/A
+PM
+#Cisco Systems, Inc.	CSCO	1.1	기술	28.42	N/A	21.5
+CSCO
+#International Business Machines Corp.	IBM	1.07	기술	39.86	N/A	21.32
+IBM

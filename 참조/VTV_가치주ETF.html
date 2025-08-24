@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VTV ETF 대화형 분석 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: A single-page dashboard application with a sticky top navigation for easy access to different analysis sections (Overview, Sector Analysis, Top Holdings, Indicator Deep Dive). This non-linear structure allows users to freely explore the ETF's data based on their interests, rather than following the linear flow of the original report. The design prioritizes usability by presenting key stats upfront, followed by interactive visualizations that reveal deeper insights, making complex financial data more digestible and engaging for a broad audience. -->
+    <!-- Visualization & Content Choices: 
+        1. Key Stats (Overview): Goal=Inform. Method=HTML/Tailwind KPI cards. Interaction=None. Justification=Provides an immediate, high-level summary of the ETF's main characteristics.
+        2. Sector Allocation: Goal=Inform/Compare. Method=Chart.js Donut Chart. Interaction=Click/Hover on legend to highlight segments and display contextual analysis text. Justification=Visually represents portfolio composition effectively, and the interaction links quantitative data (percentages) with qualitative insights from the report.
+        3. Top Holdings: Goal=Organize/Compare. Method=Sortable HTML Table. Interaction=Click table headers to sort by different metrics (Weight, PER, PBR, ROE). Justification=A standard and effective UI for presenting detailed tabular data, allowing users to rank and compare companies based on key value indicators.
+        4. Indicator Analysis: Goal=Relationships/Analyze. Method=Chart.js Bubble Chart. Interaction=Users select X/Y axes (PER, PBR, ROE) via dropdowns to explore correlations. Hovering on data points shows tooltips. Justification=This visualization is crucial for conveying the report's main thesis that VTV employs a multi-faceted value strategy. It allows users to discover patterns and outliers interactively, far more effectively than static text.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        html { scroll-behavior: smooth; }
+        .table-sortable th { cursor: pointer; user-select: none; }
+        .table-sortable th:hover { background-color: #f9fafb; }
+        .nav-link { transition: color 0.3s, border-color 0.3s; }
+        .nav-link.active { color: #0d9488; border-bottom-color: #0d9488; font-weight: 500; }
+        .nav-link:hover { color: #0d9488; }
+    </style>
+</head>
+<body class="bg-stone-50 text-gray-800">
+
+    <header class="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-teal-700">VTV ETF 분석</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 text-sm font-medium text-gray-600 border-b-2 border-transparent">개요</a>
+                        <a href="#sector-analysis" class="nav-link px-3 py-2 text-sm font-medium text-gray-600 border-b-2 border-transparent">섹터 분석</a>
+                        <a href="#top-holdings" class="nav-link px-3 py-2 text-sm font-medium text-gray-600 border-b-2 border-transparent">핵심 보유 종목</a>
+                        <a href="#indicator-deep-dive" class="nav-link px-3 py-2 text-sm font-medium text-gray-600 border-b-2 border-transparent">지표 심층 분석</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <section id="overview" class="mb-16 scroll-mt-20">
+            <h2 class="text-3xl font-bold mb-2 text-center">Vanguard Value ETF (VTV) 대시보드</h2>
+            <p class="text-center text-gray-600 max-w-3xl mx-auto mb-8">
+                미국 대형 가치주 시장에 투자하는 VTV ETF의 포트폴리오 구성과 핵심 재무 지표를 대화형으로 분석합니다. VTV는 단순한 '딥 밸류' 펀드가 아닌, 전통적 가치주, 우량주, 합리적 가격의 성장주(GARP)가 정교하게 혼합된 다각적인 투자 전략을 구사합니다.
+            </p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <h3 class="text-sm font-medium text-gray-500">총 운용자산 (AUM)</h3>
+                    <p class="mt-1 text-2xl font-semibold text-teal-600">$1,958억</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <h3 class="text-sm font-medium text-gray-500">운용보수</h3>
+                    <p class="mt-1 text-2xl font-semibold text-teal-600">0.04%</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <h3 class="text-sm font-medium text-gray-500">평균 PER</h3>
+                    <p class="mt-1 text-2xl font-semibold text-teal-600">19.6배</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm">
+                    <h3 class="text-sm font-medium text-gray-500">평균 PBR</h3>
+                    <p class="mt-1 text-2xl font-semibold text-teal-600">2.8배</p>
+                </div>
+            </div>
+        </section>
+        
+        <section id="sector-analysis" class="mb-16 scroll-mt-20">
+            <h2 class="text-3xl font-bold mb-4 text-center">섹터별 투자 비중</h2>
+            <p class="text-center text-gray-600 max-w-3xl mx-auto mb-8">
+                VTV는 특정 산업군에 집중하여 '가치'를 찾습니다. 아래 차트의 범례를 클릭하여 각 섹터별 비중과 VTV의 투자 전략을 확인해 보세요.
+            </p>
+            <div class="grid md:grid-cols-2 gap-8 items-center">
+                <div class="chart-container">
+                    <canvas id="sectorChart"></canvas>
+                </div>
+                <div id="sector-info" class="bg-white p-6 rounded-lg shadow-sm min-h-[300px] flex flex-col justify-center">
+                    <h3 id="sector-title" class="text-xl font-bold mb-2 text-teal-700">섹터를 선택하세요</h3>
+                    <p id="sector-description" class="text-gray-700">차트 범례를 클릭하면 해당 섹터에 대한 VTV의 가치 평가 전략 분석이 여기에 표시됩니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="top-holdings" class="mb-16 scroll-mt-20">
+            <h2 class="text-3xl font-bold mb-4 text-center">상위 15개 핵심 보유 종목</h2>
+            <p class="text-center text-gray-600 max-w-3xl mx-auto mb-8">
+                VTV 포트폴리오의 약 26% 이상을 차지하는 핵심 종목들입니다. 테이블 헤더를 클릭하여 비중, PER, PBR, ROE 순으로 정렬할 수 있습니다.
+            </p>
+            <div class="bg-white rounded-lg shadow-sm overflow-x-auto">
+                <table id="holdingsTable" class="w-full text-sm text-left text-gray-500 table-sortable">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3" data-sort="rank">순위</th>
+                            <th scope="col" class="px-6 py-3" data-sort="name">기업명 (티커)</th>
+                            <th scope="col" class="px-6 py-3 text-right" data-sort="weight">비중 (%)</th>
+                            <th scope="col" class="px-6 py-3" data-sort="sector">섹터</th>
+                            <th scope="col" class="px-6 py-3 text-right" data-sort="per">PER (배)</th>
+                            <th scope="col" class="px-6 py-3 text-right" data-sort="pbr">PBR (배)</th>
+                            <th scope="col" class="px-6 py-3 text-right" data-sort="roe">ROE (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        
+        <section id="indicator-deep-dive" class="scroll-mt-20">
+            <h2 class="text-3xl font-bold mb-4 text-center">핵심 지표 심층 분석</h2>
+            <p class="text-center text-gray-600 max-w-3xl mx-auto mb-8">
+                VTV의 복합적인 가치 투자 철학을 시각적으로 탐색합니다. 아래 드롭다운 메뉴로 X축과 Y축 지표를 변경하여 종목들이 어떻게 분포하는지 확인해 보세요. 각 점은 개별 종목을 나타내며, 크기는 포트폴리오 내 비중을 의미합니다.
+            </p>
+            <div class="bg-white p-6 rounded-lg shadow-sm">
+                <div class="flex flex-wrap justify-center gap-4 mb-4">
+                    <div>
+                        <label for="xAxisSelect" class="text-sm font-medium">X축 선택:</label>
+                        <select id="xAxisSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md">
+                            <option value="per">PER (주가수익비율)</option>
+                            <option value="pbr" selected>PBR (주가순자산비율)</option>
+                            <option value="roe">ROE (자기자본이익률)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="yAxisSelect" class="text-sm font-medium">Y축 선택:</label>
+                        <select id="yAxisSelect" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm rounded-md">
+                            <option value="per">PER (주가수익비율)</option>
+                            <option value="pbr">PBR (주가순자산비율)</option>
+                            <option value="roe" selected>ROE (자기자본이익률)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-container h-[400px] md:h-[500px] max-h-[600px]">
+                    <canvas id="scatterChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white mt-16 border-t">
+        <div class="container mx-auto py-6 px-4 sm:px-6 lg:px-8 text-center text-gray-500">
+            <p class="text-sm">본 데이터는 Vanguard Value ETF (VTV) 분석 보고서를 기반으로 제작되었습니다.</p>
+            <p class="text-xs mt-1">데이터는 시점에 따라 차이가 있을 수 있으며, 투자 결정에 대한 책임은 투자자 본인에게 있습니다.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            
+            const sectorData = {
+                labels: ['금융', '헬스케어', '산업재', '필수소비재', '기술', '기타'],
+                datasets: [{
+                    label: '섹터 비중',
+                    data: [22.5, 14, 15, 10, 8, 30.5],
+                    backgroundColor: ['#14532d', '#0f766e', '#0e7490', '#1d4ed8', '#5b21b6', '#be185d'],
+                    hoverOffset: 4,
+                    borderColor: '#f8fafc',
+                    borderWidth: 2
+                }]
+            };
+
+            const sectorInfo = {
+                '금융': {
+                    title: '금융: 전통적 가치의 기반',
+                    description: '포트폴리오의 핵심으로, 적정한 PER과 상대적으로 낮은 PBR을 통해 고전적인 가치주 패러다임을 명확히 보여줍니다. 은행 산업 내에서 견고한 ROE를 기록하며 안정적인 수익성을 입증합니다.'
+                },
+                '헬스케어': {
+                    title: '헬스케어: 안정성과 성장의 조화',
+                    description: '안정적인 우량주(높은 ROE)와 강력한 성장 잠재력을 지닌 GARP 주식(높은 PER)이 공존합니다. 이는 VTV가 단일 섹터 내에서도 다양한 가치 평가 기준을 적용하고 있음을 보여줍니다.'
+                },
+                '산업재': {
+                    title: '산업재: 경기순환 가치',
+                    description: '거시 경제의 흐름에 따라 가치가 변동하는 경기순환적 가치주의 성격을 띱니다. 경제 확장 국면에서 수혜를 기대할 수 있는 종목들로 구성됩니다.'
+                },
+                '필수소비재': {
+                    title: '필수소비재: 우량 가치주',
+                    description: '강력한 브랜드 파워와 높은 ROE를 통해 \'우량 가치주\'의 특성을 나타냅니다. 경기 변동에 관계없이 안정적인 수요를 기반으로 꾸준한 성과를 기대할 수 있습니다.'
+                },
+                '기술': {
+                    title: '기술: 합리적 가격의 성장 가치 (GARP)',
+                    description: '높은 밸류에이션 지표에도 불구하고, 미래 성장성(예: 클라우드 사업)과 강력한 현금 흐름 창출 능력에서 \'가치\'를 인정받은 GARP 종목들이 포함됩니다.'
+                },
+                '기타': {
+                    title: '기타 섹터',
+                    description: '에너지, 임의소비재 등 다양한 섹터에 분산 투자하여 포트폴리오의 안정성을 높이고 기회적 가치를 포착합니다.'
+                }
+            };
+            
+            const holdingsData = [
+                { rank: 1, name: 'JPMorgan Chase & Co.', ticker: 'JPM', weight: 3.61, sector: '금융', per: 15.21, pbr: 2.42, roe: 16.16 },
+                { rank: 2, name: 'Berkshire Hathaway Inc. B', ticker: 'BRK.B', weight: 3.27, sector: '금융', per: 23.25, pbr: 1.58, roe: 9.89 },
+                { rank: 3, name: 'Exxon Mobil Corporation', ticker: 'XOM', weight: 2.18, sector: '에너지', per: 15.52, pbr: 1.81, roe: 12.55 },
+                { rank: 4, name: 'Walmart Inc.', ticker: 'WMT', weight: 1.95, sector: '필수소비재', per: 36.55, pbr: 8.57, roe: 23.37 },
+                { rank: 5, name: 'Oracle Corporation', ticker: 'ORCL', weight: 1.93, sector: '기술', per: 54.46, pbr: 32.44, roe: 82.38 },
+                { rank: 6, name: 'Johnson & Johnson', ticker: 'JNJ', weight: 1.80, sector: '헬스케어', per: 17.89, pbr: null, roe: 30.39 },
+                { rank: 7, name: 'The Home Depot, Inc.', ticker: 'HD', weight: 1.66, sector: '임의소비재', per: 27.25, pbr: 38.51, roe: 236.10 },
+                { rank: 8, name: 'Procter & Gamble Co.', ticker: 'PG', weight: 1.60, sector: '필수소비재', per: 23.79, pbr: null, roe: 30.78 },
+                { rank: 9, name: 'AbbVie Inc.', ticker: 'ABBV', weight: 1.51, sector: '헬스케어', per: 99.81, pbr: null, roe: 95.59 },
+                { rank: 10, name: 'Bank of America Corp.', ticker: 'BAC', weight: 1.35, sector: '금융', per: 14.44, pbr: 1.33, roe: 11.57 },
+                { rank: 11, name: 'Chevron Corporation', ticker: 'CVX', weight: 1.35, sector: '에너지', per: 19.18, pbr: null, roe: 9.09 },
+                { rank: 12, name: 'Wells Fargo & Company', ticker: 'WFC', weight: 1.19, sector: '금융', per: 13.75, pbr: 1.55, roe: 11.36 },
+                { rank: 13, name: 'Philip Morris Int. Inc.', ticker: 'PM', weight: 1.16, sector: '필수소비재', per: null, pbr: null, roe: null },
+                { rank: 14, name: 'Cisco Systems, Inc.', ticker: 'CSCO', weight: 1.10, sector: '기술', per: 28.42, pbr: null, roe: 21.50 },
+                { rank: 15, name: 'International Business Machines Corp.', ticker: 'IBM', weight: 1.07, sector: '기술', per: 39.86, pbr: null, roe: 21.32 }
+            ];
+
+            let sectorChart, scatterChart;
+
+            function renderSectorChart() {
+                const ctx = document.getElementById('sectorChart').getContext('2d');
+                sectorChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: sectorData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { padding: 20 },
+                                onClick: (e, legendItem, legend) => {
+                                    const index = legendItem.index;
+                                    const label = legend.chart.data.labels[index];
+                                    updateSectorInfo(label);
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) { label += ': '; }
+                                        if (context.parsed !== null) { label += context.parsed + '%'; }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '60%'
+                    }
+                });
+            }
+
+            function updateSectorInfo(sectorName) {
+                const info = sectorInfo[sectorName];
+                const titleEl = document.getElementById('sector-title');
+                const descEl = document.getElementById('sector-description');
+                if (info) {
+                    titleEl.textContent = info.title;
+                    descEl.textContent = info.description;
+                }
+            }
+            
+            function populateHoldingsTable(data) {
+                const tableBody = document.querySelector('#holdingsTable tbody');
+                tableBody.innerHTML = '';
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-white border-b hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4">${item.rank}</td>
+                        <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${item.name} (${item.ticker})</th>
+                        <td class="px-6 py-4 text-right">${item.weight.toFixed(2)}</td>
+                        <td class="px-6 py-4">${item.sector}</td>
+                        <td class="px-6 py-4 text-right">${item.per !== null ? item.per.toFixed(2) : 'N/A'}</td>
+                        <td class="px-6 py-4 text-right">${item.pbr !== null ? item.pbr.toFixed(2) : 'N/A'}</td>
+                        <td class="px-6 py-4 text-right">${item.roe !== null ? item.roe.toFixed(2) : 'N/A'}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            let sortState = { key: 'rank', asc: true };
+            function sortTable(key) {
+                const asc = (sortState.key === key) ? !sortState.asc : true;
+                sortState = { key, asc };
+                
+                const sortedData = [...holdingsData].sort((a, b) => {
+                    let valA = a[key];
+                    let valB = b[key];
+                    if (valA === null) return 1;
+                    if (valB === null) return -1;
+                    if (typeof valA === 'string') {
+                        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                    }
+                    return asc ? valA - valB : valB - valA;
+                });
+                populateHoldingsTable(sortedData);
+            }
+
+            document.querySelectorAll('#holdingsTable th').forEach(th => {
+                th.addEventListener('click', () => {
+                    const key = th.dataset.sort;
+                    if (key) sortTable(key);
+                });
+            });
+
+            function renderScatterChart() {
+                const xKey = document.getElementById('xAxisSelect').value;
+                const yKey = document.getElementById('yAxisSelect').value;
+
+                const scatterData = holdingsData
+                    .filter(d => d[xKey] !== null && d[yKey] !== null)
+                    .map(d => ({
+                        x: d[xKey],
+                        y: d[yKey],
+                        r: d.weight * 5 + 2,
+                        name: `${d.name} (${d.ticker})`,
+                        weight: d.weight
+                    }));
+
+                const ctx = document.getElementById('scatterChart').getContext('2d');
+                if (scatterChart) scatterChart.destroy();
+                
+                scatterChart = new Chart(ctx, {
+                    type: 'bubble',
+                    data: {
+                        datasets: [{
+                            label: 'Top Holdings',
+                            data: scatterData,
+                            backgroundColor: 'rgba(13, 148, 136, 0.6)',
+                            borderColor: 'rgba(13, 148, 136, 1)',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: { display: true, text: document.getElementById('xAxisSelect').options[document.getElementById('xAxisSelect').selectedIndex].text }
+                            },
+                            y: {
+                                title: { display: true, text: document.getElementById('yAxisSelect').options[document.getElementById('yAxisSelect').selectedIndex].text }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const data = context.dataset.data[context.dataIndex];
+                                        return [
+                                            `${data.name}`,
+                                            `비중: ${data.weight.toFixed(2)}%`,
+                                            `${xKey.toUpperCase()}: ${data.x.toFixed(2)}`,
+                                            `${yKey.toUpperCase()}: ${data.y.toFixed(2)}`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('xAxisSelect').addEventListener('change', renderScatterChart);
+            document.getElementById('yAxisSelect').addEventListener('change', renderScatterChart);
+
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('main section');
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.toggle('active', link.getAttribute('href').includes(entry.target.id));
+                        });
+                    }
+                });
+            }, { rootMargin: "-50% 0px -50% 0px" });
+
+            sections.forEach(section => observer.observe(section));
+
+            renderSectorChart();
+            populateHoldingsTable(holdingsData);
+            renderScatterChart();
+        });
+    </script>
+</body>
+</html>

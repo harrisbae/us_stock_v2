@@ -85,6 +85,34 @@ stock_tech_v1/
 - 기술적 지표 데이터: `{종목코드}_data.csv`
 - 신호 분석 결과: `{종목코드}_signal.txt`
 
+## 4. FED Watch 금리인하 기대감 분석
+
+### 4.1 개요
+FED Watch는 CME FedWatch Tool을 기반으로 연방기금금리 선물 데이터를 분석하여 시장의 금리인하 기대감을 조회하고 분석하는 기능입니다.
+
+### 4.2 주요 기능
+- **FOMC 회의별 금리 확률**: 각 FOMC 회의에서 특정 금리 수준이 될 확률
+- **트렌드 분석**: 단기/중기/전체 금리 정책 방향 분석
+- **투자 시사점**: 주식/채권/외환시장 영향 및 섹터 추천
+- **시각화**: 히트맵 및 막대 그래프로 금리 확률 분포 표시
+
+### 4.3 사용법
+```bash
+# 독립 실행
+python3 src/fed_watch_analyzer.py
+
+# 코스탈라니 달걀모형과 통합 실행
+python3 src/kostalany_integrated.py --country us --show_fed_watch
+
+# Shell Script 사용
+./kostalany.sh us 1.2 2.8 4.5 4.2 14.22 97.72
+```
+
+### 4.4 출력 예시
+- FED Watch 분석 보고서 (콘솔 출력)
+- 금리 확률 시각화 차트 (`output/fed_watch_analysis.png`)
+- 투자 전략 및 섹터 추천
+
 ## 3. 사용 방법
 
 ### 3.1 설치

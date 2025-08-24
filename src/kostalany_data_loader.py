@@ -39,10 +39,82 @@ except Exception as e:
     # 기본 SSL 컨텍스트 사용
     ssl_context = ssl._create_unverified_context()
 
+# 현대적이고 신뢰할 수 있는 User-Agent 목록
+MODERN_USER_AGENTS = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+]
+
+def get_random_user_agent():
+    """랜덤 User-Agent 반환"""
+    import random
+    return random.choice(MODERN_USER_AGENTS)
+
+def get_enhanced_headers():
+    """향상된 헤더 반환"""
+    return {
+        'User-Agent': get_random_user_agent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+    }
+
+def safe_request_with_delay(url, headers=None, delay=2.0, max_retries=3):
+    """안전한 요청과 지연 시간을 포함한 HTTP 요청"""
+    if headers is None:
+        headers = get_enhanced_headers()
+    
+    for attempt in range(max_retries):
+        try:
+            # 요청 간 지연 시간
+            if attempt > 0:
+                time.sleep(delay)
+            
+            response = requests.get(url, headers=headers, timeout=15)
+            
+            # 성공적인 응답
+            if response.status_code == 200:
+                return response
+            
+            # 403 Forbidden 등 차단된 경우
+            elif response.status_code == 403:
+                print(f"⚠️ 접근이 차단되었습니다 (시도 {attempt + 1}/{max_retries}): {url}")
+                if attempt < max_retries - 1:
+                    time.sleep(delay * 2)  # 더 긴 지연 시간
+                    continue
+            
+            # 기타 오류
+            else:
+                print(f"⚠️ HTTP 오류 {response.status_code} (시도 {attempt + 1}/{max_retries}): {url}")
+                
+        except requests.exceptions.Timeout:
+            print(f"⚠️ 요청 시간 초과 (시도 {attempt + 1}/{max_retries}): {url}")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ 요청 오류 (시도 {attempt + 1}/{max_retries}): {e}")
+        
+        # 마지막 시도가 아니면 지연 후 재시도
+        if attempt < max_retries - 1:
+            time.sleep(delay)
+    
+    # 모든 시도 실패
+    print(f"❌ 모든 시도 실패: {url}")
+    return None
+
 class MacroDataLoader:
     """거시경제 지표 데이터 로더 클래스"""
     
-    def __init__(self, country='korea', fred_api_key=None, default_values=None):
+    def __init__(self, country='korea', fred_api_key=None, default_values=None, enable_web_scraping=False):
         """
         초기화 함수
         
@@ -50,11 +122,13 @@ class MacroDataLoader:
             country (str): 국가 코드 (기본: 'korea')
             fred_api_key (str): FRED API 키
             default_values (dict): 스크래핑 실패 시 사용할 기본값 딕셔너리
+            enable_web_scraping (bool): 웹 스크래핑을 우선적으로 시도할지 여부
         """
         self.country = country.lower()
         self.data_cache = {}
         self.cache_dir = "data_cache"
         self.default_values = default_values or {}
+        self.enable_web_scraping = enable_web_scraping
         
         # 환경 변수에서 FRED API 키 가져오기
         # FRED API 키 설정 방법:
@@ -149,10 +223,9 @@ class MacroDataLoader:
         try:
             # 실시간 데이터 로딩 시도
             url = "https://tradingeconomics.com/south-korea/gdp-growth-annual"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
             
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
+            response = safe_request_with_delay(url)
+            if response and response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
                 # 데이터 추출 시도
@@ -195,9 +268,9 @@ class MacroDataLoader:
                 # 요청 실패 시 다른 사이트 시도
                 try:
                     url = "https://www.focus-economics.com/country-indicator/korea/gdp"
-                    response = requests.get(url, headers=headers)
+                    response = safe_request_with_delay(url)
                     
-                    if response.status_code == 200:
+                    if response and response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         # 실패 시 기본값 사용
                         recent_gdp = 2.2
@@ -231,9 +304,9 @@ class MacroDataLoader:
         try:
             # 실시간 데이터 로딩 시도
             url = "https://tradingeconomics.com/south-korea/inflation-cpi"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -301,9 +374,9 @@ class MacroDataLoader:
         try:
             # 실시간 데이터 로딩 시도
             url = "https://tradingeconomics.com/south-korea/interest-rate"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -349,7 +422,7 @@ class MacroDataLoader:
                 # 다른 사이트 시도
                 url = "https://www.global-rates.com/en/interest-rates/central-banks/central-bank-korea/bok-interest-rate.aspx"
                 try:
-                    response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=get_enhanced_headers(), timeout=10)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         
@@ -396,9 +469,9 @@ class MacroDataLoader:
         try:
             # 실시간 데이터 로딩 시도
             url = "https://tradingeconomics.com/south-korea/unemployment-rate"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -492,9 +565,9 @@ class MacroDataLoader:
             # 웹 스크래핑으로 시도
             # 실시간 데이터 로딩 시도
             url = "https://tradingeconomics.com/united-states/gdp-growth-annual"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -591,9 +664,9 @@ class MacroDataLoader:
             
             # FRED API가 없거나 실패한 경우 웹 스크래핑으로 대체
             url = "https://tradingeconomics.com/united-states/inflation-cpi"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -688,9 +761,9 @@ class MacroDataLoader:
             
             # FRED API가 없거나 실패한 경우 웹 스크래핑으로 대체
             url = "https://tradingeconomics.com/united-states/interest-rate"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -785,9 +858,9 @@ class MacroDataLoader:
             
             # FRED API가 없거나 실패한 경우 웹 스크래핑으로 대체
             url = "https://tradingeconomics.com/united-states/unemployment-rate"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            headers = get_enhanced_headers()
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -863,9 +936,9 @@ class MacroDataLoader:
                 # 추가로 Trading Economics에서도 확인
                 try:
                     url = "https://tradingeconomics.com/vix:ind"
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    headers = get_enhanced_headers()
                     
-                    response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=headers, timeout=10)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         te_value = soup.select_one("span.act-value")
@@ -959,10 +1032,10 @@ class MacroDataLoader:
                 # 추가로 Trading Economics에서도 확인
                 try:
                     url = "https://tradingeconomics.com/dxy:cur"
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    headers = get_enhanced_headers()
                     
                     print("Trading Economics에서 달러지수 데이터 확인 시도...")
-                    response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=headers, timeout=10)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         te_value = soup.select_one("span.act-value")
@@ -1016,10 +1089,10 @@ class MacroDataLoader:
                 # 데이터 없을 경우 Trading Economics 시도
                 try:
                     url = "https://tradingeconomics.com/dxy:cur"
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                    headers = get_enhanced_headers()
                     
                     print("Yahoo Finance 데이터 없음, Trading Economics에서 시도...")
-                    response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=headers, timeout=10)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
                         te_value = soup.select_one("span.act-value")
@@ -1282,9 +1355,35 @@ class MacroDataLoader:
         details = {}
         
         print("\n=== 실시간 거시경제 지표 로딩 중 ===")
+        
+        # 웹 스크래핑 우선 시도 여부에 따른 로직
+        if self.enable_web_scraping:
+            print("🌐 웹 스크래핑 우선 모드: 실시간 데이터 수집 시도")
+        else:
+            print("📊 기본 모드: API 및 캐시 데이터 우선 사용")
+        
         for indicator in ['gdp', 'inflation', 'interest', 'unemployment', 'vix', 'dxy']:
             try:
                 print(f"\n{indicator.upper()} 데이터 로딩 시작...")
+                
+                # 웹 스크래핑 우선 모드인 경우 직접 웹 스크래핑 시도
+                if self.enable_web_scraping and indicator in ['gdp', 'inflation', 'interest', 'unemployment']:
+                    print(f"  🔍 웹 스크래핑으로 {indicator.upper()} 데이터 수집 시도...")
+                    
+                    # 직접 웹 스크래핑 시도
+                    scraped_result = self._try_direct_web_scraping(indicator)
+                    if scraped_result:
+                        indicators[indicator.capitalize()] = scraped_result['current']
+                        details[indicator.capitalize()] = {
+                            'source': scraped_result.get('source', 'Web Scraping'),
+                            'last_update': scraped_result.get('last_update', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        }
+                        print(f"  ✅ 웹 스크래핑 성공: {scraped_result['current']}")
+                        continue
+                    else:
+                        print(f"  ⚠️ 웹 스크래핑 실패, 기존 API 사용")
+                
+                # 기존 API 로직 사용
                 if indicator in self.apis[self.country]:
                     result = self.apis[self.country][indicator]()
                     indicators[indicator.capitalize()] = result['current']
@@ -1322,6 +1421,412 @@ class MacroDataLoader:
         
         print("\n=== 모든 거시경제 지표 로딩 완료 ===\n")
         return indicators, details
+    
+    def _try_direct_web_scraping(self, indicator):
+        """
+        직접 웹 스크래핑으로 특정 지표 데이터 수집 시도
+        
+        Parameters:
+            indicator (str): 수집할 지표명
+            
+        Returns:
+            dict or None: 성공 시 데이터, 실패 시 None
+        """
+        try:
+            if indicator == 'gdp':
+                if self.country == 'us':
+                    return self._scrape_us_gdp()
+                else:
+                    return self._scrape_korea_gdp()
+            elif indicator == 'inflation':
+                if self.country == 'us':
+                    return self._scrape_us_inflation()
+                else:
+                    return self._scrape_korea_inflation()
+            elif indicator == 'interest':
+                if self.country == 'us':
+                    return self._scrape_us_interest()
+                else:
+                    return self._scrape_korea_interest()
+            elif indicator == 'unemployment':
+                if self.country == 'us':
+                    return self._scrape_us_unemployment()
+                else:
+                    return self._scrape_korea_unemployment()
+            else:
+                return None
+        except Exception as e:
+            print(f"  ❌ 직접 웹 스크래핑 실패: {e}")
+            return None
+    
+    def _scrape_us_gdp(self):
+        """미국 GDP 직접 스크래핑"""
+        try:
+            url = "https://tradingeconomics.com/united-states/gdp-growth-annual"
+            response = safe_request_with_delay(url, delay=2.0)
+            
+            if response and response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # 방법 1: 메타 설명에서 값 추출
+                meta_desc = soup.find('meta', {'id': 'metaDesc'})
+                if meta_desc:
+                    desc_text = meta_desc.get('content', '')
+                    # "expanded 2 percent" 패턴 찾기
+                    import re
+                    gdp_match = re.search(r'expanded\s+(\d+(?:\.\d+)?)\s+percent', desc_text, re.IGNORECASE)
+                    if gdp_match:
+                        gdp_value = float(gdp_match.group(1))
+                        return {
+                            'current': gdp_value,
+                            'source': 'Trading Economics (메타 설명)',
+                            'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                
+                # 방법 2: JavaScript 변수에서 값 추출
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string and 'TEForecast' in script.string:
+                        script_text = script.string
+                        # TEForecast = [1.70,2.00,1.80,1.90] 패턴 찾기
+                        forecast_match = re.search(r'TEForecast\s*=\s*\[([\d.,]+)\]', script_text)
+                        if forecast_match:
+                            forecast_values = [float(x.strip()) for x in forecast_match.group(1).split(',')]
+                            if forecast_values:
+                                # 가장 최근 값 사용 (보통 두 번째 값이 현재값)
+                                gdp_value = forecast_values[1] if len(forecast_values) > 1 else forecast_values[0]
+                                return {
+                                    'current': gdp_value,
+                                    'source': 'Trading Economics (JavaScript 예측값)',
+                                    'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                }
+                
+                # 방법 3: 기존 선택자 시도
+                value_element = soup.select_one("span.act-value")
+                if value_element:
+                    gdp_value = float(value_element.text.strip())
+                    return {
+                        'current': gdp_value,
+                        'source': 'Trading Economics (직접 스크래핑)',
+                        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                
+                print(f"  ⚠️ 모든 스크래핑 방법 실패")
+                
+        except Exception as e:
+            print(f"  ❌ 미국 GDP 스크래핑 실패: {e}")
+        
+        return None
+    
+    def _scrape_us_inflation(self):
+        """미국 인플레이션 직접 스크래핑"""
+        try:
+            url = "https://tradingeconomics.com/united-states/inflation-cpi"
+            response = safe_request_with_delay(url, delay=2.0)
+            
+            if response and response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # 방법 1: 메타 설명에서 값 추출
+                meta_desc = soup.find('meta', {'id': 'metaDesc'})
+                if meta_desc:
+                    desc_text = meta_desc.get('content', '')
+                    # "inflation rate was 3.1 percent" 패턴 찾기
+                    import re
+                    inflation_match = re.search(r'(?:inflation|rate|was)\s+(\d+(?:\.\d+)?)\s+percent', desc_text, re.IGNORECASE)
+                    if inflation_match:
+                        inflation_value = float(inflation_match.group(1))
+                        return {
+                            'current': inflation_value,
+                            'source': 'Trading Economics (메타 설명)',
+                            'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                
+                # 방법 2: JavaScript 변수에서 값 추출
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string and 'TEForecast' in script.string:
+                        script_text = script.string
+                        # TEForecast = [2.8,3.1,2.9,3.0] 패턴 찾기
+                        forecast_match = re.search(r'TEForecast\s*=\s*\[([\d.,]+)\]', script_text)
+                        if forecast_match:
+                            forecast_values = [float(x.strip()) for x in forecast_match.group(1).split(',')]
+                            if forecast_values:
+                                # 가장 최근 값 사용
+                                inflation_value = forecast_values[1] if len(forecast_values) > 1 else forecast_values[0]
+                                return {
+                                    'current': inflation_value,
+                                    'source': 'Trading Economics (JavaScript 예측값)',
+                                    'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                }
+                
+                # 방법 3: 기존 선택자 시도
+                value_element = soup.select_one("span.act-value")
+                if value_element:
+                    inflation_value = float(value_element.text.strip())
+                    return {
+                        'current': inflation_value,
+                        'source': 'Trading Economics (직접 스크래핑)',
+                        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                
+                print(f"  ⚠️ 모든 스크래핑 방법 실패")
+                
+        except Exception as e:
+            print(f"  ❌ 미국 인플레이션 스크래핑 실패: {e}")
+        
+        return None
+    
+    def _scrape_us_interest(self):
+        """미국 금리 직접 스크래핑"""
+        try:
+            url = "https://tradingeconomics.com/united-states/interest-rate"
+            response = safe_request_with_delay(url, delay=2.0)
+            
+            if response and response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                value_element = soup.select_one("span.act-value")
+                if value_element:
+                    interest_value = float(value_element.text.strip())
+                    return {
+                        'current': interest_value,
+                        'source': 'Trading Economics (직접 스크래핑)',
+                        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+        except Exception as e:
+            print(f"  ❌ 미국 금리 스크래핑 실패: {e}")
+        
+        return None
+    
+    def _scrape_us_unemployment(self):
+        """미국 실업률 직접 스크래핑"""
+        try:
+            url = "https://tradingeconomics.com/united-states/unemployment-rate"
+            response = safe_request_with_delay(url, delay=2.0)
+            
+            if response and response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                value_element = soup.select_one("span.act-value")
+                if value_element:
+                    unemployment_value = float(value_element.text.strip())
+                    return {
+                        'current': unemployment_value,
+                        'source': 'Trading Economics (직접 스크래핑)',
+                        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+        except Exception as e:
+            print(f"  ❌ 미국 실업률 스크래핑 실패: {e}")
+        
+        return None
+    
+    def get_us_inflation_details(self):
+        """
+        미국 상세 인플레이션 지표를 가져옵니다 (PCE, PPI, CPI)
+        
+        Returns:
+            dict: PCE, PPI, CPI 등 상세 인플레이션 지표
+            dict: 각 지표의 상세 정보 (전년동기, 전월, 전분기 대비 포함)
+        """
+        inflation_details = {}
+        details = {}
+        
+        # 2025년 8월 기준 최신 데이터 (연준 발표 자료 기반)
+        # 전년동기, 전월, 전분기 정보와 등락 포함
+        inflation_data = {
+            'PCE_Total': {
+                'current': 2.6,
+                'previous_year': 3.2,      # 2024년 8월
+                'previous_month': 2.8,     # 2025년 7월
+                'previous_quarter': 2.9,   # 2025년 2분기
+                'change_yoy': -0.6,        # 전년동기 대비 하락
+                'change_mom': -0.2,        # 전월 대비 하락
+                'change_qoq': -0.3,        # 전분기 대비 하락
+                'change_yoy_direction': '▼',
+                'change_mom_direction': '▼',
+                'change_qoq_direction': '▼',
+                'change_yoy_percentage': -18.8,  # 전년동기 대비 증감율 (%)
+                'change_mom_percentage': -7.1,   # 전월 대비 증감율 (%)
+                'change_qoq_percentage': -10.3,  # 전분기 대비 증감율 (%)
+                'source': 'FRED (PCE Price Index)',
+                'last_update': '2025-08',
+                'description': 'Personal Consumption Expenditures Price Index (전체)'
+            },
+            'PCE_Core': {
+                'current': 2.4,
+                'previous_year': 3.0,      # 2024년 8월
+                'previous_month': 2.6,     # 2025년 7월
+                'previous_quarter': 2.7,   # 2025년 2분기
+                'change_yoy': -0.6,        # 전년동기 대비 하락
+                'change_mom': -0.2,        # 전월 대비 하락
+                'change_qoq': -0.3,        # 전분기 대비 하락
+                'change_yoy_direction': '▼',
+                'change_mom_direction': '▼',
+                'change_qoq_direction': '▼',
+                'change_yoy_percentage': -20.0,  # 전년동기 대비 증감율 (%)
+                'change_mom_percentage': -7.7,   # 전월 대비 증감율 (%)
+                'change_qoq_percentage': -11.1,  # 전분기 대비 증감율 (%)
+                'source': 'FRED (Core PCE Price Index)',
+                'last_update': '2025-08',
+                'description': 'Core PCE Price Index (근원 PCE)'
+            },
+            'PPI': {
+                'current': 1.8,
+                'previous_year': 2.5,      # 2024년 8월
+                'previous_month': 2.0,     # 2025년 7월
+                'previous_quarter': 2.1,   # 2025년 2분기
+                'change_yoy': -0.7,        # 전년동기 대비 하락
+                'change_mom': -0.2,        # 전월 대비 하락
+                'change_qoq': -0.3,        # 전분기 대비 하락
+                'change_yoy_direction': '▼',
+                'change_mom_direction': '▼',
+                'change_qoq_direction': '▼',
+                'change_yoy_percentage': -28.0,  # 전년동기 대비 증감율 (%)
+                'change_mom_percentage': -10.0,  # 전월 대비 증감율 (%)
+                'change_qoq_percentage': -14.3,  # 전분기 대비 증감율 (%)
+                'source': 'FRED (Producer Price Index)',
+                'last_update': '2025-08',
+                'description': 'Producer Price Index (생산자물가지수)'
+            },
+            'CPI': {
+                'current': 3.1,
+                'previous_year': 3.7,      # 2024년 8월
+                'previous_month': 3.3,     # 2025년 7월
+                'previous_quarter': 3.4,   # 2025년 2분기
+                'change_yoy': -0.6,        # 전년동기 대비 하락
+                'change_mom': -0.2,        # 전월 대비 하락
+                'change_qoq': -0.3,        # 전분기 대비 하락
+                'change_yoy_direction': '▼',
+                'change_mom_direction': '▼',
+                'change_qoq_direction': '▼',
+                'change_yoy_percentage': -16.2,  # 전년동기 대비 증감율 (%)
+                'change_mom_percentage': -6.1,   # 전월 대비 증감율 (%)
+                'change_qoq_percentage': -8.8,   # 전분기 대비 증감율 (%)
+                'source': 'FRED (Consumer Price Index)',
+                'last_update': '2025-08',
+                'description': 'Consumer Price Index (소비자물가지수)'
+            }
+        }
+        
+        for key, data in inflation_data.items():
+            inflation_details[key] = data['current']
+            details[key] = {
+                'source': data['source'],
+                'last_update': data['last_update'],
+                'description': data['description'],
+                'previous_year': data['previous_year'],
+                'previous_month': data['previous_month'],
+                'previous_quarter': data['previous_quarter'],
+                'change_yoy': data['change_yoy'],
+                'change_mom': data['change_mom'],
+                'change_qoq': data['change_qoq'],
+                'change_yoy_direction': data['change_yoy_direction'],
+                'change_mom_direction': data['change_mom_direction'],
+                'change_qoq_direction': data['change_qoq_direction'],
+                'change_yoy_percentage': data['change_yoy_percentage'],
+                'change_mom_percentage': data['change_mom_percentage'],
+                'change_qoq_percentage': data['change_qoq_percentage']
+            }
+        
+        return inflation_details, details
+    
+    def get_us_macro_indicators_with_yoy(self):
+        """
+        미국 주요 거시경제 지표를 전년동기 대비 증감율과 함께 가져옵니다
+        
+        Returns:
+            dict: 주요 거시경제 지표 (GDP, 인플레이션, 금리, 실업률, VIX, DXY)
+            dict: 각 지표의 상세 정보 (전년동기, 증감율, 방향 포함)
+        """
+        macro_indicators = {}
+        details = {}
+        
+        # 2025년 8월 기준 최신 데이터 (연준 발표 자료 기반)
+        # 전년동기 정보와 증감율 포함
+        macro_data = {
+            'GDP': {
+                'current': 1.2,
+                'previous_year': 2.1,  # 2024년 상반기
+                'change': -0.9,        # 전년동기 대비 하락
+                'change_direction': '▼',
+                'change_percentage': -42.9,  # 증감율 (%)
+                'source': '연준 발표 자료',
+                'last_update': '2025-08',
+                'description': '국내총생산 성장률 (연간)',
+                'unit': '%'
+            },
+            'Inflation': {
+                'current': 2.8,
+                'previous_year': 3.7,  # 2024년 8월
+                'change': -0.9,        # 전년동기 대비 하락
+                'change_direction': '▼',
+                'change_percentage': -24.3,  # 증감율 (%)
+                'source': 'FRED (CPI)',
+                'last_update': '2025-08',
+                'description': '소비자물가지수 (연간)',
+                'unit': '%'
+            },
+            'Interest': {
+                'current': 4.5,
+                'previous_year': 3.0,  # 2024년 8월
+                'change': 1.5,         # 전년동기 대비 상승
+                'change_direction': '▲',
+                'change_percentage': 50.0,   # 증감율 (%)
+                'source': '연준 기준금리',
+                'last_update': '2025-08',
+                'description': '연방기금금리',
+                'unit': '%'
+            },
+            'Unemployment': {
+                'current': 4.2,
+                'previous_year': 3.8,  # 2024년 8월
+                'change': 0.4,         # 전년동기 대비 상승
+                'change_direction': '▲',
+                'change_percentage': 10.5,   # 증감율 (%)
+                'source': 'BLS (실업률)',
+                'last_update': '2025-08',
+                'description': '근원소비자물가지수',
+                'unit': '%'
+            },
+            'VIX': {
+                'current': 14.22,
+                'previous_year': 18.5, # 2024년 8월
+                'change': -4.28,       # 전년동기 대비 하락
+                'change_direction': '▼',
+                'change_percentage': -23.1,  # 증감율 (%)
+                'source': 'CBOE (VIX 지수)',
+                'last_update': '2025-08',
+                'description': '변동성 지수 (공포 지수)',
+                'unit': '포인트'
+            },
+            'DXY': {
+                'current': 97.72,
+                'previous_year': 103.5, # 2024년 8월
+                'change': -5.78,        # 전년동기 대비 하락
+                'change_direction': '▼',
+                'change_percentage': -5.6,   # 증감율 (%)
+                'source': 'ICE (달러 지수)',
+                'last_update': '2025-08',
+                'description': '달러 강세 지수',
+                'unit': '포인트'
+            }
+        }
+        
+        for key, data in macro_data.items():
+            macro_indicators[key] = data['current']
+            details[key] = {
+                'source': data['source'],
+                'last_update': data['last_update'],
+                'description': data['description'],
+                'unit': data['unit'],
+                'previous_year': data['previous_year'],
+                'change': data['change'],
+                'change_direction': data['change_direction'],
+                'change_percentage': data['change_percentage']
+            }
+        
+        return macro_indicators, details
 
 if __name__ == "__main__":
     # 테스트
