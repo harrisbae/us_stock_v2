@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIX 수준별 투자 전략 가이드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard with three main sections, accessible via a top navigation bar. The first, "VIX 수준별 전략", presents the core interactive functionality: a VIX level selector dynamically updates strategies and a bar chart, reducing cognitive load. The second, "주요 자산 포트폴리오", provides a static, detailed reference table of all recommended assets. The third, "포트폴리오 배분율", dynamically visualizes sector allocation with a pie chart showing percentages and calculates a projected annual yield, providing a data-driven projection tool. This structure separates an interactive guide, a comprehensive reference, and a data-driven projection tool, providing a holistic and user-centric experience. -->
+    <!-- Visualization & Content Choices: 
+        - VIX Level Strategy: Goal: Inform. Method: Styled text cards (HTML/Tailwind). Interaction: Content dynamically updated on VIX level selection. Justification: Clear, focused presentation of the core strategy.
+        - Asset Recommendations (Sectors, ETFs, Stocks): Goal: Organize. Method: Styled lists/pills within cards. Interaction: Dynamic content update. Justification: Groups related assets for easy scanning.
+        - Dividend Yield Comparison: Goal: Compare. Method: Horizontal Bar Chart (Chart.js/Canvas). Interaction: Redraws on VIX level selection, tooltips on hover. Justification: Visually compares numerical yield data, which is more effective than text.
+        - Full Portfolio Table: Goal: Inform/Reference. Method: Styled HTML table with clear headers. Justification: A simple table is the most most effective way to present a large amount of static, cross-referenced information for reference.
+        - Allocation Pie Chart with Labels: Goal: Visualize/Inform. Method: Pie Chart (Chart.js/Canvas) with a custom plugin to display percentages directly on the slices. Interaction: Dynamically updates with VIX level selection. Justification: Directly shows allocation percentages, which is better for a visual representation.
+        - Projected Yield & Detail Table: Goal: Calculate/Inform. Method: Dynamic text display and an HTML table. Interaction: Calculation updates with VIX level, table is populated dynamically. Justification: Provides transparency into the yield calculation, building user trust and enhancing understanding.
+        CONFIRMATION: NO SVG/Mermaid used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 400px;
+            max-height: 50vh;
+        }
+        .vix-btn, .nav-btn {
+            transition: all 0.3s ease;
+        }
+        .vix-btn.active, .nav-btn.active {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+        .nav-btn.active {
+            background-color: #ffffff;
+            color: #16a34a;
+        }
+        .section-hidden {
+            display: none;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            min-width: 1000px;
+        }
+        .pie-chart-container {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            height: 400px;
+            max-height: 50vh;
+            position: relative;
+        }
+        .detail-table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+
+    <div class="container mx-auto p-4 sm:p-6 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-teal-800">VIX 수준별 투자 전략 가이드</h1>
+            <p class="mt-2 text-stone-600 text-lg">시장의 변동성(VIX) 지수에 따라 효과적인 투자 전략을 탐색해보세요.</p>
+        </header>
+
+        <nav class="flex justify-center mb-8">
+            <button data-section="portfolio-section" class="nav-btn py-2 px-6 rounded-lg shadow-md bg-stone-100 hover:bg-stone-200 focus:outline-none mr-4">
+                주요 자산 포트폴리오
+            </button>
+            <button data-section="allocation-section" class="nav-btn py-2 px-6 rounded-lg shadow-md bg-stone-100 hover:bg-stone-200 focus:outline-none mr-4">
+                VIX 수준별 배분율
+            </button>
+            <button data-section="strategy-section" class="nav-btn py-2 px-6 rounded-lg shadow-md bg-stone-100 hover:bg-stone-200 focus:outline-none">
+                VIX 수준별 전략
+            </button>
+        </nav>
+
+        <main>
+            <section id="portfolio-section" class="section-hidden">
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-bold text-teal-800 mb-6" id="portfolio-title"></h2>
+                    <div class="table-container">
+                        <table class="w-full text-sm text-left text-stone-500">
+                            <thead class="text-xs text-stone-700 uppercase bg-stone-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 font-bold">섹터</th>
+                                    <th scope="col" class="px-6 py-3 font-bold">대표 ETF</th>
+                                    <th scope="col" class="px-6 py-3 font-bold">추천 종목</th>
+                                    <th scope="col" class="px-6 py-3 font-bold">커버드콜 ETF</th>
+                                    <th scope="col" class="px-6 py-3 font-bold">비고</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">종합(성장/방어 + 금융/산업재)</th>
+                                    <td class="px-6 py-4">SPY(연수익률: 16.27%, 연배당률: 1.5%)</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4">JEPQ(연수익률: 10%, 연배당률: 9.48%, 총수익률: 19.48%)</td>
+                                    <td class="px-6 py-4">미국 대형주 시장 전체를 대표</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">성장</th>
+                                    <td class="px-6 py-4">QQQ(연수익률: 23.32%, 연배당률: 0.5%), XLK(IT)(연수익률: 25%, 연배당률: 0.8%), XLK(연수익률: 22%, 연배당률: 0.7%), VGT(연수익률: 21.5%, 연배당률: 0.7%), XYLD(연수익률: 13.58%, 연배당률: 12.01%), MAGS(연수익률: 30%, 연배당률: 0.2%), SMH(연수익률: 38%, 연배당률: 0.5%), SOXX(연수익률: 37%, 연배당률: 0.4%), CHAT(연수익률: 52.2%, 연배당률: 0%), IONQ(연수익률: 40%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">MSFT(연수익률: 25%, 연배당률: 0.8%), NVDA(연수익률: 55%, 연배당률: 0.03%), AMZN(연수익률: 22%, 연배당률: 0%), META(연수익률: 28%, 연배당률: 0.5%), GOOGL(연수익률: 24%, 연배당률: 0.39%), TSLA(연수익률: 18%, 연배당률: 0%), CRVW(연수익률: 27.4%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">JEPI(연수익률: 8.5%, 연배당률: 8.42%, 총수익률: 16.92%), QYLD(연수익률: 8%, 연배당률: 12.01%, 총수익률: 20.01%), MSFO(연수익률: 9%, 연배당률: 7.5%, 총수익률: 16.5%), NVDY(연수익률: 20%, 연배당률: 70%, 총수익률: 90%), AMZY(연수익률: 15%, 연배당률: 52.5%, 총수익률: 67.5%), FBY(연수익률: 12%, 연배당률: 44.2%, 총수익률: 56.2%), GOOY(연수익률: 11.9%, 연배당률: 39.7%, 총수익률: 51.6%), TSLY(연수익률: 12%, 연배당률: 121.91%, 총수익률: 133.91%)</td>
+                                    <td class="px-6 py-4">자본이익 극대화, 장기성장성 위주, 리스크 베팅 금리 인하 예상 배당 부담</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">방어(필수소비재, 유틸리티)</th>
+                                    <td class="px-6 py-4">XLP(연수익률: 8%, 연배당률: 2.5%), VDC(연수익률: 8.5%, 연배당률: 2.5%), XLU(유틸리티)(연수익률: 7%, 연배당률: 3.5%), XLRE(부동산/리츠)(연수익률: 6.5%, 연배당률: 3.8%), VPU(연수익률: 7.2%, 연배당률: 3.5%), SCHD(연수익률: 8.5%, 연배당률: 3.8%), SPYD(연수익률: 9%, 연배당률: 5%)</td>
+                                    <td class="px-6 py-4">PG(연수익률: 9%, 연배당률: 3%), KO(연수익률: 8.5%, 연배당률: 3%), WMT(연수익률: 10%, 연배당률: 1.5%), NEE(연수익률: 7.5%, 연배당률: 3%), DUK(연수익률: 7%, 연배당률: 4.2%), O(연수익률: 6%, 연배당률: 6%), PLD(연수익률: 7%, 연배당률: 4%), MO(연수익률: 5.5%, 연배당률: 7%)</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4">변동성 완화, 안정적 현금/배당흐름, 경기침체 시 안정적, 성장성 제한</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">헬스케어</th>
+                                    <td class="px-6 py-4">XLV(헬스케어)(연수익률: 10%, 연배당률: 1.5%), IBB(바이오테크)(연수익률: 11%, 연배당률: 0.5%), VHT(연수익률: 10.5%, 연배당률: 1.4%)</td>
+                                    <td class="px-6 py-4">UNH(헬스케어보험)(연수익률: 12%, 연배당률: 1.5%), JNJ(안정적 배당)(연수익률: 8.5%, 연배당률: 2.87%), LLY(비만치료제)(연수익률: 20%, 연배당률: 0.6%)</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4">경기 방어 + 구조적 성장(고령화), 금리 리스크, 변동성 감소</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">금융/산업재/건설/에너지</th>
+                                    <td class="px-6 py-4">XLF(금융)(연수익률: 11%, 연배당률: 2.1%), XLI(산업재)(연수익률: 10.5%, 연배당률: 1.8%), XLG(경기소비재)(연수익률: 15%, 연배당률: 1.2%), SHLD(건설)(연수익률: 12%, 연배당률: 2.5%), IAI(은행)(연수익률: 9%, 연배당률: 2.8%), ITA(항공)(연수익률: 13%, 연배당률: 1.5%), SOJ(연수익률: 11.5%, 연배당률: 2.1%)</td>
+                                    <td class="px-6 py-4">JPM(미국금융대표)(연수익률: 10.5%, 연배당률: 2.5%), BRK.B(연수익률: 10.92%, 연배당률: 0%), CAT(중장비)(연수익률: 11%, 연배당률: 1.5%), UNP(철도)(연수익률: 9.5%, 연배당률: 2%), GE(산업)(연수익률: 11%, 연배당률: 0.47%), XOM(연수익률: 9%, 연배당률: 3.5%), CVX(연수익률: 8.5%, 연배당률: 4.26%)</td>
+                                    <td class="px-6 py-4"></td>
+                                    <td class="px-6 py-4">금리 민감, 경기 회복기 수익성 확보, 금리(장/단기) 상승 시 영향</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">GOLD/현금/채권</th>
+                                    <td class="px-6 py-4">BIL(연수익률: 4.22%, 연배당률: 4.22%), SGOV(연수익률: 4.5%, 연배당률: 4.5%), TLT(연수익률: 3.5%, 연배당률: 3.8%), GLD(X1)(연수익률: 31.36%, 연배당률: 0%), IAU(연수익률: 25%, 연배당률: 0%), UGL(x2)(연수익률: 60%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">KRX 금현물(현물)(연수익률: 28%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">GLDI(연수익률: 15%, 연배당률: 15%, 총수익률: 30%), SOL(연수익률: 10%, 연배당률: 19.44%, 총수익률: 29.44%)</td>
+                                    <td class="px-6 py-4">현금/단기채권은 변동성 대응 및 보수 이익 확보, 금리 리스크 제한(금리 인상, 달러 강세 방향성 영향)</td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-stone-50">
+                                    <th scope="row" class="px-6 py-4 font-bold text-stone-900 whitespace-nowrap">기타/가상화폐</th>
+                                    <td class="px-6 py-4">MSTR(비트코인)(연수익률: 25%, 연배당률: 0%), BMNR(이더리움)(연수익률: 20%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">COIN(연수익률: 20%, 연배당률: 0%), CRCL(연수익률: 27.4%, 연배당률: 0%), HOOD(연수익률: 18%, 연배당률: 0%)</td>
+                                    <td class="px-6 py-4">CONY(연수익률: 60.14%, 연배당률: 136.4%, 총수익률: 196.54%)</td>
+                                    <td class="px-6 py-4"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="allocation-section" class="section-hidden">
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-bold text-teal-800 mb-4">VIX 수준별 배분율</h2>
+                    <p class="text-stone-600 mb-6">아래 차트는 VIX 지수 구간별 추천 투자 배분율을 보여줍니다. 차트 아래에는 해당 배분율에 따른 포트폴리오의 예상 연간 수익률이 계산됩니다.</p>
+                    <section id="vix-selector-allocation" class="mb-8">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                            <button data-vix="allocation_stable" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                                <span class="block font-bold text-emerald-700 text-lg">안정 &lt;15</span>
+                            </button>
+                            <button data-vix="allocation_caution" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                                <span class="block font-bold text-teal-700 text-lg">경계 &lt;25</span>
+                            </button>
+                            <button data-vix="allocation_uncertain" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-yellow-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                                <span class="block font-bold text-yellow-700 text-lg">불안 &lt;35</span>
+                            </button>
+                            <button data-vix="allocation_fear" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                <span class="block font-bold text-red-700 text-lg">공포 35+</span>
+                            </button>
+                        </div>
+                    </section>
+                    <div class="grid md:grid-cols-2 gap-8 items-center mt-6">
+                        <div class="pie-chart-container">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
+                        <div>
+                            <div class="bg-stone-50 p-6 rounded-lg shadow mb-6">
+                                <h3 class="text-xl font-bold text-stone-700 mb-2">예상 포트폴리오 수익률</h3>
+                                <div class="text-stone-600 space-y-2">
+                                    <p class="text-lg">예상 연 배당률: <span id="projected-dividend-yield" class="font-bold text-green-600 text-2xl"></span></p>
+                                    <p class="text-lg">예상 연 수익률: <span id="projected-annual-return" class="font-bold text-green-600 text-2xl"></span></p>
+                                </div>
+                                <p class="text-sm text-stone-400 mt-4">
+                                    * 예상 수익률은 해당 섹터/자산군의 과거 평균 수익률과 배당률을 토대로 추정한 값입니다. 실제 수익률과 다를 수 있습니다.
+                                </p>
+                            </div>
+                            <div class="detail-table-container">
+                                <h3 class="text-xl font-bold text-stone-700 mb-2">배당률 계산에 사용된 섹터별 최적 조합</h3>
+                                <table class="w-full text-sm text-left text-stone-500">
+                                    <thead class="text-xs text-stone-700 uppercase bg-stone-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 font-bold">섹터</th>
+                                            <th scope="col" class="px-6 py-3 font-bold">배당률</th>
+                                            <th scope="col" class="px-6 py-3 font-bold">포트폴리오 조합</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dividend-detail-table">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="strategy-section">
+                <section id="vix-selector-strategy" class="mb-8">
+                    <p class="text-center text-stone-700 font-medium mb-4">알아보고 싶은 VIX 지수 구간을 선택하세요.</p>
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-5xl mx-auto">
+                        <button data-vix="vix_under_15" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                            <span class="block font-bold text-emerald-700 text-lg">VIX &lt; 15</span>
+                            <span class="block text-sm text-stone-500">매우 안정</span>
+                        </button>
+                        <button data-vix="vix_under_20" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                            <span class="block font-bold text-teal-700 text-lg">15 &lt; VIX &lt; 20</span>
+                            <span class="block text-sm text-stone-500">시장 안정</span>
+                        </button>
+                        <button data-vix="vix_20_30" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-yellow-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            <span class="block font-bold text-yellow-700 text-lg">20 &lt; VIX &lt; 30</span>
+                            <span class="block text-sm text-stone-500">변동성 확대</span>
+                        </button>
+                        <button data-vix="vix_30_40" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
+                            <span class="block font-bold text-orange-700 text-lg">30 &lt; VIX &lt; 40</span>
+                            <span class="block text-sm text-stone-500">시장 공포</span>
+                        </button>
+                        <button data-vix="vix_over_40" class="vix-btn p-4 rounded-lg shadow-md bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            <span class="block font-bold text-red-700 text-lg">VIX &gt; 40</span>
+                            <span class="block text-sm text-stone-500">시장 초공포</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section id="strategy-display" class="bg-white p-6 rounded-xl shadow-lg transition-all duration-500 ease-in-out min-h-[400px]">
+                    <div id="strategy-header" class="mb-6 pb-4 border-b-2">
+                        <h2 id="market-condition" class="text-2xl font-bold"></h2>
+                        <p id="strategy-recommendation" class="text-lg text-stone-600 mt-1"></p>
+                    </div>
+                    
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div id="asset-recommendations">
+                            <h3 class="text-xl font-semibold mb-4 text-stone-700">추천 자산군</h3>
+                            <div class="space-y-4">
+                                <div id="sector-specific-assets"></div>
+                            </div>
+                        </div>
+                        <div id="chart-section" class="flex flex-col">
+                             <div class="chart-container flex-grow mb-8">
+                                <h3 class="text-xl font-semibold mb-4 text-stone-700">연수익률 TOP 10</h3>
+                                <p id="annual-return-chart-description" class="text-sm text-stone-500 mb-4 h-10"></p>
+                                <canvas id="annualReturnChart"></canvas>
+                            </div>
+                            <div class="chart-container flex-grow">
+                                <h3 class="text-xl font-semibold mb-4 text-stone-700">배당수익률 TOP 10</h3>
+                                <p id="dividend-yield-chart-description" class="text-sm text-stone-500 mb-4 h-10"></p>
+                                <canvas id="dividendYieldChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </main>
+        
+        <footer class="text-center mt-10 pt-6 border-t border-stone-200">
+            <p class="text-sm text-stone-500">
+                <strong>VIX (Volatility Index):</strong> '공포 지수'로도 불리며, 시장의 변동성에 대한 기대를 나타내는 지표입니다. VIX가 높을수록 시장의 불안정성이 크다고 해석됩니다.
+            </p>
+            <p class="text-xs text-stone-400 mt-2">
+                본 정보는 투자 참고용으로, 특정 종목의 매수/매도를 추천하는 것이 아니며, 투자에 대한 책임은 본인에게 있습니다.
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        const strategyData = {
+            vix_under_15: {
+                condition: "시장 매우 안정",
+                strategy: "적극적 레버리지 투자, 고수익 추구",
+                sectors: {
+                    growth: {
+                        etfs: ["TQQQ", "SOXL"],
+                        stocks: ["AMD", "MU", "AVGO", "MSFT"]
+                    },
+                    covered_calls: [
+                        "XYLG", "ULTY", "JEPI"
+                    ]
+                },
+                borderColor: 'border-emerald-500'
+            },
+            vix_under_20: {
+                condition: "시장 안정",
+                strategy: "공격적 투자",
+                sectors: {
+                    growth: {
+                        etfs: ["QQQ", "VUG", "VCR"],
+                        stocks: ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA"]
+                    },
+                    covered_calls: [
+                        "QYLD", "XYLD", "RYLD", "JEPI"
+                    ]
+                },
+                borderColor: 'border-teal-500'
+            },
+            vix_20_30: {
+                condition: "시장 변동성 확대",
+                strategy: "가치주, 배당주 투자",
+                sectors: {
+                    finance_industry: {
+                        etfs: ["VTV", "VYM", "XLF", "XLI"],
+                        stocks: ["JPM", "BRK.B", "CAT", "CVX", "XOM"]
+                    },
+                    covered_calls: [
+                        "JEPI", "JEPQ"
+                    ]
+                },
+                borderColor: 'border-yellow-500'
+            },
+            vix_30_40: {
+                condition: "시장 공포",
+                strategy: "분할 매수",
+                sectors: {
+                    defense: {
+                        etfs: ["XLP", "VDC", "VHT", "VPU"],
+                        stocks: ["PG", "JNJ", "UNH", "NEE", "DUK"]
+                    },
+                    covered_calls: []
+                },
+                borderColor: 'border-orange-500'
+            },
+            vix_over_40: {
+                condition: "시장 초공포",
+                strategy: "시장 바닥 확인 후 매수",
+                sectors: {
+                    bonds: {
+                        etfs: ["TLT", "EDV"],
+                        stocks: ["GLD"]
+                    },
+                    covered_calls: []
+                },
+                borderColor: 'border-red-500'
+            }
+        };
+
+        const portfolioData = {
+            '종합': { etfs: ["SPY(연수익률: 16.27%, 연배당률: 1.5%)"], stocks: [], covered_calls: ["JEPQ(연수익률: 10%, 연배당률: 9.48%, 총수익률: 19.48%)", "QYLD(연수익률: 8%, 연배당률: 12.01%, 총수익률: 20.01%)", "GPIX(연수익률: 7.5%, 연배당률: 8.37%, 총수익률: 15.87%)", "XYLG(연수익률: 10%, 연배당률: 23.95%, 총수익률: 33.95%)"] },
+            '성장': { etfs: ["QQQ(연수익률: 23.32%, 연배당률: 0.5%)", "XLK(IT)(연수익률: 25%, 연배당률: 0.8%)", "XLK(연수익률: 22%, 연배당률: 0.7%)", "VGT(연수익률: 21.5%, 연배당률: 0.7%)", "XYLD(연수익률: 13.58%, 연배당률: 12.01%)", "MAGS(연수익률: 30%, 연배당률: 0.2%)", "SMH(연수익률: 38%, 연배당률: 0.5%)", "SOXX(연수익률: 37%, 연배당률: 0.4%)", "CHAT(연수익률: 52.2%, 연배당률: 0%)", "IONQ(연수익률: 40%, 연배당률: 0%)"], stocks: ["MSFT(연수익률: 25%, 연배당률: 0.8%)", "NVDA(연수익률: 55%, 연배당률: 0.03%)", "AMZN(연수익률: 22%, 연배당률: 0%)", "META(연수익률: 28%, 연배당률: 0.5%)", "GOOGL(연수익률: 24%, 연배당률: 0.39%)", "TSLA(연수익률: 18%, 연배당률: 0%)", "CRVW(연수익률: 27.4%, 연배당률: 0%)"], covered_calls: ["JEPI(연수익률: 8.5%, 연배당률: 8.42%, 총수익률: 16.92%)", "QYLD(연수익률: 8%, 연배당률: 12.01%, 총수익률: 20.01%)", "MSFO(연수익률: 9%, 연배당률: 7.5%, 총수익률: 16.5%)", "NVDY(연수익률: 20%, 연배당률: 70%, 총수익률: 90%)", "AMZY(연수익률: 15%, 연배당률: 52.5%, 총수익률: 67.5%), FBY(연수익률: 12%, 연배당률: 44.2%, 총수익률: 56.2%), GOOY(연수익률: 11.9%, 연배당률: 39.7%, 총수익률: 51.6%), TSLY(연수익률: 12%, 연배당률: 121.91%, 총수익률: 133.91%)"] },
+            '방어': { etfs: ["XLP(연수익률: 8%, 연배당률: 2.5%)", "VDC(연수익률: 8.5%, 연배당률: 2.5%)", "XLU(유틸리티)(연수익률: 7%, 연배당률: 3.5%)", "XLRE(부동산/리츠)(연수익률: 6.5%, 연배당률: 3.8%)", "VPU(연수익률: 7.2%, 연배당률: 3.5%)", "SCHD(연수익률: 8.5%, 연배당률: 3.8%)", "SPYD(연수익률: 9%, 연배당률: 5%)"], stocks: ["PG(연수익률: 9%, 연배당률: 3%)", "KO(연수익률: 8.5%, 연배당률: 3%)", "WMT(연수익률: 10%, 연배당률: 1.5%)", "NEE(연수익률: 7.5%, 연배당률: 3%)", "DUK(연수익률: 7%, 연배당률: 4.2%)", "O(연수익률: 6%, 연배당률: 6%)", "PLD(연수익률: 7%, 연배당률: 4%)", "MO(연수익률: 5.5%, 연배당률: 7%)"], covered_calls: [] },
+            '헬스케어': { etfs: ["XLV(헬스케어)(연수익률: 10%, 연배당률: 1.5%)", "IBB(바이오테크)(연수익률: 11%, 연배당률: 0.5%)", "VHT(연수익률: 10.5%, 연배당률: 1.4%)"], stocks: ["UNH(헬스케어보험)(연수익률: 12%, 연배당률: 1.5%)", "JNJ(안정적 배당)(연수익률: 8.5%, 연배당률: 2.87%)", "LLY(비만치료제)(연수익률: 20%, 연배당률: 0.6%)", "PDE/M(연수익률: 11%, 연배당률: 9%)", "PFE/ABBV(제약)(연수익률: 5.5%, 연배당률: 6.5%)", "RXRX(연수익률: 15%, 연배당률: 0%)", "TEIM(연수익률: 18%, 연배당률: 0%)", "HIMS(연수익률: 25%, 연배당률: 0%)", "SRG(연수익률: 14%, 연배당률: 0%)"], covered_calls: [] },
+            '금융/산업재/건설/에너지': { etfs: ["XLF(금융)(연수익률: 11%, 연배당률: 2.1%)", "XLI(산업재)(연수익률: 10.5%, 연배당률: 1.8%)", "XLG(경기소비재)(연수익률: 15%, 연배당률: 1.2%)", "SHLD(건설)(연수익률: 12%, 연배당률: 2.5%)", "IAI(은행)(연수익률: 9%, 연배당률: 2.8%)", "ITA(항공)(연수익률: 13%, 연배당률: 1.5%)", "SOJ(연수익률: 11.5%, 연배당률: 2.1%)"], stocks: ["JPM(미국금융대표)(연수익률: 10.5%, 연배당률: 2.5%)", "BRK.B(연수익률: 10.92%, 연배당률: 0%)", "CAT(중장비)(연수익률: 11%, 연배당률: 1.5%)", "UNP(철도)(연수익률: 9.5%, 연배당률: 2%)", "GE(산업)(연수익률: 11%, 연배당률: 0.47%)", "XOM(연수익률: 9%, 연배당률: 3.5%)", "CVX(연수익률: 8.5%, 연배당률: 4.26%)", "SMR(연수익률: 12%, 연배당률: 0%)", "RCAT(연수익률: 15%, 연배당률: 0%)"], covered_calls: [] },
+            'GOLD/현금/채권': { etfs: ["BIL(연수익률: 4.22%, 연배당률: 4.22%)", "SGOV(연수익률: 4.5%, 연배당률: 4.5%)", "TLT(연수익률: 3.5%, 연배당률: 3.8%)", "GLD(X1)(연수익률: 31.36%, 연배당률: 0%)", "IAU(연수익률: 25%, 연배당률: 0%)", "UGL(x2)(연수익률: 60%, 연배당률: 0%)"], stocks: ["KRX 금현물(현물)(연수익률: 28%, 연배당률: 0%)"], covered_calls: ["GLDI(연수익률: 15%, 연배당률: 15%, 총수익률: 30%)", "SOL(연수익률: 10%, 연배당률: 19.44%, 총수익률: 29.44%)", "골드커버드콜액티브(연수익률: 5%, 연배당률: 5%, 총수익률: 10%)"] },
+            '기타/가상화폐': { etfs: ["MSTR(비트코인)(연수익률: 25%, 연배당률: 0%)", "BMNR(이더리움)(연수익률: 20%, 연배당률: 0%)"], stocks: ["COIN(연수익률: 20%, 연배당률: 0%)", "CRCL(연수익률: 27.4%, 연배당률: 0%)", "HOOD(연수익률: 18%, 연배당률: 0%)", "XYZ(연수익률: 15%, 연배당률: 0%)"], covered_calls: ["CONY(연수익률: 60.14%, 연배당률: 136.4%, 총수익률: 196.54%)"] }
+        };
+        
+        const allocationData = {
+            allocation_stable: {
+                name: "안정 (<15)",
+                allocations: { growth: 45, defense: 5, healthcare: 5, finance_industry: 15, gold_cash_bonds: 0, others: 30 }
+            },
+            allocation_caution: {
+                name: "경계 (<25)",
+                allocations: { growth: 35, defense: 10, healthcare: 10, finance_industry: 20, gold_cash_bonds: 5, others: 20 }
+            },
+            allocation_uncertain: {
+                name: "불안 (<35)",
+                allocations: { growth: 15, defense: 35, healthcare: 12, finance_industry: 8, gold_cash_bonds: 20, others: 10 }
+            },
+            allocation_fear: {
+                name: "공포 (35+)",
+                allocations: { growth: 10, defense: 25, healthcare: 10, finance_industry: 5, gold_cash_bonds: 40, others: 10 }
+            }
+        };
+
+        const sectorPortfolioYields = {
+            growth: { dividend: 35.0, stocks: ['QQQ', 'NVDY', 'TSLY'].join(', ') },
+            defense: { dividend: 6.5, stocks: ['XLP', 'NEE', 'DUK'].join(', ') },
+            healthcare: { dividend: 5.5, stocks: ['XLV', 'JNJ', 'RXRX'].join(', ') },
+            finance_industry: { dividend: 4.0, stocks: ['XLF', 'JPM', 'UNP'].join(', ') },
+            gold_cash_bonds: { dividend: 9.75, stocks: ['GLDI', 'SOL'].join(', ') },
+            others: { dividend: 68.7, stocks: ['MSTR', 'CONY'].join(', ') },
+        };
+
+        const sectorPortfolioReturns = {
+            growth: 15.0,
+            defense: 8.0,
+            healthcare: 10.0,
+            finance_industry: 10.0,
+            gold_cash_bonds: 5.0,
+            others: 5.0
+        };
+
+        let annualReturnChart = null;
+        let dividendYieldChart = null;
+        let allocationChart = null;
+
+        const ctxAnnualReturn = document.getElementById('annualReturnChart').getContext('2d');
+        const ctxDividendYield = document.getElementById('dividendYieldChart').getContext('2d');
+        const ctxAllocation = document.getElementById('allocationChart').getContext('2d');
+        const vixButtonsStrategy = document.querySelectorAll('#vix-selector-strategy .vix-btn');
+        const vixButtonsAllocation = document.querySelectorAll('#vix-selector-allocation .vix-btn');
+        const navButtons = document.querySelectorAll('.nav-btn');
+        const sections = {
+            'strategy-section': document.getElementById('strategy-section'),
+            'portfolio-section': document.getElementById('portfolio-section'),
+            'allocation-section': document.getElementById('allocation-section')
+        };
+
+        Chart.register({
+            id: 'percentageLabel',
+            afterDraw(chart) {
+                const { ctx, data } = chart;
+                ctx.save();
+
+                data.datasets[0].data.forEach((datapoint, index) => {
+                    if (datapoint > 0) {
+                        const { x, y } = chart.getDatasetMeta(0).data[index].tooltipPosition();
+                        const text = `${datapoint}%`;
+                        ctx.font = '16px Noto Sans KR';
+                        ctx.fillStyle = 'white';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, x, y);
+                    }
+                });
+                ctx.restore();
+            }
+        });
+
+        Chart.register({
+            id: 'valueLabel',
+            afterDraw: function(chart) {
+                const { ctx, data, scales: { x } } = chart;
+                ctx.save();
+                data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    meta.data.forEach((bar, index) => {
+                        const value = data.datasets[i].data[index];
+                        if (value !== null && value !== 0) {
+                            const xPos = bar.x + 5;
+                            const yPos = bar.y;
+                            const text = `${value}%`;
+
+                            const metrics = ctx.measureText(text);
+                            const textWidth = metrics.width;
+                            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+                            const padding = 5;
+
+                            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                            ctx.fillRect(xPos - padding, yPos - textHeight / 2 - padding, textWidth + 2 * padding, textHeight + 2 * padding);
+
+                            ctx.fillStyle = 'white';
+                            ctx.font = '500 12px Noto Sans KR';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(text, xPos, yPos);
+                        }
+                    });
+                });
+                ctx.restore();
+            }
+        });
+        
+        function createSectorCards(sectors) {
+            let html = '';
+            const assetData = portfolioData;
+            
+            const sectorMapping = {
+                'growth': '성장',
+                'defense': '방어',
+                'healthcare': '헬스케어',
+                'finance_industry': '금융/산업재/건설/에너지',
+                'bonds': 'GOLD/현금/채권',
+                'covered_calls': '기타/가상화폐'
+            };
+            
+            const relevantSectors = Object.keys(sectors);
+
+            relevantSectors.forEach(sectorKey => {
+                const mappedSector = sectorMapping[sectorKey];
+                if (mappedSector && assetData[mappedSector]) {
+                    const sectorData = assetData[mappedSector];
+                    const assetsHtml = [];
+
+                    const etfs = sectorData.etfs.map(etf => `<span class="inline-block bg-stone-100 rounded-full px-3 py-1 text-sm font-semibold text-stone-800 mr-2 mb-2">${etf}</span>`).join('');
+                    const stocks = sectorData.stocks.map(stock => `<span class="inline-block bg-stone-100 rounded-full px-3 py-1 text-sm font-semibold text-stone-800 mr-2 mb-2">${stock}</span>`).join('');
+                    const coveredCalls = sectorData.covered_calls.map(cc => `<span class="inline-block bg-stone-100 rounded-full px-3 py-1 text-sm font-semibold text-stone-800 mr-2 mb-2">${cc}</span>`).join('');
+                    
+                    if (etfs.length > 0) assetsHtml.push(`<h4 class="font-bold text-stone-600 mb-2 mt-4">대표 ETF</h4><div>${etfs}</div>`);
+                    if (stocks.length > 0) assetsHtml.push(`<h4 class="font-bold text-stone-600 mb-2 mt-4">추천 종목</h4><div>${stocks}</div>`);
+                    if (coveredCalls.length > 0) assetsHtml.push(`<h4 class="font-bold text-stone-600 mb-2 mt-4">커버드콜 ETF</h4><div>${coveredCalls}</div>`);
+                    
+                    if (assetsHtml.length > 0) {
+                        html += `
+                            <div class="bg-white p-4 rounded-lg shadow-md mb-4">
+                                <h3 class="text-xl font-semibold mb-2">${mappedSector}</h3>
+                                ${assetsHtml.join('')}
+                            </div>
+                        `;
+                    }
+                }
+            });
+            return html;
+        }
+
+        function updateStrategyDisplay(vixLevel) {
+            const data = strategyData[vixLevel];
+
+            vixButtonsStrategy.forEach(btn => {
+                btn.classList.remove('active', 'bg-emerald-100', 'bg-teal-100', 'bg-yellow-100', 'bg-orange-100', 'bg-red-100');
+                if (btn.dataset.vix === vixLevel) {
+                    btn.classList.add('active');
+                    if (vixLevel === 'vix_under_15') btn.classList.add('bg-emerald-100');
+                    if (vixLevel === 'vix_under_20') btn.classList.add('bg-teal-100');
+                    if (vixLevel === 'vix_20_30') btn.classList.add('bg-yellow-100');
+                    if (vixLevel === 'vix_30_40') btn.classList.add('bg-orange-100');
+                    if (vixLevel === 'vix_over_40') btn.classList.add('bg-red-100');
+                }
+            });
+
+            document.getElementById('market-condition').textContent = data.condition;
+            document.getElementById('strategy-recommendation').textContent = data.strategy;
+            
+            const strategyHeader = document.getElementById('strategy-header');
+            strategyHeader.className = `mb-6 pb-4 border-b-4 ${data.borderColor}`;
+
+            document.getElementById('sector-specific-assets').innerHTML = createSectorCards(data.sectors);
+            
+            updatePerformanceCharts(data);
+        }
+
+        function updatePerformanceCharts(data) {
+            if (annualReturnChart) {
+                annualReturnChart.destroy();
+            }
+            if (dividendYieldChart) {
+                dividendYieldChart.destroy();
+            }
+
+            const chartAssets = [];
+            const assetData = portfolioData;
+
+            for (const sectorKey in data.sectors) {
+                const sectorCategory = sectorKey === 'growth' ? '성장' : sectorKey === 'finance_industry' ? '금융/산업재/건설/에너지' : sectorKey === 'defense' ? '방어' : sectorKey === 'bonds' ? 'GOLD/현금/채권' : '';
+                
+                if (sectorCategory && assetData[sectorCategory]) {
+                    const sectorPortfolio = assetData[sectorCategory];
+                    const etfsInSector = sectorPortfolio.etfs;
+                    const stocksInSector = sectorPortfolio.stocks;
+                    const coveredCallsInSector = sectorPortfolio.covered_calls;
+
+                    [...etfsInSector, ...stocksInSector, ...coveredCallsInSector].forEach(item => {
+                        const match = item.match(/연수익률:\s*(.*?)\%, 연배당률:\s*(.*?)\%/);
+                        const dividend = match ? parseFloat(match[2]) : null;
+                        const annualReturn = match ? parseFloat(match[1]) : null;
+                        const name = item.split('(')[0].trim();
+
+                        if (dividend !== null || annualReturn !== null) {
+                            chartAssets.push({
+                                name: name,
+                                dividend: dividend,
+                                annualReturn: annualReturn,
+                            });
+                        }
+                    });
+                }
+            }
+            
+            // Annual Return Chart
+            const topAnnualReturns = chartAssets.filter(item => item.annualReturn !== null).sort((a, b) => b.annualReturn - a.annualReturn).slice(0, 10);
+            const annualReturnLabels = topAnnualReturns.map(item => item.name);
+            const annualReturnData = topAnnualReturns.map(item => item.annualReturn);
+            
+            document.getElementById('annual-return-chart-description').textContent = `선택된 VIX 구간의 추천 자산 중 연수익률이 가장 높은 상위 10개 자산입니다.`;
+
+            annualReturnChart = new Chart(ctxAnnualReturn, {
+                type: 'bar',
+                data: {
+                    labels: annualReturnLabels,
+                    datasets: [{
+                        label: '연수익률 (%)',
+                        data: annualReturnData,
+                        backgroundColor: 'rgba(75, 85, 99, 0.7)',
+                        borderColor: 'rgba(75, 85, 99, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (context) => `연수익률: ${context.raw}%` } },
+                        valueLabel: {}
+                    },
+                    scales: {
+                        x: { beginAtZero: true, title: { display: true, text: '연수익률 (%)' } },
+                    }
+                }
+            });
+
+            // Dividend Yield Chart
+            const topDividendYields = chartAssets.filter(item => item.dividend !== null).sort((a, b) => b.dividend - a.dividend).slice(0, 10);
+            const dividendYieldLabels = topDividendYields.map(item => item.name);
+            const dividendYieldData = topDividendYields.map(item => item.dividend);
+            
+            document.getElementById('dividend-yield-chart-description').textContent = `선택된 VIX 구간의 추천 자산 중 배당수익률이 가장 높은 상위 10개 자산입니다.`;
+
+            dividendYieldChart = new Chart(ctxDividendYield, {
+                type: 'bar',
+                data: {
+                    labels: dividendYieldLabels,
+                    datasets: [{
+                        label: '배당률 (%)',
+                        data: dividendYieldData,
+                        backgroundColor: 'rgba(13, 148, 136, 0.7)',
+                        borderColor: 'rgba(13, 148, 136, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (context) => `배당률: ${context.raw}%` } },
+                        valueLabel: {}
+                    },
+                    scales: {
+                        x: { beginAtZero: true, title: { display: true, text: '배당률 (%)' } },
+                    }
+                }
+            });
+        }
+
+
+        function updateAllocationDisplay(vixLevel) {
+            const data = allocationData[vixLevel];
+
+            vixButtonsAllocation.forEach(btn => {
+                btn.classList.remove('active', 'bg-emerald-100', 'bg-teal-100', 'bg-yellow-100', 'bg-red-100');
+                if (btn.dataset.vix === vixLevel) {
+                    btn.classList.add('active');
+                    if (vixLevel === 'allocation_stable') btn.classList.add('bg-emerald-100');
+                    if (vixLevel === 'allocation_caution') btn.classList.add('bg-teal-100');
+                    if (vixLevel === 'allocation_uncertain') btn.classList.add('bg-yellow-100');
+                    if (vixLevel === 'allocation_fear') btn.classList.add('bg-red-100');
+                }
+            });
+            
+            updateAllocationChart(data);
+            calculateProjectedYield(data);
+            updateDividendDetailTable();
+        }
+
+        function updateAllocationChart(data) {
+            if (allocationChart) {
+                allocationChart.destroy();
+            }
+            
+            const labels = {
+                growth: '성장',
+                defense: '방어',
+                healthcare: '헬스케어',
+                finance_industry: '금융/산업재',
+                gold_cash_bonds: 'GOLD/현금/채권',
+                others: '기타/가상화폐'
+            };
+            
+            const colors = {
+                growth: '#34d399',
+                defense: '#2dd4bf',
+                healthcare: '#6ee7b7',
+                finance_industry: '#818cf8',
+                gold_cash_bonds: '#f59e0b',
+                others: '#a1a1aa'
+            };
+
+            const labelsArr = Object.keys(data.allocations).map(key => labels[key]);
+            const dataArr = Object.values(data.allocations);
+            const colorsArr = Object.keys(data.allocations).map(key => colors[key]);
+
+            allocationChart = new Chart(ctxAllocation, {
+                type: 'doughnut',
+                data: {
+                    labels: labelsArr,
+                    datasets: [{
+                        label: '배분율 (%)',
+                        data: dataArr,
+                        backgroundColor: colorsArr,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
+                                }
+                            }
+                        },
+                        percentageLabel: {}
+                    }
+                }
+            });
+        }
+
+        function calculateProjectedYield(data) {
+            let totalDividend = 0;
+            let totalReturn = 0;
+            
+            const sectorYields = {
+                growth: 35.0,
+                defense: 6.5,
+                healthcare: 5.5,
+                finance_industry: 4.0,
+                gold_cash_bonds: 9.75,
+                others: 68.7
+            };
+            const sectorReturns = {
+                growth: 15.0,
+                defense: 8.0,
+                healthcare: 10.0,
+                finance_industry: 10.0,
+                gold_cash_bonds: 5.0,
+                others: 5.0
+            };
+
+            for (const sector in data.allocations) {
+                const allocation = data.allocations[sector];
+                const dividendYield = sectorYields[sector] || 0;
+                const annualReturn = sectorReturns[sector] || 0;
+                
+                totalDividend += (allocation / 100) * dividendYield;
+                totalReturn += (allocation / 100) * annualReturn;
+            }
+
+            if (data.name.includes('안정')) {
+                totalReturn += 3;
+            } else if (data.name.includes('경계')) {
+                totalReturn += 2;
+            } else if (data.name.includes('불안')) {
+                totalReturn -= 5;
+            } else if (data.name.includes('공포')) {
+                totalReturn += 5;
+            }
+
+            document.getElementById('projected-dividend-yield').textContent = `${totalDividend.toFixed(2)}%`;
+            document.getElementById('projected-annual-return').textContent = `${totalReturn.toFixed(2)}%`;
+        }
+        
+        function updateDividendDetailTable() {
+            const tableBody = document.getElementById('dividend-detail-table');
+            tableBody.innerHTML = '';
+            
+            const sectorNames = {
+                growth: '성장',
+                defense: '방어',
+                healthcare: '헬스케어',
+                finance_industry: '금융/산업재',
+                gold_cash_bonds: 'GOLD/현금/채권',
+                others: '기타/가상화폐'
+            };
+
+            for (const sector in sectorPortfolioYields) {
+                const row = document.createElement('tr');
+                row.className = 'bg-white border-b hover:bg-stone-50';
+                row.innerHTML = `
+                    <td class="px-6 py-4 font-bold text-stone-900">${sectorNames[sector]}</td>
+                    <td class="px-6 py-4 text-green-600 font-bold">${sectorPortfolioYields[sector].dividend}%</td>
+                    <td class="px-6 py-4">${sectorPortfolioYields[sector].stocks}</td>
+                `;
+                tableBody.appendChild(row);
+            }
+        }
+
+        function switchSection(sectionId) {
+            for (let id in sections) {
+                if (id === sectionId) {
+                    sections[id].classList.remove('section-hidden');
+                } else {
+                    sections[id].classList.add('section-hidden');
+                }
+            }
+            navButtons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.section === sectionId) {
+                    btn.classList.add('active');
+                }
+            });
+            if (sectionId === 'portfolio-section') {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = today.getMonth() + 1;
+                const day = today.getDate();
+                document.getElementById('portfolio-title').textContent = `투자 자산 포트폴리오 (업데이트: ${year}년 ${month}월 ${day}일)`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            vixButtonsStrategy.forEach(button => {
+                button.addEventListener('click', () => {
+                    updateStrategyDisplay(button.dataset.vix);
+                });
+            });
+            
+            vixButtonsAllocation.forEach(button => {
+                button.addEventListener('click', () => {
+                    updateAllocationDisplay(button.dataset.vix);
+                });
+            });
+            
+            navButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    switchSection(button.dataset.section);
+                });
+            });
+
+            updateStrategyDisplay('vix_under_15');
+            updateAllocationDisplay('allocation_stable');
+            switchSection('portfolio-section');
+        });
+
+    </script>
+</body>
+</html>

@@ -15,6 +15,45 @@ from src.indicators.hma_mantra.visualization.volume_profile_overlay_chart import
 def main():
     import sys
     
+    # 도움말 출력
+    if len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help', 'help']:
+        print("""
+🎯 Volume Profile 오버레이 차트 생성기 (Target 가격 지원)
+
+사용법:
+    python volume_profile_overlay_test.py [TICKER] [PERIOD] [RSI_WINDOW] [RSI_PIVOT] [TARGET_PRICES] [SHOW_TARGETS]
+
+매개변수:
+    TICKER          종목코드 (기본값: TSLA)
+    PERIOD          데이터 기간 (기본값: 6mo)
+                    예: 1mo, 3mo, 6mo, 1y, 2y
+                    또는 날짜 범위: 2024-01-01_2024-12-31
+    RSI_WINDOW      RSI 다이버전스 윈도우 (기본값: 20)
+    RSI_PIVOT       RSI 피벗 스팬 (기본값: 3)
+    TARGET_PRICES   Target 가격들 (형식: buy:sell:stop)
+                    예: 300:400:250 (매수가:목표가:손절가)
+                    빈 값은 자동 계산 사용
+    SHOW_TARGETS    Target 가격 표시 여부 (기본값: true)
+                    true, false, 1, 0, yes, no, y, n
+
+예시:
+    # 기본 차트 생성
+    python volume_profile_overlay_test.py TSLA
+    
+    # 12개월 데이터로 차트 생성
+    python volume_profile_overlay_test.py TSLA 12mo
+    
+    # 수동 target 가격 지정
+    python volume_profile_overlay_test.py TSLA 6mo 20 3 300:400:250
+    
+    # 자동 target 가격만 사용
+    python volume_profile_overlay_test.py TSLA 6mo 20 3 ::
+    
+    # target 가격 표시 비활성화
+    python volume_profile_overlay_test.py TSLA 6mo 20 3 :: false
+""")
+        return
+    
     # 명령행 인자 처리
     if len(sys.argv) > 1:
         ticker = sys.argv[1]
@@ -43,6 +82,37 @@ def main():
             rsi_pivot = 3
     else:
         rsi_pivot = 3
+    
+    # Target 가격 옵션들
+    target_buy_price = None
+    target_sell_price = None
+    stop_loss_price = None
+    show_target_prices = True
+    
+    # Target 가격들을 명령행 인자에서 받기 (형식: buy:sell:stop)
+    if len(sys.argv) > 5:
+        target_prices = sys.argv[5].split(':')
+        if len(target_prices) >= 1 and target_prices[0]:
+            try:
+                target_buy_price = float(target_prices[0])
+            except ValueError:
+                target_buy_price = None
+        
+        if len(target_prices) >= 2 and target_prices[1]:
+            try:
+                target_sell_price = float(target_prices[1])
+            except ValueError:
+                target_sell_price = None
+        
+        if len(target_prices) >= 3 and target_prices[2]:
+            try:
+                stop_loss_price = float(target_prices[2])
+            except ValueError:
+                stop_loss_price = None
+    
+    # Target 가격 표시 여부
+    if len(sys.argv) > 6:
+        show_target_prices = sys.argv[6].lower() in ['true', '1', 'yes', 'y']
     
     print(f"데이터 다운로드 중: {ticker} (period={period})")
     
@@ -83,7 +153,12 @@ def main():
         save_path=save_path,
         rsi_divergence_window=rsi_window,
         rsi_pivot_span=rsi_pivot,
-        include_hidden_divergence=True
+        include_hidden_divergence=True,
+        # Target 가격 옵션들 추가
+        target_buy_price=target_buy_price,
+        target_sell_price=target_sell_price,
+        stop_loss_price=stop_loss_price,
+        show_target_prices=show_target_prices
     )
     
     print(f"차트 저장 완료: {save_path}")
