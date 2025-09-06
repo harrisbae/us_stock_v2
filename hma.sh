@@ -186,10 +186,11 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  -i INTERVAL        간격 (기본값: 1d)"
   echo "  -t PREPOST         장전/장후 데이터 포함 여부 (기본값: false)"
   echo "  -a TYPE            분석 유형 (technical/macro/sector/news/chart/financial/strategy/all, 기본값: technical)"
-  echo "  -v TYPE            Volume Profile 유형 (none/separate/overlay, 기본값: none)"
+  echo "  -v TYPE            Volume Profile 유형 (none/separate/overlay/compare, 기본값: none)"
   echo "                      none: Volume Profile 없음"
   echo "                      separate: 별도 영역에 Volume Profile"
   echo "                      overlay: 메인차트에 Volume Profile 오버레이"
+  echo "                      compare: 다중 종목 비교 분석 (QQQ,TQQQ,SQQQ,SPY)"
   echo ""
   echo "기간 설정 예시:"
   echo "  -p 30d            30일"
@@ -214,6 +215,32 @@ analyze_stock() {
     
     case $ANALYSIS_TYPE in
         "technical"|"all")
+            # 비교 분석 모드 확인
+            if [ "$VOLUME_PROFILE_TYPE" = "compare" ]; then
+                echo "다중 종목 비교 분석 시작..."
+                if [ -z "$SYMBOL" ]; then
+                    echo "오류: 비교 분석을 위해서는 -s 옵션으로 종목을 지정해야 합니다."
+                    echo "예: ./hma.sh -a technical -v compare --from 2024-01-01 -s QQQ,TQQQ,SQQQ,SPY"
+                    exit 1
+                fi
+                
+                # 종목 리스트를 쉼표로 분리
+                IFS=',' read -ra SYMBOLS <<< "$SYMBOL"
+                if [ ${#SYMBOLS[@]} -lt 2 ]; then
+                    echo "오류: 비교 분석을 위해서는 최소 2개 이상의 종목이 필요합니다."
+                    echo "예: ./hma.sh -a technical -v compare --from 2024-01-01 -s QQQ,TQQQ,SQQQ,SPY"
+                    exit 1
+                fi
+                
+                # 비교 분석 실행
+                python src/indicators/hma_mantra/visualization/comparison_chart.py \
+                    --symbols "$SYMBOL" \
+                    --from "$FROM_DATE" \
+                    --to "$TO_DATE"
+                echo "다중 종목 비교 분석 완료!"
+                return
+            fi
+            
             echo "기술적 분석 시작..."
             case $VOLUME_PROFILE_TYPE in
                 "separate")

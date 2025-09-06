@@ -1,0 +1,529 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+다중 종목 비교 분석 차트
+- 여러 종목의 주가를 100 기준으로 정규화하여 비교
+- VIX 서브플롯으로 시장 변동성 표시
+- 성과 분석 및 시각화
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import yfinance as yf
+from datetime import datetime, timedelta
+import argparse
+import os
+import warnings
+warnings.filterwarnings('ignore')
+
+# 한글 폰트 설정 (macOS)
+plt.rcParams['font.family'] = ['AppleGothic', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
+
+def load_and_normalize_stocks(symbols, start_date, end_date):
+    """
+    여러 종목 데이터 로드 및 100 기준 정규화
+    
+    Args:
+        symbols: 종목 심볼 리스트
+        start_date: 시작 날짜
+        end_date: 종료 날짜
+    
+    Returns:
+        dict: 정규화된 주가 데이터
+    """
+    print(f"📊 다중 종목 데이터 로드 시작: {', '.join(symbols)}")
+    print(f"📅 기간: {start_date} ~ {end_date}")
+    
+    stock_data = {}
+    original_prices = {}  # 원본 주가 데이터 저장
+    failed_symbols = []
+    
+    for symbol in symbols:
+        try:
+            print(f"  🔄 {symbol} 데이터 다운로드 중...")
+            data = yf.download(symbol, start=start_date, end=end_date, progress=False)
+            
+            if data.empty:
+                print(f"  ⚠️  {symbol}: 데이터 없음")
+                failed_symbols.append(symbol)
+                continue
+            
+            # 원본 주가 데이터 저장
+            original_prices[symbol] = data['Close']
+            
+            # 100 기준 정규화 (시작 가격 = 100)
+            normalized_price = (data['Close'] / data['Close'].iloc[0]) * 100
+            stock_data[symbol] = normalized_price
+            
+            print(f"  ✅ {symbol}: {len(normalized_price)}개 데이터, 정규화 완료")
+            
+        except Exception as e:
+            print(f"  ❌ {symbol} 로드 실패: {e}")
+            failed_symbols.append(symbol)
+    
+    if failed_symbols:
+        print(f"⚠️  로드 실패 종목: {', '.join(failed_symbols)}")
+    
+    print(f"✅ 성공적으로 로드된 종목: {len(stock_data)}개")
+    return stock_data, original_prices
+
+def load_vix_data(start_date, end_date):
+    """
+    VIX 데이터 로드
+    
+    Args:
+        start_date: 시작 날짜
+        end_date: 종료 날짜
+    
+    Returns:
+        pd.Series: VIX 데이터
+    """
+    try:
+        print("📊 VIX 데이터 로드 중...")
+        vix_data = yf.download('^VIX', start=start_date, end=end_date, progress=False)['Close']
+        
+        if vix_data.empty:
+            print("⚠️  VIX 데이터 없음, 기본값 사용")
+            return pd.Series([20.0], index=[pd.Timestamp(start_date)])
+        
+        print(f"✅ VIX 데이터 로드 완료: {len(vix_data)}개")
+        return vix_data
+        
+    except Exception as e:
+        print(f"❌ VIX 데이터 로드 실패: {e}")
+        return pd.Series([20.0], index=[pd.Timestamp(start_date)])
+
+def get_financial_data(symbol):
+    """
+    종목의 재무 데이터 가져오기 (배당 정보)
+    
+    Args:
+        symbol: 종목 심볼
+    
+    Returns:
+        dict: 재무 데이터 (배당 정보)
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # 배당 정보
+        dividend_yield = info.get('dividendYield', 0) or 0
+        dividend_rate = info.get('dividendRate', 0) or 0
+        ex_dividend_date = info.get('exDividendDate', 0) or 0
+        last_dividend_date = info.get('lastDividendDate', 0) or 0
+        
+        # 배당 주기 계산 (연간 배당금 / 분기별 배당금)
+        dividend_frequency = info.get('dividendFrequency', 0) or 0
+        
+        # 배당 주기 텍스트 변환
+        if dividend_frequency == 4:
+            dividend_frequency_text = "Quarterly"
+        elif dividend_frequency == 12:
+            dividend_frequency_text = "Monthly"
+        elif dividend_frequency == 2:
+            dividend_frequency_text = "Semi-Annual"
+        elif dividend_frequency == 1:
+            dividend_frequency_text = "Annual"
+        else:
+            dividend_frequency_text = "None" if dividend_yield == 0 else "Unknown"
+        
+        return {
+            'dividend_yield': float(dividend_yield) * 100 if dividend_yield else 0,  # 퍼센트로 변환
+            'dividend_rate': float(dividend_rate) if dividend_rate else 0,
+            'dividend_frequency': dividend_frequency_text,
+            'ex_dividend_date': ex_dividend_date,
+            'last_dividend_date': last_dividend_date
+        }
+    except Exception as e:
+        print(f"  ⚠️  {symbol} 재무 데이터 로드 실패: {e}")
+        return {
+            'dividend_yield': 0, 
+            'dividend_rate': 0, 
+            'dividend_frequency': "None",
+            'ex_dividend_date': 0,
+            'last_dividend_date': 0
+        }
+
+def calculate_performance_metrics(stock_data, original_prices):
+    """
+    각 종목별 성과 지표 계산
+    
+    Args:
+        stock_data: 정규화된 주가 데이터
+        original_prices: 원본 주가 데이터
+    
+    Returns:
+        dict: 성과 지표
+    """
+    performance = {}
+    
+    for symbol, data in stock_data.items():
+        # 원본 주가 사용
+        original_data = original_prices[symbol]
+        start_price = float(original_data.iloc[0])  # 실제 시작가
+        end_price = float(original_data.iloc[-1])   # 실제 현재가
+        
+        # 정규화된 데이터로 수익률 계산
+        normalized_start = float(data.iloc[0])  # 100
+        normalized_end = float(data.iloc[-1])
+        total_return = ((normalized_end - normalized_start) / normalized_start) * 100
+        
+        # 변동성 계산 (일일 수익률의 표준편차)
+        daily_returns = data.pct_change().dropna()
+        volatility = float(daily_returns.std() * 100)
+        
+        # 최대/최소 가격
+        max_price = float(data.max())
+        min_price = float(data.min())
+        
+        # 최대 낙폭 (Drawdown)
+        rolling_max = data.expanding().max()
+        drawdown = ((data - rolling_max) / rolling_max) * 100
+        max_drawdown = float(drawdown.min())
+        
+        # 재무 데이터 가져오기
+        financial_data = get_financial_data(symbol)
+        dividend_yield = financial_data['dividend_yield']
+        dividend_rate = financial_data['dividend_rate']
+        dividend_frequency = financial_data['dividend_frequency']
+        
+        performance[symbol] = {
+            'start_price': start_price,
+            'end_price': end_price,
+            'total_return': total_return,
+            'volatility': volatility,
+            'max_price': max_price,
+            'min_price': min_price,
+            'max_drawdown': max_drawdown,
+            'dividend_yield': dividend_yield,
+            'dividend_rate': dividend_rate,
+            'dividend_frequency': dividend_frequency
+        }
+    
+    return performance
+
+def create_comparison_chart(stock_data, vix_data, start_date, end_date, original_prices=None):
+    """
+    비교 차트 생성 (메인 + VIX 서브플롯)
+    
+    Args:
+        stock_data: 정규화된 주가 데이터
+        vix_data: VIX 데이터
+        start_date: 시작 날짜
+        end_date: 종료 날짜
+    """
+    print("📈 비교 차트 생성 중...")
+    
+    # 차트 설정
+    fig, (ax_main, ax_vix) = plt.subplots(2, 1, figsize=(16, 12), height_ratios=[3, 1])
+    
+    # 색상 팔레트
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+    
+    # 메인 차트: 주가 비교 (종가 기준)
+    for i, (symbol, data) in enumerate(stock_data.items()):
+        color = colors[i % len(colors)]
+        ax_main.plot(data.index, data.values, 
+                    label=symbol, color=color, 
+                    linewidth=2.5, alpha=0.8)
+        
+        # 현재 가격 위치에 종목명과 성과 정보 표시
+        current_price = float(data.iloc[-1])
+        current_date = data.index[-1]
+        
+        # 성과 지표 계산
+        total_return = ((current_price - 100) / 100) * 100
+        daily_returns = data.pct_change().dropna()
+        volatility = float(daily_returns.std() * 100)
+        
+        # 종목명과 성과 정보 텍스트
+        label_text = f"{symbol}\n({total_return:+.1f}%, {volatility:.1f}%)"
+        
+        # 현재 가격 위치 오른쪽에 텍스트 표시
+        ax_main.text(current_date, current_price, label_text,
+                    fontsize=9, ha='left', va='center',
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=color, 
+                             alpha=0.7, edgecolor=color, linewidth=1),
+                    color='white', fontweight='bold',
+                    transform=ax_main.transData)
+    
+    # 메인 차트 스타일링
+    ax_main.set_title(f'Multi-Stock Comparison Analysis\n{start_date} ~ {end_date}', 
+                     fontsize=16, fontweight='bold', pad=20)
+    ax_main.set_ylabel('Normalized Price (Base = 100)', fontsize=12)
+    ax_main.grid(True, alpha=0.3)
+    ax_main.legend(loc='upper left', fontsize=10, framealpha=0.9)
+    
+    # 100 기준선 추가
+    ax_main.axhline(y=100, color='black', linestyle='--', alpha=0.5, linewidth=1)
+    ax_main.text(ax_main.get_xlim()[0], 100, 'Base = 100', 
+                verticalalignment='bottom', fontsize=9, alpha=0.7)
+    
+    # VIX 서브플롯
+    ax_vix.plot(vix_data.index, vix_data.values, color='red', linewidth=1.5, alpha=0.8)
+    # VIX 데이터가 1차원인지 확인 후 fill_between 실행
+    if len(vix_data.values.shape) == 1:
+        ax_vix.fill_between(vix_data.index, vix_data.values, alpha=0.3, color='red')
+    else:
+        ax_vix.fill_between(vix_data.index, vix_data.values.flatten(), alpha=0.3, color='red')
+    
+    # 현재 시점의 VIX 값 표시 (교차점과 동일한 스타일)
+    current_vix = float(vix_data.iloc[-1])
+    current_date = vix_data.index[-1]
+    
+    # 메인 차트에서 VIX 서브플롯으로 수직 점선 연결 (교차점과 동일한 스타일)
+    ax_main.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+    ax_vix.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+    
+    # VIX 서브플롯에 현재 VIX 값 표시 (교차점과 동일한 스타일)
+    ax_vix.text(current_date, current_vix, f'VIX: {current_vix:.1f}',
+               fontsize=8, ha='center', va='bottom', rotation=45,
+               bbox=dict(boxstyle="round,pad=0.2", facecolor='yellow', alpha=0.7),
+               color='black', fontweight='bold')
+    
+    # 메인 차트에 현재 시점 정보 표시 (맨 아래쪽)
+    y_min, y_max = ax_main.get_ylim()
+    # Y축 범위의 5% 지점에 배치
+    text_y = y_min + (y_max - y_min) * 0.05
+    current_date_str = current_date.strftime('%Y-%m-%d')
+    ax_main.text(current_date, text_y, current_date_str,
+               fontsize=8, ha='center', va='bottom', rotation=90,
+               bbox=dict(boxstyle="round,pad=0.2", facecolor='lightgray', alpha=0.7),
+               color='black', fontweight='bold')
+    
+    # 종목 가격 교차 지점 찾기 및 VIX 연결선 표시
+    stock_symbols = list(stock_data.keys())
+    
+    print(f"🔍 교차점 감지 시작: {len(stock_symbols)}개 종목")
+    total_cross_points = 0
+    
+    # 모든 종목 쌍에 대해 교차 지점 찾기
+    for i, symbol1 in enumerate(stock_symbols):
+        for j, symbol2 in enumerate(stock_symbols[i+1:], i+1):
+            series1 = stock_data[symbol1]
+            series2 = stock_data[symbol2]
+            
+            print(f"  🔍 {symbol1} vs {symbol2} 교차점 검색 중...")
+            
+            # 간단하고 안전한 교차점 감지 로직
+            cross_points = []
+            
+            print(f"    📊 {symbol1} vs {symbol2} 교차점 검색 중...")
+            
+            # 두 시리즈의 차이를 직접 계산
+            try:
+                # 각 지점에서의 차이 계산
+                for i in range(len(series1)):
+                    try:
+                        price1 = float(series1.iloc[i])
+                        price2 = float(series2.iloc[i])
+                        diff = abs(price1 - price2)
+                        
+                        # 차이가 매우 작은 지점들을 교차점으로 간주 (5 이내)
+                        if diff <= 5.0:
+                            cross_date = series1.index[i]
+                            cross_price = (price1 + price2) / 2
+                            cross_points.append((cross_date, cross_price))
+                            print(f"      ✅ 교차점 발견: {cross_date.strftime('%Y-%m-%d')}, 차이: {diff:.2f}, 가격: {cross_price:.2f}")
+                    except Exception as e:
+                        continue
+                
+                # 교차점이 너무 많으면 가장 가까운 3개만 선택
+                if len(cross_points) > 3:
+                    # 차이로 정렬하여 가장 가까운 3개 선택
+                    cross_points.sort(key=lambda x: abs(float(series1.loc[x[0]]) - float(series2.loc[x[0]])))
+                    cross_points = cross_points[:3]
+                    
+            except Exception as e:
+                print(f"      ❌ 교차점 검색 실패: {e}")
+                continue
+            
+            # 교차점 감지 결과 출력
+            if cross_points:
+                print(f"    ✅ {symbol1} vs {symbol2}: {len(cross_points)}개 교차점 발견")
+                total_cross_points += len(cross_points)
+            else:
+                print(f"    ❌ {symbol1} vs {symbol2}: 교차점 없음")
+            
+            # 교차점에서 VIX 연결선 그리기
+            for cross_date, cross_price in cross_points:
+                # VIX 데이터에서 해당 날짜의 가장 가까운 값 찾기
+                vix_cross_idx = vix_data.index.get_indexer([cross_date], method='nearest')[0]
+                vix_cross_value = vix_data.iloc[vix_cross_idx]
+                vix_cross_date = vix_data.index[vix_cross_idx]
+                
+                print(f"      📍 교차점: {cross_date.strftime('%Y-%m-%d')}, VIX: {float(vix_cross_value):.1f}")
+                
+                # 메인 차트에서 VIX 서브플롯으로 수직 점선 연결
+                ax_main.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+                ax_vix.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+                
+                # VIX 서브플롯에 VIX 값 표시
+                vix_value_float = float(vix_cross_value)
+                ax_vix.text(vix_cross_date, vix_value_float, f'VIX: {vix_value_float:.1f}',
+                           fontsize=8, ha='center', va='bottom', rotation=45,
+                           bbox=dict(boxstyle="round,pad=0.2", facecolor='yellow', alpha=0.7),
+                           color='black', fontweight='bold')
+                
+                # 메인 차트에 교차 정보 표시 (맨 아래쪽)
+                y_min, y_max = ax_main.get_ylim()
+                # Y축 범위의 5% 지점에 배치
+                text_y = y_min + (y_max - y_min) * 0.05
+                ax_main.text(cross_date, text_y, f'{symbol1}↔{symbol2}',
+                           fontsize=8, ha='center', va='bottom', rotation=90,
+                           bbox=dict(boxstyle="round,pad=0.2", facecolor='lightgray', alpha=0.7),
+                           color='black', fontweight='bold')
+    
+    print(f"🔍 총 교차점: {total_cross_points}개 발견")
+    
+    # VIX 서브플롯 스타일링
+    ax_vix.set_title('VIX (Market Volatility)', fontsize=12, fontweight='bold')
+    ax_vix.set_ylabel('VIX', fontsize=10)
+    ax_vix.set_xlabel('Date', fontsize=10)
+    ax_vix.grid(True, alpha=0.3)
+    
+    # VIX 수준별 배경색
+    ax_vix.axhspan(0, 20, alpha=0.1, color='green', label='Low Volatility')
+    ax_vix.axhspan(20, 30, alpha=0.1, color='yellow', label='Medium Volatility')
+    ax_vix.axhspan(30, 50, alpha=0.1, color='red', label='High Volatility')
+    
+    # 날짜 형식 설정
+    for ax in [ax_main, ax_vix]:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+    
+    # 레이아웃 조정
+    plt.tight_layout()
+    
+    # 성과 요약 텍스트 추가 (위측으로 위치 변경)
+    performance = calculate_performance_metrics(stock_data, original_prices)
+    summary_text = "Performance Summary:\n"
+    for symbol, metrics in performance.items():
+        summary_text += f"{symbol}: \\${metrics['start_price']:.2f}→\\${metrics['end_price']:.2f} "
+        summary_text += f"({metrics['total_return']:+.1f}%)\n"
+        summary_text += f"  [변동성: {metrics['volatility']:.1f}%, 최대낙폭: {metrics['max_drawdown']:.1f}%]\n"
+    
+    # 위측 중앙에 배치 (범례와 겹치지 않도록)
+    ax_main.text(0.5, 0.95, summary_text, transform=ax_main.transAxes, 
+                fontsize=9, verticalalignment='top', horizontalalignment='center',
+                bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.8))
+    
+    print("✅ 비교 차트 생성 완료")
+    return fig
+
+def save_results(stock_data, vix_data, performance, start_date, end_date, original_prices=None, output_dir="output/hma_mantra/comparison"):
+    """
+    결과 저장 (차트, CSV, 마크다운)
+    
+    Args:
+        stock_data: 정규화된 주가 데이터
+        vix_data: VIX 데이터
+        performance: 성과 지표
+        start_date: 시작 날짜
+        end_date: 종료 날짜
+        output_dir: 출력 디렉토리
+    """
+    # 출력 디렉토리 생성
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 파일명 생성
+    symbols_str = "_".join(stock_data.keys())
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 1. 차트 저장
+    chart_path = os.path.join(output_dir, f"{symbols_str}_comparison_{start_date}_{end_date}.png")
+    fig = create_comparison_chart(stock_data, vix_data, start_date, end_date, original_prices)
+    fig.savefig(chart_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"📊 차트 저장: {chart_path}")
+    
+    # 2. 성과 요약 CSV 저장
+    csv_path = os.path.join(output_dir, f"{symbols_str}_performance_summary.csv")
+    performance_df = pd.DataFrame(performance).T
+    performance_df.to_csv(csv_path)
+    print(f"📈 성과 요약 저장: {csv_path}")
+    
+    # 3. 상세 분석 마크다운 저장
+    md_path = os.path.join(output_dir, f"{symbols_str}_comparison_analysis.md")
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(f"# Multi-Stock Comparison Analysis\n\n")
+        f.write(f"**분석 기간**: {start_date} ~ {end_date}\n")
+        f.write(f"**분석 종목**: {', '.join(stock_data.keys())}\n")
+        f.write(f"**생성 시간**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        f.write("## Performance Summary\n\n")
+        f.write("| Symbol | Total Return | Volatility | Max Price | Min Price | Max Drawdown |\n")
+        f.write("|--------|--------------|------------|-----------|-----------|--------------|\n")
+        
+        for symbol, metrics in performance.items():
+            f.write(f"| {symbol} | {metrics['total_return']:+.1f}% | "
+                   f"{metrics['volatility']:.1f}% | {metrics['max_price']:.1f} | "
+                   f"{metrics['min_price']:.1f} | {metrics['max_drawdown']:.1f}% |\n")
+        
+        f.write(f"\n## VIX Analysis\n\n")
+        f.write(f"- **Average VIX**: {float(vix_data.mean()):.2f}\n")
+        f.write(f"- **Max VIX**: {float(vix_data.max()):.2f}\n")
+        f.write(f"- **Min VIX**: {float(vix_data.min()):.2f}\n")
+        f.write(f"- **Current VIX**: {float(vix_data.iloc[-1]):.2f}\n")
+        
+        f.write(f"\n## Market Sentiment\n\n")
+        current_vix = float(vix_data.iloc[-1])
+        if current_vix < 20:
+            sentiment = "Low Volatility (Stable Market)"
+        elif current_vix < 30:
+            sentiment = "Medium Volatility (Normal Market)"
+        else:
+            sentiment = "High Volatility (Unstable Market)"
+        
+        f.write(f"- **Current Market Sentiment**: {sentiment}\n")
+        f.write(f"- **VIX Level**: {current_vix:.2f}\n")
+    
+    print(f"📝 상세 분석 저장: {md_path}")
+
+def main():
+    """메인 함수"""
+    parser = argparse.ArgumentParser(description='Multi-stock comparison analysis')
+    parser.add_argument('--symbols', required=True, help='Comma-separated stock symbols')
+    parser.add_argument('--from', required=True, help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--to', help='End date (YYYY-MM-DD), default: today')
+    parser.add_argument('--output', help='Output directory', default='output/hma_mantra/comparison')
+    
+    args = parser.parse_args()
+    
+    # 인수 처리
+    symbols = [s.strip() for s in args.symbols.split(',')]
+    start_date = getattr(args, 'from')
+    end_date = args.to or datetime.now().strftime('%Y-%m-%d')
+    
+    print("🚀 Multi-Stock Comparison Analysis 시작")
+    print(f"📊 종목: {', '.join(symbols)}")
+    print(f"📅 기간: {start_date} ~ {end_date}")
+    
+    try:
+        # 데이터 로드
+        stock_data, original_prices = load_and_normalize_stocks(symbols, start_date, end_date)
+        if not stock_data:
+            print("❌ 로드된 종목이 없습니다.")
+            return
+        
+        vix_data = load_vix_data(start_date, end_date)
+        
+        # 성과 분석
+        performance = calculate_performance_metrics(stock_data, original_prices)
+        
+        # 결과 저장
+        save_results(stock_data, vix_data, performance, start_date, end_date, original_prices, args.output)
+        
+        print("✅ 분석 완료!")
+        
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}")
+        raise
+
+if __name__ == "__main__":
+    main()
