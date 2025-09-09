@@ -1319,6 +1319,67 @@ def get_stock_info(symbol):
         print(f"종목 정보 가져오기 실패: {e}")
         return symbol, 'N/A', 'N/A'
 
+def get_dividend_dates(symbol, start_date, end_date, ohlcv_data=None):
+    """종목의 배당일 정보와 배당률을 가져옵니다."""
+    try:
+        import yfinance as yf
+        from datetime import datetime
+        
+        ticker = yf.Ticker(symbol)
+        
+        # 통화 기호 설정
+        currency_symbol = get_currency_symbol(symbol)
+        
+        # 배당 정보 가져오기
+        dividends = ticker.dividends
+        
+        if dividends.empty:
+            print(f"⚠️  {symbol} 배당 정보 없음")
+            return []
+        
+        # 날짜 범위 내의 배당일 필터링
+        start_dt = pd.to_datetime(start_date).tz_localize(None)
+        end_dt = pd.to_datetime(end_date).tz_localize(None)
+        
+        dividend_dates = []
+        for date, amount in dividends.items():
+            # 날짜를 timezone-naive로 변환
+            if hasattr(date, 'tz') and date.tz is not None:
+                date_naive = date.tz_localize(None)
+            else:
+                date_naive = date
+            
+            if start_dt <= date_naive <= end_dt:
+                # 배당률 계산 (OHLCV 데이터가 있는 경우)
+                dividend_yield = None
+                if ohlcv_data is not None and date_naive in ohlcv_data.index:
+                    # 배당일의 주가 가져오기
+                    stock_price = ohlcv_data.loc[date_naive, 'Close']
+                    # 배당률 계산 (연환산)
+                    dividend_yield = (amount / stock_price) * 100
+                
+                dividend_dates.append({
+                    'date': date_naive,
+                    'amount': amount,
+                    'yield': dividend_yield
+                })
+        
+        if dividend_dates:
+            print(f"✅ {symbol} 배당일 {len(dividend_dates)}개 발견")
+            for div in dividend_dates:
+                if div['yield'] is not None:
+                    print(f"   {div['date'].strftime('%Y-%m-%d')}: {currency_symbol}{div['amount']:.4f} (배당률: {div['yield']:.2f}%)")
+                else:
+                    print(f"   {div['date'].strftime('%Y-%m-%d')}: {currency_symbol}{div['amount']:.4f}")
+        else:
+            print(f"⚠️  {symbol} 지정 기간 내 배당일 없음")
+        
+        return dividend_dates
+        
+    except Exception as e:
+        print(f"배당 정보 가져오기 실패: {e}")
+        return []
+
 def get_local_datetime(utc_datetime):
     """UTC 시간을 한국 시간(KST)으로 변환합니다."""
     try:
@@ -1438,6 +1499,13 @@ def calculate_daily_change_percentage(symbol):
         print(f"전일대비 등락률 계산 실패: {e}")
         return None
 
+def get_currency_symbol(ticker):
+    """종목 코드에 따라 통화 기호를 반환합니다."""
+    if ticker and '.KS' in ticker:
+        return '₩'  # 한국 원
+    else:
+        return '$'  # 미국 달러
+
 def plot_main_chart_with_volume_profile_overlay(
     data: pd.DataFrame,
     ticker: str = None,
@@ -1451,12 +1519,15 @@ def plot_main_chart_with_volume_profile_overlay(
     target_buy_price: float = None,    # Target 매수가
     target_sell_price: float = None,   # Target 목표가
     stop_loss_price: float = None,     # 손절가
-    show_target_prices: bool = True,   # Target 가격 표시 여부
+    show_target_prices: bool = False,   # Target 가격 표시 여부
 ):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
     plt.rcParams['font.family'] = 'AppleGothic'  # macOS용 한글 폰트
     plt.rcParams['axes.unicode_minus'] = False   # 마이너스 기호 깨짐 방지
+    
+    # 통화 기호 설정
+    currency_symbol = get_currency_symbol(ticker)
     
     if isinstance(data.columns, pd.MultiIndex):
         ohlcv_data = data.xs(ticker, axis=1, level=1)
@@ -1809,6 +1880,9 @@ def plot_main_chart_with_volume_profile_overlay(
     # 종목 정보 가져오기
     long_name, sector, industry = get_stock_info(ticker)
     
+    # 배당일 정보 가져오기 (OHLCV 데이터 전달하여 배당률 계산)
+    dividend_dates = get_dividend_dates(ticker, ohlcv_data.index[0], ohlcv_data.index[-1], ohlcv_data)
+    
     # 차트 타이틀에 시장 심리 종합해석 추가
     title_text = f"{ticker} HMA Mantra Analysis"
     if market_summary and market_summary != "시장 데이터 부족":
@@ -1821,25 +1895,22 @@ def plot_main_chart_with_volume_profile_overlay(
     main_title += f"섹터: {sector} | 산업: {industry}"
     ax_main.set_title(main_title, fontsize=12, fontweight='bold', pad=15)
     
-    # 전체 차트 상단에 시장 심리 종합해석과 전략 가이드를 별도로 표시
+    # 시장 심리 요약을 최상단 우측에 표시
     if market_summary and market_summary != "시장 데이터 부족":
-        # 기본 타이틀 제거
-        fig.suptitle("", fontsize=1, y=0.99)
+        # 시장 심리 요약을 최상단 우측에 박스 형태로 표시
+        ax_summary = fig.add_axes([0.6, 0.95, 0.35, 0.03])  # 최상단 우측에 배치
+        ax_summary.set_facecolor('lightblue')
+        ax_summary.set_xlim(0, 1)
+        ax_summary.set_ylim(0, 1)
+        ax_summary.axis('off')
+        ax_summary.set_zorder(1000)  # 최고 zorder 값 설정
         
-            # 시장 심리 요약을 상단 중앙에 박스 형태로 표시 (zorder 최고값 설정)
-    ax_summary = fig.add_axes([0.1, 0.95, 0.8, 0.03])
-    ax_summary.set_facecolor('lightblue')
-    ax_summary.set_xlim(0, 1)
-    ax_summary.set_ylim(0, 1)
-    ax_summary.axis('off')
-    ax_summary.set_zorder(1000)  # 최고 zorder 값 설정
-    
-    # 시장 심리 요약 텍스트를 박스 안에 표시
-    ax_summary.text(0.5, 0.5, market_summary, 
-                   fontsize=12, fontweight='bold', ha='center', va='center',
-                   bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
-                            edgecolor='navy', linewidth=2),
-                   zorder=1001)  # 텍스트도 최고 zorder 값 설정
+        # 시장 심리 요약 텍스트를 박스 안에 표시
+        ax_summary.text(0.5, 0.5, market_summary, 
+                       fontsize=12, fontweight='bold', ha='center', va='center',
+                       bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
+                                edgecolor='navy', linewidth=2),
+                       zorder=1001)  # 텍스트도 최고 zorder 값 설정
     
     # 버핏 지수 계산 (표시는 통합 박스에서 처리)
     buffett_data = calculate_buffett_indicator()
@@ -1877,6 +1948,56 @@ def plot_main_chart_with_volume_profile_overlay(
                      [[mdates.date2num(date), o, h, l, c] for date, (o, h, l, c) in 
                       zip(ohlcv_data.index, ohlcv_data[['Open', 'High', 'Low', 'Close']].values)],
                      width=0.6, colorup='green', colordown='red', alpha=0.9)
+    
+    # 배당일을 메인차트 최상단(top)에 "D"로 표시
+    if dividend_dates:
+        # Y축 범위 가져오기
+        y_min, y_max = ax_main.get_ylim()
+        y_range = y_max - y_min
+        
+        for div_info in dividend_dates:
+            div_date = div_info['date']
+            div_amount = div_info['amount']
+            div_yield = div_info.get('yield', None)
+            
+            # 배당일이 차트 범위 내에 있는지 확인
+            if div_date in ohlcv_data.index:
+                # 차트의 절대적인 최상단 위치 (Y축 최대값)
+                top_position = y_max
+                
+                # 배당일에 수직선 추가 (두께 80% 감소)
+                ax_main.axvline(x=div_date, color='orange', linestyle='--', 
+                              linewidth=0.2, alpha=0.7, zorder=5)
+                
+                # 배당일자 텍스트를 마름모 아래에 표시 (배당정보와 같은 크기)
+                ax_main.text(div_date, top_position - (y_range * 0.02), div_date.strftime('%m/%d'), 
+                           ha='center', va='top', fontsize=4, 
+                           color='darkorange', fontweight='bold',
+                           bbox=dict(boxstyle="round,pad=0.2", 
+                                   facecolor='white', 
+                                   edgecolor='orange', alpha=0.8),
+                           zorder=11)
+                
+                # "D" 마커를 차트 최상단에 표시 (사이즈 80% 감소)
+                ax_main.scatter(div_date, top_position, 
+                              marker='D', s=10, color='gold', 
+                              edgecolor='orange', linewidth=1, 
+                              zorder=10, alpha=0.9)
+                
+                # 배당률과 배당금 텍스트를 차트 최상단에 표시
+                if div_yield is not None:
+                    text_content = f'D({div_yield:.2f}%)\n{currency_symbol}{div_amount:.4f}'
+                else:
+                    text_content = f'D\n{currency_symbol}{div_amount:.4f}'
+                
+                ax_main.annotate(text_content, 
+                               xy=(div_date, top_position), 
+                               xytext=(0, 5), textcoords='offset points',
+                               ha='center', va='bottom', fontsize=4, 
+                               color='darkorange', fontweight='bold',
+                               bbox=dict(boxstyle="round,pad=0.2", 
+                                       facecolor='lightyellow', 
+                                       edgecolor='orange', alpha=0.8))
     
     # 시장 지표들을 수평으로 우측 상단에 표시
     indicators = []
@@ -1997,39 +2118,39 @@ def plot_main_chart_with_volume_profile_overlay(
     # SMA200일 이동평균선 추가
     ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=1.5, linestyle='-', label='SMA200', alpha=0.8)
     
-    # Target 가격 라인들 추가 (옵션)
-    if show_target_prices:
-        # 자동 계산된 target 가격들 (지지선/저항선 기반)
-        auto_targets = calculate_target_prices_from_support_resistance(ohlcv_data)
-        
-        # 수동으로 지정된 target 가격들 또는 자동 계산된 가격들 사용
-        final_target_buy = target_buy_price if target_buy_price is not None else (auto_targets['target_buy_price'] if auto_targets else None)
-        final_target_sell = target_sell_price if target_sell_price is not None else (auto_targets['target_sell_price'] if auto_targets else None)
-        final_stop_loss = stop_loss_price if stop_loss_price is not None else (auto_targets['stop_loss_price'] if auto_targets else None)
-        
-        # Target 가격 라인들 표시
-        add_target_price_lines(ax_main, ohlcv_data, final_target_buy, final_target_sell, final_stop_loss)
-        
-        # Target 가격 정보 출력
-        if any([final_target_buy, final_target_sell, final_stop_loss]):
-            print(f"\n🎯 Target 가격 정보:")
-            if final_target_buy:
-                print(f"   Target 매수가: ${final_target_buy:.2f}")
-            if final_target_sell:
-                print(f"   Target 목표가: ${final_target_sell:.2f}")
-            if final_stop_loss:
-                print(f"   손절가: ${final_stop_loss:.2f}")
-            
-            if auto_targets:
-                print(f"   지지선: ${auto_targets['support']:.2f}")
-                print(f"   저항선: ${auto_targets['resistance']:.2f}")
-                print(f"   리스크/보상 비율: 1:{auto_targets['risk_reward_ratio']:.1f}")
+    # Target 가격 라인들 추가 (옵션) - 비활성화됨
+    # if show_target_prices:
+    #     # 자동 계산된 target 가격들 (지지선/저항선 기반)
+    #     auto_targets = calculate_target_prices_from_support_resistance(ohlcv_data)
+    #     
+    #     # 수동으로 지정된 target 가격들 또는 자동 계산된 가격들 사용
+    #     final_target_buy = target_buy_price if target_buy_price is not None else (auto_targets['target_buy_price'] if auto_targets else None)
+    #     final_target_sell = target_sell_price if target_sell_price is not None else (auto_targets['target_sell_price'] if auto_targets else None)
+    #     final_stop_loss = stop_loss_price if stop_loss_price is not None else (auto_targets['stop_loss_price'] if auto_targets else None)
+    #     
+    #     # Target 가격 라인들 표시
+    #     add_target_price_lines(ax_main, ohlcv_data, final_target_buy, final_target_sell, final_stop_loss)
+    #     
+    #     # Target 가격 정보 출력
+    #     if any([final_target_buy, final_target_sell, final_stop_loss]):
+    #         print(f"\n🎯 Target 가격 정보:")
+    #         if final_target_buy:
+    #             print(f"   Target 매수가: ${final_target_buy:.2f}")
+    #         if final_target_sell:
+    #             print(f"   Target 목표가: ${final_target_sell:.2f}")
+    #         if final_stop_loss:
+    #             print(f"   손절가: ${final_stop_loss:.2f}")
+    #         
+    #         if auto_targets:
+    #             print(f"   지지선: ${auto_targets['support']:.2f}")
+    #             print(f"   저항선: ${auto_targets['resistance']:.2f}")
+    #             print(f"   리스크/보상 비율: 1:{auto_targets['risk_reward_ratio']:.1f}")
 
         # 현재 주가를 실시간으로 가져와서 연동
     realtime_price, realtime_time, data_freshness = get_current_stock_price(ticker)
     
     if realtime_price is not None:
-        print(f"실시간 주가: ${realtime_price:.2f} ({data_freshness})")
+        print(f"실시간 주가: {currency_symbol}{realtime_price:.2f} ({data_freshness})")
         # 실시간 주가가 있으면 이를 사용, 없으면 기존 데이터 사용
         current_price = realtime_price
         price_source = "실시간"
@@ -2041,7 +2162,7 @@ def plot_main_chart_with_volume_profile_overlay(
     # 전일대비 등락률 계산
     daily_change = calculate_daily_change_percentage(ticker)
     if daily_change:
-        print(f"전일대비: {daily_change['direction']} {daily_change['change_percentage']:.2f}% (${daily_change['change_amount']:.2f})")
+        print(f"전일대비: {daily_change['direction']} {daily_change['change_percentage']:.2f}% ({currency_symbol}{daily_change['change_amount']:.2f})")
     else:
         print("전일대비 등락률 계산 실패")
     
@@ -2057,25 +2178,34 @@ def plot_main_chart_with_volume_profile_overlay(
     
     # 수평선 및 가격 표시 (메인차트 중앙에 표시) - thin 스타일
     ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.3, alpha=0.5)
-    # 메인차트 중앙에 텍스트 배치 (폰트 크기 30% 감소)
-    center_x = ohlcv_data.index[0] + (ohlcv_data.index[-1] - ohlcv_data.index[0]) * 0.5
-    ax_main.text(center_x, current_price, 
-                f'현재가: {current_price:.2f}', 
-                fontsize=6.3, ha='center', va='center',
+    # 현재가 텍스트를 메인차트 우측 바깥에 배치
+    ax_main.text(1.02, 0.5, f'현재가: {currency_symbol}{current_price:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='black', pad=2, boxstyle='round,pad=0.2'),
                 color='black', fontweight='bold')
+    # 현재가 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
+    ax_main.plot([ohlcv_data.index[-1], ohlcv_data.index[-1] + pd.Timedelta(days=3)], 
+                [current_price, current_price], color='black', linestyle='-', linewidth=1.0, alpha=0.8)
     
     ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.3, alpha=0.5)
-    ax_main.text(center_x, support, f'지지선: {support:.2f}', 
-                fontsize=6.3, ha='center', va='center',
+    # 지지선 텍스트를 메인차트 우측 바깥에 배치
+    ax_main.text(1.02, 0.3, f'지지선: {currency_symbol}{support:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='green', pad=2, boxstyle='round,pad=0.2'),
                 color='green', fontweight='bold')
+    # 지지선 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
+    ax_main.plot([ohlcv_data.index[-1], ohlcv_data.index[-1] + pd.Timedelta(days=3)], 
+                [support, support], color='green', linestyle='-', linewidth=1.0, alpha=0.8)
     
     ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.3, alpha=0.5)
-    ax_main.text(center_x, resistance, f'저항선: {resistance:.2f}', 
-                fontsize=6.3, ha='center', va='center',
+    # 저항선 텍스트를 메인차트 우측 바깥에 배치
+    ax_main.text(1.02, 0.7, f'저항선: {currency_symbol}{resistance:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='red', pad=2, boxstyle='round,pad=0.2'),
                 color='red', fontweight='bold')
+    # 저항선 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
+    ax_main.plot([ohlcv_data.index[-1], ohlcv_data.index[-1] + pd.Timedelta(days=3)], 
+                [resistance, resistance], color='red', linestyle='-', linewidth=1.0, alpha=0.8)
     
     # 현재가 캔들바 아래에 투자심리도와 RSI 표시
     if investor_sentiment is not None and current_rsi is not None:
@@ -2152,18 +2282,18 @@ def plot_main_chart_with_volume_profile_overlay(
         if daily_change:
             change_info = f' {daily_change["direction"]} {daily_change["change_percentage"]:.2f}%'
             if realtime_price is not None and realtime_local is not None:
-                price_info = f'[실시간가] ${realtime_price:.2f} ({realtime_local.strftime("%H:%M")}){change_info}'
+                price_info = f'[실시간가] {currency_symbol}{realtime_price:.2f} ({realtime_local.strftime("%H:%M")}){change_info}'
             else:
-                price_info = f'[현재가] ${current_price:.2f}{change_info}'
+                price_info = f'[현재가] {currency_symbol}{current_price:.2f}{change_info}'
         else:
             if realtime_price is not None and realtime_local is not None:
-                price_info = f'[실시간가] ${realtime_price:.2f} ({realtime_local.strftime("%H:%M")})'
+                price_info = f'[실시간가] {currency_symbol}{realtime_price:.2f} ({realtime_local.strftime("%H:%M")})'
             else:
-                price_info = f'[현재가] ${current_price:.2f}'
+                price_info = f'[현재가] {currency_symbol}{current_price:.2f}'
         
         # 검색기간 수익률 정보 추가
         if period_return:
-            period_info = f'\n[검색기간] {period_return["start_date"]} → {period_return["end_date"]}\n{period_return["direction"]} {period_return["return_percentage"]:.2f}% (${period_return["return_amount"]:.2f})'
+            period_info = f'\n[검색기간] {period_return["start_date"]} → {period_return["end_date"]}\n{period_return["direction"]} {period_return["return_percentage"]:.2f}% ({currency_symbol}{period_return["return_amount"]:.2f})'
             price_info += period_info
         
         # current_datetime 변수 안전하게 정의
@@ -2183,28 +2313,25 @@ def plot_main_chart_with_volume_profile_overlay(
             info_text += f'\nWilshire 5000: {buffett_data["wilshire_market_cap"]}조 달러 ({buffett_data["wilshire_date"]})'
             info_text += f'\nUS GDP: {buffett_data["us_gdp"]}조 달러 ({buffett_data["gdp_date"]})'
         
-        # 메인차트 내부에 투자전략 정보 박스 생성 (현재가 캔들바 아래의 적절한 위치)
-        # 메인차트의 y축 범위를 고려하여 적절한 위치 계산
-        main_chart_bottom = ax_main.get_ylim()[0]  # 메인차트 하단 y값
-        main_chart_top = ax_main.get_ylim()[1]     # 메인차트 상단 y값
-        price_range = main_chart_top - main_chart_bottom
+        # 실시간 가격 하이라이트 텍스트 박스를 메인차트 밖 오른쪽에 표시
+        ax_realtime = fig.add_axes([0.78, 0.5, 0.20, 0.15])  # 메인차트 오른쪽에 배치
+        ax_realtime.set_facecolor('white')
+        ax_realtime.set_xlim(0, 1)
+        ax_realtime.set_ylim(0, 1)
+        ax_realtime.axis('off')
+        ax_realtime.set_zorder(1000)  # 최고 zorder 값 설정
         
-        # 현재가 캔들바 아래의 적절한 위치 (메인차트 하단에서 약간 위)
-        strategy_y = main_chart_bottom + price_range * 0.25  # 하단에서 25% 위로 조정 (subplot과 완전히 겹치지 않도록)
-        
-        # 투자전략 정보를 메인차트 우측 끝에 표시
-        # 메인차트의 가장 오른쪽 끝 날짜 사용
-        rightmost_date = ohlcv_data.index[-1]  # 가장 오른쪽 끝 날짜
-        
-        ax_main.text(rightmost_date, strategy_y, info_text,
-                    fontsize=7, ha='center', va='top',  # 폰트 크기 약간 축소, valign을 top으로 설정
-                    bbox=dict(boxstyle="round,pad=0.8",  # 패딩 증가
-                             facecolor='white', 
-                             edgecolor='darkorange',  # 테두리색을 더 진하게
-                             linewidth=2.5,  # 테두리 두께 증가
-                             alpha=0.5),  # 투명도를 0.5로 더 낮춤 (더 투명하게)
-                    color='black', fontweight='bold',
-                    zorder=1000)  # 최고 zorder 값으로 레이어 최상단에 표시
+        # 실시간 가격 정보를 박스 안에 표시
+        ax_realtime.text(0.5, 0.5, info_text,
+                        fontsize=8, ha='center', va='center',
+                        bbox=dict(boxstyle="round,pad=0.5", 
+                                 facecolor='white', 
+                                 edgecolor='darkorange', 
+                                 linewidth=2.5, 
+                                 alpha=0.95),
+                        color='black', 
+                        fontweight='bold',
+                        zorder=1001)  # 텍스트도 최고 zorder 값 설정
         
         # 현재가 수직선 - 원래 위치로 복원
         if current_price_line_style == 'thin':
@@ -2331,7 +2458,7 @@ def plot_main_chart_with_volume_profile_overlay(
             analysis_datetime = local_datetime.strftime('%Y-%m-%d %H:%M:%S')
             f.write(f"분석 일시: {analysis_datetime} (KST)\n")
         
-        f.write(f"현재가: ${signal_info['current_price']:.2f}\n")
+        f.write(f"현재가: {currency_symbol}{signal_info['current_price']:.2f}\n")
         
         # 검색기간 수익률 정보 추가 (안전한 처리)
         try:
@@ -2358,7 +2485,7 @@ def plot_main_chart_with_volume_profile_overlay(
         if realtime_price is not None and realtime_time is not None:
             realtime_local = get_local_datetime(realtime_time)
             realtime_datetime = realtime_local.strftime('%Y-%m-%d %H:%M:%S')
-            f.write(f"실시간가: ${realtime_price:.2f} ({realtime_datetime} KST)\n")
+            f.write(f"실시간가: {currency_symbol}{realtime_price:.2f} ({realtime_datetime} KST)\n")
             f.write(f"데이터신선도: {data_freshness}\n")
         else:
             f.write(f"실시간가: N/A\n")
@@ -2554,7 +2681,7 @@ def plot_main_chart_with_volume_profile_overlay(
     # POC (Point of Control) 표시 (최신일자까지 연장) - thin 스타일
     poc_xmin = (overlay_start - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
     poc_xmax = 1.0  # 최신일자까지 연장
-    ax_main.axhline(poc_price, color='red', linestyle='--', alpha=0.8, linewidth=0.5, 
+    ax_main.axhline(poc_price, color='red', linestyle='--', alpha=0.8, linewidth=0.6, 
                    xmin=poc_xmin, xmax=poc_xmax, zorder=15, label=f'POC: {poc_price:.2f}')
     
     # POC 가격 텍스트 표시
@@ -2606,7 +2733,7 @@ def plot_main_chart_with_volume_profile_overlay(
         # 최근 6개월 POC (검은색 점선) - 우측 끝까지 연장 - thin 스타일
         recent_poc_xmin = (center_overlay_start - main_xlim[0]) / (main_xlim[1] - main_xlim[0])
         recent_poc_xmax = 1.0  # 우측 끝까지 연장
-        ax_main.axhline(recent_poc_price, color='black', linestyle=':', alpha=0.8, linewidth=0.5, 
+        ax_main.axhline(recent_poc_price, color='black', linestyle=':', alpha=0.8, linewidth=0.6, 
                        xmin=recent_poc_xmin, xmax=recent_poc_xmax, zorder=14, 
                        label=f'최근 6개월 POC: {recent_poc_price:.2f}')
         
@@ -2969,8 +3096,8 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax_main.tick_params(axis='x', rotation=45)
 
-    # 레이아웃 조정 (우측 여백을 늘려서 외부 라벨들이 표시되도록)
-    plt.subplots_adjust(left=0.08, right=0.85, top=0.95, bottom=0.06, hspace=0.12)
+    # 레이아웃 조정 (우측 여백을 늘려서 외부 라벨들과 시장심리 박스가 표시되도록)
+    plt.subplots_adjust(left=0.08, right=0.75, top=0.95, bottom=0.06, hspace=0.12)
 
     # 저장 또는 표시 (폰트 경고 방지)
     if save_path:
