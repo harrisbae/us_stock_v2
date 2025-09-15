@@ -91,7 +91,7 @@ def analyze_strategy_signal(ticker, period="12mo"):
             data = yf.download(ticker, start=start_date, end=end_date_plus_one, progress=False)
         else:
             # 기존 period 방식으로 데이터 다운로드
-            data = yf.download(ticker, period=period, progress=False)
+            data = yf.download(ticker, period=period, progress=False, auto_adjust=False)
         
         if data.empty:
             return None, "데이터 없음"

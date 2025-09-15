@@ -15,6 +15,100 @@ from ..signals import get_hma_mantra_md_signals
 from ..utils import get_available_font
 import matplotlib.patches as mpatches
 import pandas_datareader.data as web
+from datetime import datetime, timedelta
+
+def calculate_box_ranges(data, box_period=20, min_box_days=5):
+    """
+    전일 기준 20일 박스권과 21일전 기준 20일 박스권을 계산합니다.
+    
+    Args:
+        data: OHLCV 데이터
+        box_period: 박스권 계산 기간 (기본값: 20일)
+        min_box_days: 최소 박스 유지 기간 (기본값: 5일)
+    
+    Returns:
+        list: 박스권 정보 리스트 [시작일, 종료일, 고가, 저가, 박스명]
+    """
+    try:
+        box_ranges = []
+        data_len = len(data)
+        
+        # 1. 전일 기준 20일 박스권 (마지막 20일)
+        if data_len >= box_period:
+            # 전일 기준 20일 박스권 데이터
+            box_data = data.iloc[-box_period:]
+            
+            # 고가와 저가 계산
+            box_high = box_data['High'].max()
+            box_low = box_data['Low'].min()
+            
+            # 박스권 범위 계산
+            box_range = box_high - box_low
+            box_center = (box_high + box_low) / 2
+            
+            # 박스권이 유효한지 확인 (최소 범위 체크)
+            if box_range > 0:
+                # 현재 가격 (전일 종가)
+                current_price = data.iloc[-1]['Close']
+                
+                # 박스권 시작일과 종료일 (전일 기준 20일)
+                start_date = data.index[-box_period]
+                end_date = data.index[-1]
+                
+                # 박스명 생성
+                box_name = f"현재 20일 박스권"
+                
+                box_ranges.append({
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'high': box_high,
+                    'low': box_low,
+                    'range': box_range,
+                    'center': box_center,
+                    'name': box_name,
+                    'current_price': current_price
+                })
+        
+        # 2. 21일전 기준 20일 박스권 (21일전부터 20일간)
+        if data_len >= box_period + 21:
+            # 21일전 기준 20일 박스권 데이터
+            box_data = data.iloc[-(box_period + 21):-21]
+            
+            # 고가와 저가 계산
+            box_high = box_data['High'].max()
+            box_low = box_data['Low'].min()
+            
+            # 박스권 범위 계산
+            box_range = box_high - box_low
+            box_center = (box_high + box_low) / 2
+            
+            # 박스권이 유효한지 확인 (최소 범위 체크)
+            if box_range > 0:
+                # 21일전 종가
+                current_price = data.iloc[-21]['Close']
+                
+                # 박스권 시작일과 종료일 (21일전 기준 20일)
+                start_date = data.index[-(box_period + 21)]
+                end_date = data.index[-21]
+                
+                # 박스명 생성
+                box_name = f"21일전 20일 박스권"
+                
+                box_ranges.append({
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'high': box_high,
+                    'low': box_low,
+                    'range': box_range,
+                    'center': box_center,
+                    'name': box_name,
+                    'current_price': current_price
+                })
+        
+        return box_ranges
+    except Exception as e:
+        print(f"박스권 계산 오류: {e}")
+        return []
 
 def analyze_rsi_divergence_patterns(data, rsi_period=14, pattern_range=(9, 11)):
     """
@@ -450,10 +544,10 @@ def create_rsi_divergence_chart(data, divergences, ticker, start_date, end_date,
     
     # RSI 차트
     rsi = calculate_rsi(data['Close'], 14)
-    ax_rsi.plot(data.index, rsi, color='blue', linewidth=1, label='RSI(14)')
-    ax_rsi.axhline(y=70, color='red', linestyle='--', linewidth=0.3, alpha=0.5)
-    ax_rsi.axhline(y=30, color='green', linestyle='--', linewidth=0.3, alpha=0.5)
-    ax_rsi.axhline(y=50, color='gray', linestyle='-', linewidth=0.3, alpha=0.3)
+    ax_rsi.plot(data.index, rsi, color='blue', linewidth=0.35, label='RSI(14)')
+    ax_rsi.axhline(y=70, color='red', linestyle='--', linewidth=0.105, alpha=0.5)
+    ax_rsi.axhline(y=30, color='green', linestyle='--', linewidth=0.105, alpha=0.5)
+    ax_rsi.axhline(y=50, color='gray', linestyle='-', linewidth=0.105, alpha=0.3)
     ax_rsi.set_ylim(0, 100)
     ax_rsi.set_ylabel('RSI')
     ax_rsi.grid(True, alpha=0.3)
@@ -1506,6 +1600,46 @@ def get_currency_symbol(ticker):
     else:
         return '$'  # 미국 달러
 
+def get_ffr_data(start_date, end_date):
+    """연방기금금리(FFR) 데이터를 가져옵니다."""
+    try:
+        import yfinance as yf
+        # FFR 데이터는 FRED에서 가져와야 하지만, yfinance로 대체 지표 사용
+        # 3개월 국채금리(^IRX)를 FFR 대체 지표로 사용
+        ffr_data = yf.download('^IRX', start=start_date, end=end_date, progress=False)
+        if not ffr_data.empty:
+            return ffr_data['Close']
+        return None
+    except Exception as e:
+        print(f"FFR 데이터 가져오기 실패: {e}")
+        return None
+
+def get_cdr_data(start_date, end_date):
+    """CD(양도성예금증서) 금리 데이터를 가져옵니다."""
+    try:
+        import yfinance as yf
+        # CD 금리는 일반적으로 3개월 CD 금리를 의미
+        # yfinance에서는 ^IRX (3개월 국채금리)를 CD 금리 대체 지표로 사용
+        cdr_data = yf.download('^IRX', start=start_date, end=end_date, progress=False)
+        if not cdr_data.empty:
+            return cdr_data['Close']
+        return None
+    except Exception as e:
+        print(f"CD 금리 데이터 가져오기 실패: {e}")
+        return None
+
+def get_tnx_data(start_date, end_date):
+    """미국 10년물 국채금리(TNX) 데이터를 가져옵니다."""
+    try:
+        import yfinance as yf
+        tnx_data = yf.download('^TNX', start=start_date, end=end_date, progress=False)
+        if not tnx_data.empty:
+            return tnx_data['Close']
+        return None
+    except Exception as e:
+        print(f"TNX 데이터 가져오기 실패: {e}")
+        return None
+
 def plot_main_chart_with_volume_profile_overlay(
     data: pd.DataFrame,
     ticker: str = None,
@@ -1538,6 +1672,13 @@ def plot_main_chart_with_volume_profile_overlay(
     start_date = ohlcv_data.index[0]
     end_date = ohlcv_data.index[-1]
     vix, tnx, dxy = get_market_data(start_date, end_date)
+    
+    # 추가 지표 데이터 가져오기
+    ffr_data = get_ffr_data(start_date, end_date)
+    tnx_data = get_tnx_data(start_date, end_date)
+    
+    # 박스권 계산
+    box_ranges = calculate_box_ranges(ohlcv_data, box_period=20, min_box_days=5)
     
     # VIX 데이터 길이 맞추기 (실제 데이터 우선, 동적 생성은 최후의 수단)
     if not vix.empty and len(vix) < len(ohlcv_data):
@@ -1870,9 +2011,9 @@ def plot_main_chart_with_volume_profile_overlay(
     print(f"시장 심리 요약: {market_summary}")
     print(f"전략 가이드: {strategy_guide}")
     
-    # 차트 생성 (5x1 레이아웃: 메인차트 + 거래량 + RSI + MACD + 시장심리통합)
-    fig = plt.figure(figsize=(20, 18))  # 높이 증가
-    gs = GridSpec(5, 1, height_ratios=[3, 1, 1, 1, 1.2], figure=fig, hspace=0.15)  # 간격 증가
+    # 차트 생성 (6x1 레이아웃: 메인차트 + 거래량 + RSI + MACD + 금리통합 + 시장심리통합)
+    fig = plt.figure(figsize=(20, 20))  # 높이 조정
+    gs = GridSpec(6, 1, height_ratios=[3, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)  # 간격 조정
     
     # 메인 차트 (상단)
     ax_main = fig.add_subplot(gs[0, 0])
@@ -1940,8 +2081,10 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_rsi = fig.add_subplot(gs[2, 0], sharex=ax_main)
     # MACD 차트
     ax_macd = fig.add_subplot(gs[3, 0], sharex=ax_main)
+    # 금리 통합 차트 (FFR + CD 금리 + TNX)
+    ax_rates = fig.add_subplot(gs[4, 0], sharex=ax_main)
     # 시장 심리 통합 지표 차트
-    ax_sentiment = fig.add_subplot(gs[4, 0], sharex=ax_main)
+    ax_sentiment = fig.add_subplot(gs[5, 0], sharex=ax_main)
 
     # 메인 차트 설정 (투명도 높임)
     candlestick_ohlc(ax_main, 
@@ -1971,7 +2114,7 @@ def plot_main_chart_with_volume_profile_overlay(
                 
                 # 배당일자 텍스트를 마름모 아래에 표시 (배당정보와 같은 크기)
                 ax_main.text(div_date, top_position - (y_range * 0.02), div_date.strftime('%m/%d'), 
-                           ha='center', va='top', fontsize=4, 
+                           ha='center', va='top', fontsize=6, 
                            color='darkorange', fontweight='bold',
                            bbox=dict(boxstyle="round,pad=0.2", 
                                    facecolor='white', 
@@ -1993,7 +2136,7 @@ def plot_main_chart_with_volume_profile_overlay(
                 ax_main.annotate(text_content, 
                                xy=(div_date, top_position), 
                                xytext=(0, 5), textcoords='offset points',
-                               ha='center', va='bottom', fontsize=4, 
+                               ha='center', va='bottom', fontsize=6, 
                                color='darkorange', fontweight='bold',
                                bbox=dict(boxstyle="round,pad=0.2", 
                                        facecolor='lightyellow', 
@@ -2099,24 +2242,63 @@ def plot_main_chart_with_volume_profile_overlay(
                         zorder=1000)  # 최고 zorder 값으로 레이어 최상단에 표시
 
     # HMA와 만트라 밴드
-    ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=1.5, label='HMA')
-    ax_main.plot(ohlcv_data.index, upper_band, color='red', linewidth=1, linestyle='--', label='Upper Mantra')
-    ax_main.plot(ohlcv_data.index, lower_band, color='green', linewidth=1, linestyle='--', label='Lower Mantra')
+    ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=0.525, label='HMA')
+    ax_main.plot(ohlcv_data.index, upper_band, color='red', linewidth=0.35, linestyle='--', label='Upper Mantra')
+    ax_main.plot(ohlcv_data.index, lower_band, color='green', linewidth=0.35, linestyle='--', label='Lower Mantra')
     
     # 가격 라인 추가
-    ax_main.plot(ohlcv_data.index, ohlcv_data['Close'], color='black', linewidth=0.8, alpha=0.7, label='Price')
+    ax_main.plot(ohlcv_data.index, ohlcv_data['Close'], color='black', linewidth=0.28, alpha=0.7, label='Price')
     
     # 만트라 밴드 영역 채우기
     ax_main.fill_between(ohlcv_data.index, hma, upper_band, color='red', alpha=0.1, label='상단 밴드 영역')
     ax_main.fill_between(ohlcv_data.index, lower_band, hma, color='green', alpha=0.1, label='하단 밴드 영역')
     
     # 볼린저 밴드 추가
-    ax_main.plot(ohlcv_data.index, bb_ma, color='purple', linewidth=0.5, label='BB MA(20)')
-    ax_main.plot(ohlcv_data.index, bb_upper, color='purple', linewidth=0.5, linestyle=':', label='BB Upper')
-    ax_main.plot(ohlcv_data.index, bb_lower, color='purple', linewidth=0.5, linestyle=':', label='BB Lower')
+    ax_main.plot(ohlcv_data.index, bb_ma, color='purple', linewidth=0.175, label='BB MA(20)')
+    ax_main.plot(ohlcv_data.index, bb_upper, color='purple', linewidth=0.175, linestyle=':', label='BB Upper')
+    ax_main.plot(ohlcv_data.index, bb_lower, color='purple', linewidth=0.175, linestyle=':', label='BB Lower')
     
     # SMA200일 이동평균선 추가
-    ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=1.5, linestyle='-', label='SMA200', alpha=0.8)
+    ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='SMA200', alpha=0.8)
+    
+    # 박스권 표시 (현재 20일 박스권 + 21일전 20일 박스권)
+    if box_ranges:
+        print(f"박스권 {len(box_ranges)}개 표시 (현재 20일 + 21일전 20일)")
+        for i, box in enumerate(box_ranges):
+            # 박스권별 색상 설정
+            if "현재" in box['name']:
+                box_color = 'orange'
+                alpha_value = 0.3
+            else:  # 21일전 박스권
+                box_color = 'blue'
+                alpha_value = 0.2
+            
+            # 박스권 사각형 그리기
+            box_width = (box['end_date'] - box['start_date']).days
+            box_rect = mpatches.Rectangle(
+                (mdates.date2num(box['start_date']), box['low']),
+                box_width,
+                box['range'],
+                linewidth=1.5,
+                edgecolor=box_color,
+                facecolor=box_color,
+                alpha=alpha_value,
+                zorder=5
+            )
+            ax_main.add_patch(box_rect)
+            
+            # 박스권 라벨
+            box_center_x = mdates.date2num(box['start_date']) + box_width / 2
+            ax_main.text(box_center_x, box['high'] + (box['range'] * 0.1), 
+                        f"{box['name']}\n{currency_symbol}{box['low']:.2f}-{currency_symbol}{box['high']:.2f}",
+                        ha='center', va='bottom', fontsize=8, 
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor=box_color, alpha=0.8),
+                        color='white', fontweight='bold')
+            
+            # 박스권 중앙선
+            ax_main.plot([box['start_date'], box['end_date']], 
+                        [box['center'], box['center']], 
+                        color=box_color, linestyle='--', linewidth=1, alpha=0.7, zorder=6)
     
     # Target 가격 라인들 추가 (옵션) - 비활성화됨
     # if show_target_prices:
@@ -2815,13 +2997,35 @@ def plot_main_chart_with_volume_profile_overlay(
     # MACD 차트 표시
     macd_colors = ['green' if v >= 0 else 'red' for v in hist]
     ax_macd.bar(ohlcv_data.index, hist, color=macd_colors, alpha=0.5, width=0.8, label='Histogram')
-    ax_macd.plot(ohlcv_data.index, macd, color='tab:blue', linewidth=1.2, label='MACD')
-    ax_macd.plot(ohlcv_data.index, macd_signal, color='tab:orange', linewidth=1.0, label='Signal')
-    ax_macd.axhline(0, color='black', linewidth=0.3, alpha=0.6)
+    ax_macd.plot(ohlcv_data.index, macd, color='tab:blue', linewidth=0.42, label='MACD')
+    ax_macd.plot(ohlcv_data.index, macd_signal, color='tab:orange', linewidth=0.35, label='Signal')
+    ax_macd.axhline(0, color='black', linewidth=0.105, alpha=0.6)
     ax_macd.set_title('MACD (12,26,9)')
     ax_macd.set_ylabel('MACD')
     ax_macd.legend(fontsize=8, loc='upper left')
     ax_macd.grid(True, alpha=0.3)
+    
+    # 금리 통합 차트 표시 (FFR + TNX)
+    rates_plotted = False
+    
+    if ffr_data is not None and not ffr_data.empty:
+        ax_rates.plot(ffr_data.index, ffr_data, color='red', linewidth=1.2, label='FFR (연방기금금리)')
+        rates_plotted = True
+    
+    if tnx_data is not None and not tnx_data.empty:
+        ax_rates.plot(tnx_data.index, tnx_data, color='darkgreen', linewidth=1.2, label='TNX (10년물 국채금리)')
+        rates_plotted = True
+    
+    if rates_plotted:
+        ax_rates.set_title('금리 통합 차트 (FFR + TNX)')
+        ax_rates.set_ylabel('금리 (%)')
+        ax_rates.legend(fontsize=8, loc='upper left')
+        ax_rates.grid(True, alpha=0.3)
+    else:
+        ax_rates.text(0.5, 0.5, '금리 데이터 없음', ha='center', va='center', 
+                     transform=ax_rates.transAxes, fontsize=10, color='gray')
+        ax_rates.set_title('금리 통합 차트 (FFR + TNX)')
+        ax_rates.set_ylabel('금리 (%)')
     
     # =====================
     # 시장 심리 통합 지표 차트 생성

@@ -134,7 +134,7 @@ def main():
     try:
         print(f"데이터 다운로드 시작: {ticker}, 기간: {period}")
         # 데이터 다운로드
-        data = yf.download(ticker, period=period, interval=interval, prepost=prepost)
+        data = yf.download(ticker, period=period, interval=interval, prepost=prepost, auto_adjust=False)
         if data.empty:
             print(f"데이터를 가져올 수 없습니다: {ticker}")
             sys.exit(1)

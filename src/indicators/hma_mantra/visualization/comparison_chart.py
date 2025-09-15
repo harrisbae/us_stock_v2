@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 plt.rcParams['font.family'] = ['AppleGothic', 'DejaVu Sans', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
-def load_and_normalize_stocks(symbols, start_date, end_date):
+def load_and_normalize_stocks(symbols, start_date, end_date, auto_adjust=False):
     """
     여러 종목 데이터 로드 및 100 기준 정규화
     
@@ -30,6 +30,7 @@ def load_and_normalize_stocks(symbols, start_date, end_date):
         symbols: 종목 심볼 리스트
         start_date: 시작 날짜
         end_date: 종료 날짜
+        auto_adjust: 가격 조정 여부 (기본값: False)
     
     Returns:
         dict: 정규화된 주가 데이터
@@ -44,7 +45,8 @@ def load_and_normalize_stocks(symbols, start_date, end_date):
     for symbol in symbols:
         try:
             print(f"  🔄 {symbol} 데이터 다운로드 중...")
-            data = yf.download(symbol, start=start_date, end=end_date, progress=False)
+            # 가격 조정 옵션에 따라 데이터 다운로드
+            data = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)
             
             if data.empty:
                 print(f"  ⚠️  {symbol}: 데이터 없음")
@@ -70,20 +72,21 @@ def load_and_normalize_stocks(symbols, start_date, end_date):
     print(f"✅ 성공적으로 로드된 종목: {len(stock_data)}개")
     return stock_data, original_prices
 
-def load_vix_data(start_date, end_date):
+def load_vix_data(start_date, end_date, auto_adjust=False):
     """
     VIX 데이터 로드
     
     Args:
         start_date: 시작 날짜
         end_date: 종료 날짜
+        auto_adjust: 가격 조정 여부 (기본값: False)
     
     Returns:
         pd.Series: VIX 데이터
     """
     try:
         print("📊 VIX 데이터 로드 중...")
-        vix_data = yf.download('^VIX', start=start_date, end=end_date, progress=False)['Close']
+        vix_data = yf.download('^VIX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
         
         if vix_data.empty:
             print("⚠️  VIX 데이터 없음, 기본값 사용")
@@ -131,13 +134,14 @@ def get_fed_meeting_dates(start_date, end_date):
     
     return meetings_in_period
 
-def load_macro_data(start_date, end_date):
+def load_macro_data(start_date, end_date, auto_adjust=False):
     """
     미국 거시경제 데이터 로드 (국채발행량, M2 통화량)
     
     Args:
         start_date: 시작 날짜
         end_date: 종료 날짜
+        auto_adjust: 가격 조정 여부 (기본값: False)
     
     Returns:
         dict: 거시경제 데이터
@@ -147,7 +151,7 @@ def load_macro_data(start_date, end_date):
         
         # 국채발행량 (Treasury Securities Outstanding)
         try:
-            treasury_securities = yf.download('^TNX', start=start_date, end=end_date, progress=False)['Close']
+            treasury_securities = yf.download('^TNX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
             # 실제 국채발행량 데이터가 없으므로 10년물 금리를 기준으로 시뮬레이션
             treasury_outstanding = treasury_securities * 1000  # 시뮬레이션 데이터
             print(f"✅ 국채발행량 로드 완료: {len(treasury_outstanding)}개")
@@ -194,13 +198,14 @@ def load_macro_data(start_date, end_date):
             'm2_supply': pd.Series([21000], index=[default_date])
         }
 
-def load_interest_rate_data(start_date, end_date):
+def load_interest_rate_data(start_date, end_date, auto_adjust=False):
     """
     미국 금리 데이터 로드 (연방기금금리, 10년물 국채금리, 30년물 국채금리)
     
     Args:
         start_date: 시작 날짜
         end_date: 종료 날짜
+        auto_adjust: 가격 조정 여부 (기본값: False)
     
     Returns:
         dict: 금리 데이터
@@ -213,7 +218,7 @@ def load_interest_rate_data(start_date, end_date):
         
         # 방법 1: ^FEDFUNDS 시도
         try:
-            fed_funds = yf.download('^FEDFUNDS', start=start_date, end=end_date, progress=False)['Close']
+            fed_funds = yf.download('^FEDFUNDS', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
             if not fed_funds.empty:
                 print(f"✅ 연방기금금리 (^FEDFUNDS) 로드 완료: {len(fed_funds)}개")
             else:
@@ -223,14 +228,14 @@ def load_interest_rate_data(start_date, end_date):
             
             # 방법 2: ^IRX (3개월 국채) 사용
             try:
-                fed_funds = yf.download('^IRX', start=start_date, end=end_date, progress=False)['Close']
+                fed_funds = yf.download('^IRX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
                 print(f"✅ 연방기금금리 (^IRX) 로드 완료: {len(fed_funds)}개")
             except Exception as e2:
                 print(f"⚠️  ^IRX 로드 실패: {e2}")
                 
                 # 방법 3: ^TNX (10년물 국채) 사용
                 try:
-                    fed_funds = yf.download('^TNX', start=start_date, end=end_date, progress=False)['Close']
+                    fed_funds = yf.download('^TNX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
                     print(f"✅ 연방기금금리 (^TNX) 로드 완료: {len(fed_funds)}개")
                 except Exception as e3:
                     print(f"❌ 모든 연방기금금리 로드 실패: {e3}")
@@ -240,16 +245,16 @@ def load_interest_rate_data(start_date, end_date):
                     print("✅ 기본 연방기금금리 설정: 5.25%")
         
         # 10년물 국채 금리 (10-Year Treasury)
-        treasury_10y = yf.download('^TNX', start=start_date, end=end_date, progress=False)['Close']
+        treasury_10y = yf.download('^TNX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
         print(f"✅ 10년물 국채금리 로드 완료: {len(treasury_10y)}개")
         
         # 30년물 국채 금리 (30-Year Treasury)
         try:
-            treasury_30y = yf.download('^TYX', start=start_date, end=end_date, progress=False)['Close']
+            treasury_30y = yf.download('^TYX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
             print(f"✅ 30년물 국채금리 로드 완료: {len(treasury_30y)}개")
         except:
             # 30년물이 없으면 20년물 사용
-            treasury_30y = yf.download('^TYX', start=start_date, end=end_date, progress=False)['Close']
+            treasury_30y = yf.download('^TYX', start=start_date, end=end_date, progress=False, auto_adjust=auto_adjust)['Close']
             print(f"✅ 30년물 국채금리 로드 완료: {len(treasury_30y)}개")
         
         # FED 회의 일정 가져오기
@@ -417,9 +422,11 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
     # 메인 차트: 주가 비교 (종가 기준)
     for i, (symbol, data) in enumerate(stock_data.items()):
         color = colors[i % len(colors)]
+        # 첫 번째 종목은 2배 두껍게, 나머지는 기본 두께
+        line_width = 1.75 if i == 0 else 0.875
         ax_main.plot(data.index, data.values, 
                     label=symbol, color=color, 
-                    linewidth=1.75, alpha=0.8)
+                    linewidth=line_width, alpha=0.8)
         
         # 현재 가격 위치에 종목명과 성과 정보 표시
         current_price = float(data.iloc[-1])
@@ -433,11 +440,15 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
         # 종목명과 성과 정보 텍스트
         label_text = f"{symbol}\n({total_return:+.1f}%, {volatility:.1f}%)"
         
+        # 수직 오프셋 계산 (더 큰 간격으로 겹침 방지)
+        y_offset = i * 0.08  # 각 종목마다 0.08씩 증가하는 오프셋
+        adjusted_price = current_price + y_offset
+        
         # 현재 가격 위치 오른쪽에 텍스트 표시
-        ax_main.text(current_date, current_price, label_text,
-                    fontsize=9, ha='left', va='center',
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor=color, 
-                             alpha=0.7, edgecolor=color, linewidth=1),
+        ax_main.text(current_date, adjusted_price, label_text,
+                    fontsize=8, ha='left', va='center',
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor=color, 
+                             alpha=0.8, edgecolor=color, linewidth=0.5),
                     color='white', fontweight='bold',
                     transform=ax_main.transData)
     
@@ -449,12 +460,12 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
     ax_main.legend(loc='upper left', fontsize=10, framealpha=0.9)
     
     # 100 기준선 추가
-    ax_main.axhline(y=100, color='black', linestyle='--', alpha=0.5, linewidth=1)
+    ax_main.axhline(y=100, color='black', linestyle='--', alpha=0.5, linewidth=0.5)
     ax_main.text(ax_main.get_xlim()[0], 100, 'Base = 100', 
                 verticalalignment='bottom', fontsize=9, alpha=0.7)
     
     # VIX 서브플롯
-    ax_vix.plot(vix_data.index, vix_data.values, color='red', linewidth=1.5, alpha=0.8)
+    ax_vix.plot(vix_data.index, vix_data.values, color='red', linewidth=0.75, alpha=0.8)
     # VIX 데이터가 1차원인지 확인 후 fill_between 실행
     if len(vix_data.values.shape) == 1:
         ax_vix.fill_between(vix_data.index, vix_data.values, alpha=0.3, color='red')
@@ -466,8 +477,8 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
     current_date = vix_data.index[-1]
     
     # 메인 차트에서 VIX 서브플롯으로 수직 점선 연결 (교차점과 동일한 스타일)
-    ax_main.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
-    ax_vix.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+    ax_main.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=0.5)
+    ax_vix.axvline(x=current_date, color='gray', linestyle='--', alpha=0.6, linewidth=0.5)
     
     # VIX 서브플롯에 현재 VIX 값 표시 (교차점과 동일한 스타일)
     ax_vix.text(current_date, current_vix, f'VIX: {current_vix:.1f}',
@@ -540,8 +551,8 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
                 print(f"      📍 교차점: {cross_date.strftime('%Y-%m-%d')}, VIX: {float(vix_cross_value):.1f}")
                 
                 # 메인 차트에서 VIX 서브플롯으로 수직 점선 연결
-                ax_main.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
-                ax_vix.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=1)
+                ax_main.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=0.5)
+                ax_vix.axvline(x=cross_date, color='gray', linestyle='--', alpha=0.6, linewidth=0.5)
                 
                 # VIX 서브플롯에 VIX 값 표시
                 vix_value_float = float(vix_cross_value)
@@ -572,21 +583,21 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
         fed_meetings = interest_data['fed_meetings']
         
         # 연방기금금리 (FFR)
-        ax_interest.plot(fed_funds.index, fed_funds.values, color='red', linewidth=1, label='FFR (연방기금금리)')
+        ax_interest.plot(fed_funds.index, fed_funds.values, color='red', linewidth=0.5, label='FFR (연방기금금리)')
         
         # CD금리 (CDR) - 3개월 국채금리
-        ax_interest.plot(fed_funds.index, fed_funds.values, color='orange', linewidth=1, label='CDR (CD금리)', linestyle='--')
+        ax_interest.plot(fed_funds.index, fed_funds.values, color='orange', linewidth=0.5, label='CDR (CD금리)', linestyle='--')
         
         # 미국채 10년물 금리
-        ax_interest.plot(treasury_10y.index, treasury_10y.values, color='blue', linewidth=1, label='미국채 10년물금리')
+        ax_interest.plot(treasury_10y.index, treasury_10y.values, color='blue', linewidth=0.5, label='미국채 10년물금리')
         
         # 미국채 30년물 금리
-        ax_interest.plot(treasury_30y.index, treasury_30y.values, color='green', linewidth=1, label='미국채 30년물금리')
+        ax_interest.plot(treasury_30y.index, treasury_30y.values, color='green', linewidth=0.5, label='미국채 30년물금리')
         
         # FED 회의 일정 수직선 및 금리값 표시
         for meeting_date in fed_meetings:
             # 수직선 그리기
-            ax_interest.axvline(x=meeting_date, color='purple', linestyle='--', alpha=0.7, linewidth=1.5)
+            ax_interest.axvline(x=meeting_date, color='purple', linestyle='--', alpha=0.7, linewidth=0.75)
             
             # 해당 날짜의 금리값들 찾기
             try:
@@ -677,12 +688,12 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
         
         # 국채발행량
         ax_macro.plot(treasury_outstanding.index, treasury_outstanding.values, 
-                     color='purple', linewidth=1, label='국채발행량')
+                     color='purple', linewidth=0.5, label='국채발행량')
         
         # M2 통화량 (오른쪽 Y축)
         ax_macro2 = ax_macro.twinx()
         ax_macro2.plot(m2_supply.index, m2_supply.values, 
-                      color='brown', linewidth=1, label='M2 통화량')
+                      color='brown', linewidth=0.5, label='M2 통화량')
         
         # 거시경제 서브플롯 스타일링
         ax_macro.set_title('거시경제 지표 (Macroeconomic Indicators)', fontsize=12, fontweight='bold')
@@ -736,9 +747,9 @@ def create_comparison_chart(stock_data, vix_data, start_date, end_date, original
         summary_text += f"({metrics['total_return']:+.1f}%)\n"
         summary_text += f"  [변동성: {metrics['volatility']:.1f}%, 최대낙폭: {metrics['max_drawdown']:.1f}%]\n"
     
-    # 위측 중앙에 배치 (범례와 겹치지 않도록)
-    ax_main.text(0.5, 0.95, summary_text, transform=ax_main.transAxes, 
-                fontsize=9, verticalalignment='top', horizontalalignment='center',
+    # 좌측 중앙 위쪽에 배치 (범례와 겹치지 않도록)
+    ax_main.text(0.02, 0.75, summary_text, transform=ax_main.transAxes, 
+                fontsize=9, verticalalignment='top', horizontalalignment='left',
                 bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', alpha=0.8))
     
     print("✅ 비교 차트 생성 완료")
@@ -820,6 +831,7 @@ def main():
     parser.add_argument('--from', required=True, help='Start date (YYYY-MM-DD)')
     parser.add_argument('--to', help='End date (YYYY-MM-DD), default: today')
     parser.add_argument('--output', help='Output directory', default='output/hma_mantra/comparison')
+    parser.add_argument('--auto_adjust', default='false', help='Price adjustment (default: false)')
     
     args = parser.parse_args()
     
@@ -827,25 +839,27 @@ def main():
     symbols = [s.strip() for s in args.symbols.split(',')]
     start_date = getattr(args, 'from')
     end_date = args.to or datetime.now().strftime('%Y-%m-%d')
+    auto_adjust = args.auto_adjust.lower() in ['true', '1', 'yes', 'y']
     
     print("🚀 Multi-Stock Comparison Analysis 시작")
     print(f"📊 종목: {', '.join(symbols)}")
     print(f"📅 기간: {start_date} ~ {end_date}")
+    print(f"💰 가격 조정: {'Adjusted' if auto_adjust else 'Unadjusted'}")
     
     try:
         # 데이터 로드
-        stock_data, original_prices = load_and_normalize_stocks(symbols, start_date, end_date)
+        stock_data, original_prices = load_and_normalize_stocks(symbols, start_date, end_date, auto_adjust)
         if not stock_data:
             print("❌ 로드된 종목이 없습니다.")
             return
         
-        vix_data = load_vix_data(start_date, end_date)
+        vix_data = load_vix_data(start_date, end_date, auto_adjust)
         
         # 금리 데이터 로드
-        interest_data = load_interest_rate_data(start_date, end_date)
+        interest_data = load_interest_rate_data(start_date, end_date, auto_adjust)
         
         # 거시경제 데이터 로드
-        macro_data = load_macro_data(start_date, end_date)
+        macro_data = load_macro_data(start_date, end_date, auto_adjust)
         
         # 성과 분석
         performance = calculate_performance_metrics(stock_data, original_prices)

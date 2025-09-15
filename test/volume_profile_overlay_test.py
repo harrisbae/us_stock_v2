@@ -14,84 +14,37 @@ from src.indicators.hma_mantra.visualization.volume_profile_overlay_chart import
 
 def main():
     import sys
+    import argparse
     
-    # 도움말 출력
-    if len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help', 'help']:
-        print("""
-🎯 Volume Profile 오버레이 차트 생성기 (Target 가격 지원)
-
-사용법:
-    python volume_profile_overlay_test.py [TICKER] [PERIOD] [RSI_WINDOW] [RSI_PIVOT] [TARGET_PRICES] [SHOW_TARGETS]
-
-매개변수:
-    TICKER          종목코드 (기본값: TSLA)
-    PERIOD          데이터 기간 (기본값: 6mo)
-                    예: 1mo, 3mo, 6mo, 1y, 2y
-                    또는 날짜 범위: 2024-01-01_2024-12-31
-    RSI_WINDOW      RSI 다이버전스 윈도우 (기본값: 20)
-    RSI_PIVOT       RSI 피벗 스팬 (기본값: 3)
-    TARGET_PRICES   Target 가격들 (형식: buy:sell:stop)
-                    예: 300:400:250 (매수가:목표가:손절가)
-                    빈 값은 자동 계산 사용
-    SHOW_TARGETS    Target 가격 표시 여부 (기본값: true)
-                    true, false, 1, 0, yes, no, y, n
-
-예시:
-    # 기본 차트 생성
-    python volume_profile_overlay_test.py TSLA
+    # 명령행 인자 파싱
+    parser = argparse.ArgumentParser(description='Volume Profile 오버레이 차트 생성기')
+    parser.add_argument('ticker', nargs='?', default='TSLA', help='종목코드 (기본값: TSLA)')
+    parser.add_argument('period', nargs='?', default='6mo', help='데이터 기간 (기본값: 6mo)')
+    parser.add_argument('rsi_window', nargs='?', type=int, default=20, help='RSI 다이버전스 윈도우 (기본값: 20)')
+    parser.add_argument('rsi_pivot', nargs='?', type=int, default=3, help='RSI 피벗 스팬 (기본값: 3)')
+    parser.add_argument('target_prices', nargs='?', default='', help='Target 가격들 (형식: buy:sell:stop)')
+    parser.add_argument('show_targets', nargs='?', default='true', help='Target 가격 표시 여부 (기본값: true)')
+    parser.add_argument('--auto_adjust', default='false', help='가격 조정 여부 (기본값: false)')
     
-    # 12개월 데이터로 차트 생성
-    python volume_profile_overlay_test.py TSLA 12mo
+    # argparse로 인자 파싱
+    args = parser.parse_args()
     
-    # 수동 target 가격 지정
-    python volume_profile_overlay_test.py TSLA 6mo 20 3 300:400:250
-    
-    # 자동 target 가격만 사용
-    python volume_profile_overlay_test.py TSLA 6mo 20 3 ::
-    
-    # target 가격 표시 비활성화
-    python volume_profile_overlay_test.py TSLA 6mo 20 3 :: false
-""")
-        return
-    
-    # 명령행 인자 처리
-    if len(sys.argv) > 1:
-        ticker = sys.argv[1]
-    else:
-        ticker = "TSLA"  # 기본값
-    
-    # 기간 설정 (명령행 인자에서 받기)
-    if len(sys.argv) > 2:
-        period = sys.argv[2]
-    else:
-        period = "6mo"  # 기본값
-    
-    # RSI 다이버전스 옵션: [유효 윈도우, 피벗 스팬]
-    if len(sys.argv) > 3:
-        try:
-            rsi_window = int(sys.argv[3])
-        except Exception:
-            rsi_window = 20
-    else:
-        rsi_window = 20
-    
-    if len(sys.argv) > 4:
-        try:
-            rsi_pivot = int(sys.argv[4])
-        except Exception:
-            rsi_pivot = 3
-    else:
-        rsi_pivot = 3
+    # 변수 할당
+    ticker = args.ticker
+    period = args.period
+    rsi_window = args.rsi_window
+    rsi_pivot = args.rsi_pivot
+    auto_adjust = args.auto_adjust.lower() in ['true', '1', 'yes', 'y']
     
     # Target 가격 옵션들
     target_buy_price = None
     target_sell_price = None
     stop_loss_price = None
-    show_target_prices = True
+    show_target_prices = args.show_targets.lower() in ['true', '1', 'yes', 'y']
     
     # Target 가격들을 명령행 인자에서 받기 (형식: buy:sell:stop)
-    if len(sys.argv) > 5:
-        target_prices = sys.argv[5].split(':')
+    if args.target_prices:
+        target_prices = args.target_prices.split(':')
         if len(target_prices) >= 1 and target_prices[0]:
             try:
                 target_buy_price = float(target_prices[0])
@@ -110,10 +63,6 @@ def main():
             except ValueError:
                 stop_loss_price = None
     
-    # Target 가격 표시 여부
-    if len(sys.argv) > 6:
-        show_target_prices = sys.argv[6].lower() in ['true', '1', 'yes', 'y']
-    
     print(f"데이터 다운로드 중: {ticker} (period={period})")
     
     # 날짜 범위인지 확인 (YYYY-MM-DD_YYYY-MM-DD 형식)
@@ -127,10 +76,10 @@ def main():
         end_date_plus_one = (end_dt + timedelta(days=1)).strftime('%Y-%m-%d')
         
         # 날짜 범위로 데이터 다운로드 (종료일 포함을 위해 하루 추가)
-        data = yf.download(ticker, start=start_date, end=end_date_plus_one, progress=False)
+        data = yf.download(ticker, start=start_date, end=end_date_plus_one, progress=False, auto_adjust=auto_adjust)
     else:
         # 기존 period 방식으로 데이터 다운로드
-        data = yf.download(ticker, period=period, progress=False)
+        data = yf.download(ticker, period=period, progress=False, auto_adjust=auto_adjust)
     
     if data.empty:
         print(f"데이터를 가져올 수 없습니다: {ticker}")

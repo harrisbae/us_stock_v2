@@ -30,7 +30,7 @@ def main():
     print(f"데이터 다운로드 중: {ticker} (period={period})")
     
     # 데이터 다운로드 (period 파라미터 직접 전달)
-    data = yf.download(ticker, period=period, progress=False)
+    data = yf.download(ticker, period=period, progress=False, auto_adjust=False)
     
     if data.empty:
         print(f"데이터를 가져올 수 없습니다: {ticker}")

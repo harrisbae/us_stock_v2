@@ -15,6 +15,7 @@ SYMBOL_FILE=""
 ANALYSIS_TYPE="technical"  # 기본값: 기술적 분석
 VOLUME_PROFILE_TYPE="none"  # 기본값: Volume Profile 없음
 USE_CURRENT_DATE=false  # 현재일시 기준 데이터 수집 옵션 추가
+AUTO_ADJUST="false"  # 기본값: unadjusted 가격 사용
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -65,6 +66,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --current)
       USE_CURRENT_DATE=true
+      shift
+      ;;
+    --adjusted)
+      AUTO_ADJUST="true"
+      shift
+      ;;
+    --unadjusted)
+      AUTO_ADJUST="false"
       shift
       ;;
     *)
@@ -236,7 +245,8 @@ analyze_stock() {
                 python src/indicators/hma_mantra/visualization/comparison_chart.py \
                     --symbols "$SYMBOL" \
                     --from "$FROM_DATE" \
-                    --to "$TO_DATE"
+                    --to "$TO_DATE" \
+                    --auto_adjust "$AUTO_ADJUST"
                 echo "다중 종목 비교 분석 완료!"
                 return
             fi
@@ -249,7 +259,7 @@ analyze_stock() {
                     ;;
                 "overlay")
                     echo "Volume Profile (오버레이) 생성 중..."
-                    python test/volume_profile_overlay_test.py "$symbol" "$PERIOD"
+                    python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST"
                     ;;
                 "none"|*)
                     echo "기본 기술적 분석 실행..."
@@ -289,7 +299,7 @@ analyze_stock() {
             # Volume Profile 차트 생성
             if [ "$VOLUME_PROFILE_TYPE" = "overlay" ]; then
                 echo "Volume Profile (오버레이) 차트 생성 중..."
-                python test/volume_profile_overlay_test.py "$symbol" "$PERIOD"
+                python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST"
                 echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_overlay_${PERIOD}_chart.png"
             elif [ "$VOLUME_PROFILE_TYPE" = "separate" ]; then
                 echo "Volume Profile (별도 영역) 차트 생성 중..."
