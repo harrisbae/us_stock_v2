@@ -17,6 +17,80 @@ import matplotlib.patches as mpatches
 import pandas_datareader.data as web
 from datetime import datetime, timedelta
 
+def calculate_volume_profile(box_data, price_bins=15):
+    """
+    박스권 내에서 Volume Profile을 계산합니다.
+    
+    Args:
+        box_data: 박스권 기간의 OHLCV 데이터
+        price_bins: 가격 구간 분할 수 (기본값: 15)
+    
+    Returns:
+        dict: Volume Profile 정보 {price_level: volume, ...}
+    """
+    try:
+        if len(box_data) == 0:
+            return {}
+        
+        # 가격 범위 계산
+        high_price = float(box_data['High'].max())
+        low_price = float(box_data['Low'].min())
+        price_range = high_price - low_price
+        
+        if price_range == 0:
+            return {}
+        
+        # 가격 구간 설정
+        bin_size = price_range / price_bins
+        price_levels = [low_price + i * bin_size for i in range(price_bins + 1)]
+        
+        # Volume Profile 계산
+        volume_profile = {}
+        for i in range(len(price_levels) - 1):
+            price_level = (price_levels[i] + price_levels[i + 1]) / 2
+            volume_profile[price_level] = 0.0
+        
+        # 각 거래일의 거래량을 가격 구간에 분배
+        for _, row in box_data.iterrows():
+            daily_high = float(row['High'])
+            daily_low = float(row['Low'])
+            daily_volume = float(row['Volume'])
+            
+            # 해당 일의 가격 범위가 어느 구간에 속하는지 계산
+            for i in range(len(price_levels) - 1):
+                price_level = (price_levels[i] + price_levels[i + 1]) / 2
+                bin_low = price_levels[i]
+                bin_high = price_levels[i + 1]
+                
+                # 가격 구간과 일일 가격 범위의 교집합 계산
+                overlap_low = max(daily_low, bin_low)
+                overlap_high = min(daily_high, bin_high)
+                
+                if overlap_low < overlap_high and daily_high != daily_low:
+                    # 교집합 비율만큼 거래량 분배
+                    overlap_ratio = (overlap_high - overlap_low) / (daily_high - daily_low)
+                    volume_profile[price_level] += daily_volume * overlap_ratio
+        
+        # POC (Point of Control) 찾기
+        if volume_profile and any(v > 0 for v in volume_profile.values()):
+            poc_price = max(volume_profile, key=volume_profile.get)
+            poc_volume = volume_profile[poc_price]
+        else:
+            # 거래량이 없으면 박스권 중앙 사용
+            poc_price = (high_price + low_price) / 2
+            poc_volume = 0
+        
+        return {
+            'volume_profile': volume_profile,
+            'poc_price': poc_price,
+            'poc_volume': poc_volume,
+            'price_levels': price_levels,
+            'bin_size': bin_size
+        }
+    except Exception as e:
+        print(f"Volume Profile 계산 오류: {e}")
+        return {}
+
 def calculate_box_ranges(data, box_period=20, min_box_days=5):
     """
     전일 기준 20일 박스권과 21일전 기준 20일 박스권을 계산합니다.
@@ -58,6 +132,9 @@ def calculate_box_ranges(data, box_period=20, min_box_days=5):
                 # 박스명 생성
                 box_name = f"현재 20일 박스권"
                 
+                # Volume Profile 계산
+                volume_profile_data = calculate_volume_profile(box_data)
+                
                 box_ranges.append({
                     'start_date': start_date,
                     'end_date': end_date,
@@ -66,7 +143,8 @@ def calculate_box_ranges(data, box_period=20, min_box_days=5):
                     'range': box_range,
                     'center': box_center,
                     'name': box_name,
-                    'current_price': current_price
+                    'current_price': current_price,
+                    'volume_profile': volume_profile_data
                 })
         
         # 2. 21일전 기준 20일 박스권 (21일전부터 20일간)
@@ -94,6 +172,9 @@ def calculate_box_ranges(data, box_period=20, min_box_days=5):
                 # 박스명 생성
                 box_name = f"21일전 20일 박스권"
                 
+                # Volume Profile 계산
+                volume_profile_data = calculate_volume_profile(box_data)
+                
                 box_ranges.append({
                     'start_date': start_date,
                     'end_date': end_date,
@@ -102,13 +183,65 @@ def calculate_box_ranges(data, box_period=20, min_box_days=5):
                     'range': box_range,
                     'center': box_center,
                     'name': box_name,
-                    'current_price': current_price
+                    'current_price': current_price,
+                    'volume_profile': volume_profile_data
                 })
         
         return box_ranges
     except Exception as e:
         print(f"박스권 계산 오류: {e}")
         return []
+
+def plot_volume_profile_bars(ax, box, color, currency_symbol='$'):
+    """
+    박스권에 실제 거래량 기반 POC (Point of Control)를 표시합니다.
+    
+    Args:
+        ax: matplotlib axes 객체
+        box: 박스권 정보 딕셔너리
+        color: 색상
+        currency_symbol: 통화 기호
+    """
+    try:
+        # 박스권의 날짜 범위
+        start_date = box['start_date']
+        end_date = box['end_date']
+        box_center_x = mdates.date2num(start_date) + (mdates.date2num(end_date) - mdates.date2num(start_date)) / 2
+        
+        # Volume Profile 데이터에서 실제 POC 가격 가져오기
+        volume_profile_data = box.get('volume_profile', {})
+        poc_price = None
+        
+        try:
+            if volume_profile_data and isinstance(volume_profile_data, dict):
+                poc_price = volume_profile_data.get('poc_price')
+                if poc_price is not None:
+                    poc_price = float(poc_price)
+                    print(f"실제 POC 가격: {currency_symbol}{poc_price:.2f} ({box.get('name', 'Unknown')})")
+        except (ValueError, TypeError) as e:
+            print(f"POC 가격 변환 오류: {e}")
+            poc_price = None
+        
+        if poc_price is None:
+            # Volume Profile 데이터가 없거나 오류가 있으면 박스권 중앙 사용
+            poc_price = float(box['center'])
+            print(f"기본 POC 가격: {currency_symbol}{poc_price:.2f} ({box.get('name', 'Unknown')})")
+        
+        poc_x_start = mdates.date2num(start_date)
+        poc_x_end = mdates.date2num(end_date)
+        
+        # POC 수평선 (간단하게)
+        ax.plot([poc_x_start, poc_x_end], [poc_price, poc_price], 
+               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=7)
+        
+        # POC 가격 표시 (중앙에만)
+        ax.text(box_center_x, poc_price + (box['range'] * 0.02), 
+               f"{currency_symbol}{poc_price:.2f}",
+               ha='center', va='bottom', fontsize=8, fontweight='bold',
+               color=color, zorder=8)
+        
+    except Exception as e:
+        print(f"POC 표시 오류: {e}")
 
 def analyze_rsi_divergence_patterns(data, rsi_period=14, pattern_range=(9, 11)):
     """
@@ -1053,7 +1186,7 @@ def get_market_data(start_date, end_date):
             vix = pd.Series([20.0], index=[pd.Timestamp(start_date)])
         else:
             print(f"VIX 마지막 데이터 날짜: {vix.index[-1].strftime('%Y-%m-%d')}")
-        print(f"오늘 날짜: {today.strftime('%Y-%m-%d')}")
+            print(f"오늘 날짜: {today.strftime('%Y-%m-%d')}")
     except Exception as e:
         print(f"⚠️  VIX 데이터 다운로드 오류: {e}, 기본값 사용")
         vix = pd.Series([20.0], index=[pd.Timestamp(start_date)])
@@ -1999,6 +2132,7 @@ def plot_main_chart_with_volume_profile_overlay(
                 naaim_final = float(naaim_value.iloc[0])
             else:
                 naaim_final = float(naaim_value)
+            
             print(f"NAIIM 최종값: {naaim_final}")
         except Exception as e:
             print(f"NAIIM 최종값 추출 오류: {e}")
@@ -2040,18 +2174,18 @@ def plot_main_chart_with_volume_profile_overlay(
     if market_summary and market_summary != "시장 데이터 부족":
         # 시장 심리 요약을 최상단 우측에 박스 형태로 표시
         ax_summary = fig.add_axes([0.6, 0.95, 0.35, 0.03])  # 최상단 우측에 배치
-        ax_summary.set_facecolor('lightblue')
-        ax_summary.set_xlim(0, 1)
-        ax_summary.set_ylim(0, 1)
-        ax_summary.axis('off')
-        ax_summary.set_zorder(1000)  # 최고 zorder 값 설정
-        
-        # 시장 심리 요약 텍스트를 박스 안에 표시
-        ax_summary.text(0.5, 0.5, market_summary, 
-                       fontsize=12, fontweight='bold', ha='center', va='center',
-                       bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
-                                edgecolor='navy', linewidth=2),
-                       zorder=1001)  # 텍스트도 최고 zorder 값 설정
+    ax_summary.set_facecolor('lightblue')
+    ax_summary.set_xlim(0, 1)
+    ax_summary.set_ylim(0, 1)
+    ax_summary.axis('off')
+    ax_summary.set_zorder(1000)  # 최고 zorder 값 설정
+    
+    # 시장 심리 요약 텍스트를 박스 안에 표시
+    ax_summary.text(0.5, 0.5, market_summary, 
+                   fontsize=12, fontweight='bold', ha='center', va='center',
+                   bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
+                            edgecolor='navy', linewidth=2),
+                   zorder=1001)  # 텍스트도 최고 zorder 값 설정
     
     # 버핏 지수 계산 (표시는 통합 박스에서 처리)
     buffett_data = calculate_buffett_indicator()
@@ -2168,8 +2302,8 @@ def plot_main_chart_with_volume_profile_overlay(
             indicators.append({
                 'text': f'VIX: {vix_value:.2f}',
                 'color': vix_color,
-                'date': vix_end_date.strftime("%Y-%m-%d")
-            })
+            'date': vix_end_date.strftime("%Y-%m-%d")
+        })
         except Exception as e:
             print(f"VIX 표시 오류: {e}")
             # 오류 발생 시 기본값 사용
@@ -2265,10 +2399,10 @@ def plot_main_chart_with_volume_profile_overlay(
     if box_ranges:
         print(f"박스권 {len(box_ranges)}개 표시 (현재 20일 + 21일전 20일)")
         for i, box in enumerate(box_ranges):
-            # 박스권별 색상 설정
+            # 박스권별 색상 설정 (현재 박스권도 21일전과 동일한 스타일)
             if "현재" in box['name']:
-                box_color = 'orange'
-                alpha_value = 0.3
+                box_color = 'blue'
+                alpha_value = 0.2
             else:  # 21일전 박스권
                 box_color = 'blue'
                 alpha_value = 0.2
@@ -2299,6 +2433,9 @@ def plot_main_chart_with_volume_profile_overlay(
             ax_main.plot([box['start_date'], box['end_date']], 
                         [box['center'], box['center']], 
                         color=box_color, linestyle='--', linewidth=1, alpha=0.7, zorder=6)
+            
+            # Volume Profile 바 표시
+            plot_volume_profile_bars(ax_main, box, box_color, currency_symbol)
     
     # Target 가격 라인들 추가 (옵션) - 비활성화됨
     # if show_target_prices:
@@ -2459,10 +2596,10 @@ def plot_main_chart_with_volume_profile_overlay(
         except Exception as e:
             print(f"검색기간 수익률 계산 오류: {e}")
             period_return = None
-        
-        # 전일대비 등락률 정보 추가
-        if daily_change:
-            change_info = f' {daily_change["direction"]} {daily_change["change_percentage"]:.2f}%'
+            
+            # 전일대비 등락률 정보 추가
+            if daily_change:
+                change_info = f' {daily_change["direction"]} {daily_change["change_percentage"]:.2f}%'
             if realtime_price is not None and realtime_local is not None:
                 price_info = f'[실시간가] {currency_symbol}{realtime_price:.2f} ({realtime_local.strftime("%H:%M")}){change_info}'
             else:
@@ -2507,7 +2644,7 @@ def plot_main_chart_with_volume_profile_overlay(
         ax_realtime.text(0.5, 0.5, info_text,
                         fontsize=8, ha='center', va='center',
                         bbox=dict(boxstyle="round,pad=0.5", 
-                                 facecolor='white', 
+                             facecolor='white', 
                                  edgecolor='darkorange', 
                                  linewidth=2.5, 
                                  alpha=0.95),
