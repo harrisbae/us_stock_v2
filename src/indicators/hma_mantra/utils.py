@@ -7,14 +7,60 @@ import pandas as pd
 import matplotlib.font_manager as fm
 
 def get_available_font():
-    """사용 가능한 폰트 반환"""
-    preferred_fonts = ['AppleGothic', 'Malgun Gothic', 'NanumGothic', 'Arial Unicode MS']
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    """사용 가능한 폰트 반환 - macOS 개선 버전"""
+    import platform
+    import os
     
-    for font in preferred_fonts:
-        if font in available_fonts:
-            return font
+    system = platform.system()
     
+    # macOS 전용 처리
+    if system == 'Darwin':
+        # AppleSDGothicNeo가 가장 안정적
+        mac_fonts = [
+            'AppleSDGothicNeo-Regular',
+            'Apple SD Gothic Neo',
+            'AppleGothic',
+            'Arial Unicode MS'
+        ]
+        
+        # 폰트 파일 직접 경로로 시도
+        font_paths = [
+            '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+            '/System/Library/Fonts/Supplemental/AppleGothic.ttf'
+        ]
+        
+        # 폰트 파일이 존재하면 직접 로드
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    prop = fm.FontProperties(fname=font_path)
+                    return prop.get_name()
+                except:
+                    continue
+        
+        # 설치된 폰트에서 찾기
+        available_fonts = [f.name for f in fm.fontManager.ttflist]
+        for font in mac_fonts:
+            if font in available_fonts:
+                return font
+    
+    # Windows
+    elif system == 'Windows':
+        preferred_fonts = ['Malgun Gothic', 'NanumGothic', 'Arial Unicode MS']
+        available_fonts = [f.name for f in fm.fontManager.ttflist]
+        for font in preferred_fonts:
+            if font in available_fonts:
+                return font
+    
+    # Linux
+    else:
+        preferred_fonts = ['NanumGothic', 'NanumBarunGothic', 'UnDotum']
+        available_fonts = [f.name for f in fm.fontManager.ttflist]
+        for font in preferred_fonts:
+            if font in available_fonts:
+                return font
+    
+    # 기본 폰트
     return 'DejaVu Sans'
 
 def to_float(val):

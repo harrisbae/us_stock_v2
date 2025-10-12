@@ -16,6 +16,9 @@ ANALYSIS_TYPE="technical"  # 기본값: 기술적 분석
 VOLUME_PROFILE_TYPE="none"  # 기본값: Volume Profile 없음
 USE_CURRENT_DATE=false  # 현재일시 기준 데이터 수집 옵션 추가
 AUTO_ADJUST="false"  # 기본값: unadjusted 가격 사용
+ELLIOTT_WAVE="false"  # 엘리엇 파동 분석 옵션
+ELLIOTT_MIN_WAVE_SIZE="3.0"  # 엘리엇 파동 최소 크기
+ELLIOTT_ZIGZAG_THRESHOLD="5.0"  # 엘리엇 파동 ZigZag 임계값
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -75,6 +78,18 @@ while [[ $# -gt 0 ]]; do
     --unadjusted)
       AUTO_ADJUST="false"
       shift
+      ;;
+    -e|--elliott)
+      ELLIOTT_WAVE="true"
+      shift
+      ;;
+    --elliott-min-wave)
+      ELLIOTT_MIN_WAVE_SIZE="$2"
+      shift 2
+      ;;
+    --elliott-zigzag)
+      ELLIOTT_ZIGZAG_THRESHOLD="$2"
+      shift 2
       ;;
     *)
       echo "알 수 없는 옵션: $1"
@@ -184,7 +199,7 @@ fi
 
 # 필수 인자 확인 (-s 또는 --file 중 하나는 필수)
 if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
-  echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE]"
+  echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE] [-e|--elliott]"
   echo "Options:"
   echo "  -s SYMBOL           단일 종목 분석"
   echo "  --file SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
@@ -200,6 +215,9 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "                      separate: 별도 영역에 Volume Profile"
   echo "                      overlay: 메인차트에 Volume Profile 오버레이"
   echo "                      compare: 다중 종목 비교 분석 (QQQ,TQQQ,SQQQ,SPY)"
+  echo "  -e, --elliott      엘리엇 파동 분석 활성화"
+  echo "  --elliott-min-wave 엘리엇 파동 최소 크기 (%, 기본값: 3.0)"
+  echo "  --elliott-zigzag   엘리엇 파동 ZigZag 임계값 (%, 기본값: 5.0)"
   echo ""
   echo "기간 설정 예시:"
   echo "  -p 30d            30일"
@@ -316,6 +334,35 @@ analyze_stock() {
             exit 1
             ;;
     esac
+    
+    # 엘리엇 파동 분석 (옵션이 활성화된 경우)
+    if [ "$ELLIOTT_WAVE" = "true" ]; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🌊 엘리엇 파동 분석 시작..."
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        # FROM_DATE와 TO_DATE 설정
+        if [ -z "$FROM_DATE" ] || [ -z "$TO_DATE" ]; then
+            # PERIOD 파싱해서 사용
+            python test/elliott_wave_test.py "$symbol" "$PERIOD" \
+                --min-wave-size "$ELLIOTT_MIN_WAVE_SIZE" \
+                --zigzag-threshold "$ELLIOTT_ZIGZAG_THRESHOLD" \
+                --auto_adjust "$AUTO_ADJUST"
+        else
+            # 날짜 범위로 사용
+            python test/elliott_wave_test.py "$symbol" \
+                --from "$FROM_DATE" \
+                --to "$TO_DATE" \
+                --min-wave-size "$ELLIOTT_MIN_WAVE_SIZE" \
+                --zigzag-threshold "$ELLIOTT_ZIGZAG_THRESHOLD" \
+                --auto_adjust "$AUTO_ADJUST"
+        fi
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "✅ 엘리엇 파동 분석 완료!"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    fi
 }
 
 # 종목 파일이 지정된 경우
