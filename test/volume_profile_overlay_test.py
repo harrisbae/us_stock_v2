@@ -25,6 +25,13 @@ def main():
     parser.add_argument('target_prices', nargs='?', default='', help='Target 가격들 (형식: buy:sell:stop)')
     parser.add_argument('show_targets', nargs='?', default='true', help='Target 가격 표시 여부 (기본값: true)')
     parser.add_argument('--auto_adjust', default='false', help='가격 조정 여부 (기본값: false)')
+    # 박스권 옵션들 추가
+    parser.add_argument('--show-box-ranges', default='true', help='박스권 표시 여부 (기본값: true)')
+    parser.add_argument('--box-period', type=int, default=20, help='박스권 계산 기간 (기본값: 20일)')
+    parser.add_argument('--num-boxes', type=int, default=2, help='표시할 박스권 개수 (기본값: 2)')
+    parser.add_argument('--box-overlap', type=int, default=5, help='박스권 간 겹치는 일수 (기본값: 5)')
+    parser.add_argument('--box-style', default='default', help='박스권 스타일 (default/gradient/rainbow, 기본값: default)')
+    parser.add_argument('--avoid-time-overlap', default='true', help='시간축 겹침 방지 여부 (기본값: true)')
     
     # argparse로 인자 파싱
     args = parser.parse_args()
@@ -35,6 +42,14 @@ def main():
     rsi_window = args.rsi_window
     rsi_pivot = args.rsi_pivot
     auto_adjust = args.auto_adjust.lower() in ['true', '1', 'yes', 'y']
+    
+    # 박스권 옵션들
+    show_box_ranges = args.show_box_ranges.lower() in ['true', '1', 'yes', 'y']
+    box_period = args.box_period
+    num_boxes = args.num_boxes
+    box_overlap = args.box_overlap
+    box_style = args.box_style
+    avoid_time_overlap = args.avoid_time_overlap.lower() in ['true', '1', 'yes', 'y']
     
     # Target 가격 옵션들
     target_buy_price = None
@@ -107,7 +122,14 @@ def main():
         target_buy_price=target_buy_price,
         target_sell_price=target_sell_price,
         stop_loss_price=stop_loss_price,
-        show_target_prices=show_target_prices
+        show_target_prices=show_target_prices,
+        # 박스권 옵션들 추가
+        show_box_ranges=show_box_ranges,
+        box_period=box_period,
+        num_boxes=num_boxes,
+        box_overlap=box_overlap,
+        box_style=box_style,
+        avoid_time_overlap=avoid_time_overlap
     )
     
     print(f"차트 저장 완료: {save_path}")

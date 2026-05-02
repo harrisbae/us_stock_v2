@@ -16,6 +16,7 @@ from ..utils import get_available_font
 import matplotlib.patches as mpatches
 import pandas_datareader.data as web
 from datetime import datetime, timedelta
+import os
 
 def calculate_volume_profile(box_data, price_bins=15):
     """
@@ -91,106 +92,175 @@ def calculate_volume_profile(box_data, price_bins=15):
         print(f"Volume Profile 계산 오류: {e}")
         return {}
 
-def calculate_box_ranges(data, box_period=20, min_box_days=5):
+def calculate_box_ranges(data, box_period=20, num_boxes=2, overlap_days=5, min_box_days=5, avoid_time_overlap=True):
     """
-    전일 기준 20일 박스권과 21일전 기준 20일 박스권을 계산합니다.
+    여러 개의 박스권을 동적으로 계산합니다.
     
     Args:
         data: OHLCV 데이터
         box_period: 박스권 계산 기간 (기본값: 20일)
+        num_boxes: 표시할 박스권 개수 (기본값: 2개)
+        overlap_days: 박스권 간 겹치는 일수 (기본값: 5일, avoid_time_overlap=True일 때 무시)
         min_box_days: 최소 박스 유지 기간 (기본값: 5일)
+        avoid_time_overlap: 시간축 겹침 방지 여부 (기본값: True)
     
     Returns:
-        list: 박스권 정보 리스트 [시작일, 종료일, 고가, 저가, 박스명]
+        list: 박스권 정보 리스트
     """
     try:
         box_ranges = []
         data_len = len(data)
         
-        # 1. 전일 기준 20일 박스권 (마지막 20일)
-        if data_len >= box_period:
-            # 전일 기준 20일 박스권 데이터
-            box_data = data.iloc[-box_period:]
+        # 박스권 개수만큼 반복
+        for i in range(num_boxes):
+            # 각 박스권의 시작 인덱스 계산
+            if i == 0:
+                # 현재 박스권 (마지막 box_period일)
+                start_idx = data_len - box_period
+                end_idx = data_len
+                box_name = "현재 박스권"
+            else:
+                if avoid_time_overlap:
+                    # 시간축 겹침 방지: 이전 박스권과 완전히 분리
+                    start_idx = data_len - box_period - (i * box_period)
+                    end_idx = start_idx + box_period
+                else:
+                    # 기존 방식: overlap_days만큼 겹침 허용
+                    start_idx = data_len - box_period - (i * (box_period - overlap_days))
+                    end_idx = start_idx + box_period
+                box_name = f"{i+1}번째 박스권"
+            
+            # 데이터 범위 체크
+            if start_idx < 0 or end_idx > data_len or start_idx >= end_idx:
+                continue
+                
+            # 박스권 데이터 추출
+            box_data = data.iloc[start_idx:end_idx]
             
             # 고가와 저가 계산
             box_high = box_data['High'].max()
             box_low = box_data['Low'].min()
-            
-            # 박스권 범위 계산
             box_range = box_high - box_low
-            box_center = (box_high + box_low) / 2
             
-            # 박스권이 유효한지 확인 (최소 범위 체크)
+            # 유효한 박스권인지 확인 (최소 범위 체크)
             if box_range > 0:
-                # 현재 가격 (전일 종가)
-                current_price = data.iloc[-1]['Close']
-                
-                # 박스권 시작일과 종료일 (전일 기준 20일)
-                start_date = data.index[-box_period]
-                end_date = data.index[-1]
-                
-                # 박스명 생성
-                box_name = f"현재 20일 박스권"
-                
-                # Volume Profile 계산
-                volume_profile_data = calculate_volume_profile(box_data)
-                
-                box_ranges.append({
-                    'start_date': start_date,
-                    'end_date': end_date,
+                # 박스권 정보 생성
+                box_info = {
+                    'start_date': data.index[start_idx],
+                    'end_date': data.index[end_idx-1],
                     'high': box_high,
                     'low': box_low,
                     'range': box_range,
-                    'center': box_center,
+                    'center': (box_high + box_low) / 2,
                     'name': box_name,
-                    'current_price': current_price,
-                    'volume_profile': volume_profile_data
-                })
-        
-        # 2. 21일전 기준 20일 박스권 (21일전부터 20일간)
-        if data_len >= box_period + 21:
-            # 21일전 기준 20일 박스권 데이터
-            box_data = data.iloc[-(box_period + 21):-21]
-            
-            # 고가와 저가 계산
-            box_high = box_data['High'].max()
-            box_low = box_data['Low'].min()
-            
-            # 박스권 범위 계산
-            box_range = box_high - box_low
-            box_center = (box_high + box_low) / 2
-            
-            # 박스권이 유효한지 확인 (최소 범위 체크)
-            if box_range > 0:
-                # 21일전 종가
-                current_price = data.iloc[-21]['Close']
+                    'period': box_period,
+                    'index': i,
+                    'volume_profile': calculate_volume_profile(box_data)
+                }
                 
-                # 박스권 시작일과 종료일 (21일전 기준 20일)
-                start_date = data.index[-(box_period + 21)]
-                end_date = data.index[-21]
+                # 현재 박스권의 경우 현재 가격 추가
+                if i == 0:
+                    box_info['current_price'] = data.iloc[-1]['Close']
                 
-                # 박스명 생성
-                box_name = f"21일전 20일 박스권"
+                # 박스권 정보 출력 (디버깅용)
+                print(f"박스권 {i+1}: {box_name} | 날짜: {data.index[start_idx].strftime('%Y-%m-%d')} ~ {data.index[end_idx-1].strftime('%Y-%m-%d')} | 가격범위: ${box_low:.2f} ~ ${box_high:.2f} | 범위: ${box_range:.2f}")
                 
-                # Volume Profile 계산
-                volume_profile_data = calculate_volume_profile(box_data)
-                
-                box_ranges.append({
-                    'start_date': start_date,
-                    'end_date': end_date,
-                    'high': box_high,
-                    'low': box_low,
-                    'range': box_range,
-                    'center': box_center,
-                    'name': box_name,
-                    'current_price': current_price,
-                    'volume_profile': volume_profile_data
-                })
+                box_ranges.append(box_info)
         
         return box_ranges
     except Exception as e:
         print(f"박스권 계산 오류: {e}")
         return []
+
+def get_box_style_config(box_style, num_boxes):
+    """
+    박스권 스타일 설정을 반환합니다.
+    
+    Args:
+        box_style: 박스권 스타일 ('default', 'gradient', 'rainbow')
+        num_boxes: 박스권 개수
+    
+    Returns:
+        dict: 색상, 투명도, 라인 스타일 설정
+    """
+    if box_style == 'gradient':
+        # 그라디언트 스타일: 최신 박스권일수록 진하게
+        colors = ['blue'] * num_boxes
+        alphas = [0.4 - (i * 0.1) for i in range(num_boxes)]
+        alphas = [max(0.1, alpha) for alpha in alphas]  # 최소 0.1 유지
+        linewidths = [2.0 - (i * 0.2) for i in range(num_boxes)]
+        linewidths = [max(1.0, width) for width in linewidths]  # 최소 1.0 유지
+    elif box_style == 'rainbow':
+        # 무지개 스타일: 각 박스권마다 다른 색상
+        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray']
+        alphas = [0.3] * num_boxes
+        linewidths = [1.5] * num_boxes
+    else:  # default
+        # 기본 스타일: 모든 박스권 동일
+        colors = ['blue'] * num_boxes
+        alphas = [0.2] * num_boxes
+        linewidths = [1.5] * num_boxes
+    
+    return {
+        'colors': colors,
+        'alphas': alphas,
+        'linewidths': linewidths
+    }
+
+def plot_box_ranges_with_style(ax, box_ranges, box_style='default', currency_symbol='$'):
+    """
+    박스권을 스타일에 따라 시각적으로 구분하여 표시합니다.
+    모든 박스권을 실제 가격 위치에 표시하며, 색상과 투명도로 시각적으로 구분합니다.
+    
+    Args:
+        ax: matplotlib axes 객체
+        box_ranges: 박스권 정보 리스트
+        box_style: 박스권 스타일 ('default', 'gradient', 'rainbow')
+        currency_symbol: 통화 기호
+    """
+    if not box_ranges:
+        return
+    
+    # 스타일 설정 가져오기
+    style_config = get_box_style_config(box_style, len(box_ranges))
+    
+    for i, box in enumerate(box_ranges):
+        # 스타일 설정 적용
+        box_color = style_config['colors'][i % len(style_config['colors'])]
+        alpha_value = style_config['alphas'][i % len(style_config['alphas'])]
+        linewidth = style_config['linewidths'][i % len(style_config['linewidths'])]
+        
+        # 실제 가격 위치 사용 (오프셋 없음)
+        box_low = box['low']
+        box_high = box['high']
+        
+        # 박스권 사각형 그리기 (실제 가격 위치)
+        box_width = (box['end_date'] - box['start_date']).days
+        box_rect = mpatches.Rectangle(
+            (mdates.date2num(box['start_date']), box_low),
+            box_width,
+            box_high - box_low,
+            linewidth=linewidth,
+            edgecolor=box_color,
+            facecolor=box_color,
+            alpha=alpha_value,
+            zorder=10-i  # 최신 박스권일수록 위에 표시
+        )
+        ax.add_patch(box_rect)
+        
+        # 박스권 라벨 (현재 박스권만 표시 또는 rainbow 스타일일 때 모두 표시)
+        if i == 0 or box_style == 'rainbow':
+            box_center_x = mdates.date2num(box['start_date']) + box_width / 2
+            label_text = f"{box['name']}\n{currency_symbol}{box_low:.2f}-{currency_symbol}{box_high:.2f}"
+            
+            ax.text(box_center_x, box_high + (box['range'] * 0.05), 
+                    label_text,
+                    ha='center', va='bottom', fontsize=8, 
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor=box_color, alpha=0.8),
+                    color='white', fontweight='bold')
+        
+        # 박스권별 POC 표시 (실제 가격 위치)
+        plot_volume_profile_bars(ax, box, box_color, currency_symbol)
 
 def plot_volume_profile_bars(ax, box, color, currency_symbol='$'):
     """
@@ -227,18 +297,20 @@ def plot_volume_profile_bars(ax, box, color, currency_symbol='$'):
             poc_price = float(box['center'])
             print(f"기본 POC 가격: {currency_symbol}{poc_price:.2f} ({box.get('name', 'Unknown')})")
         
+        # POC 라인 표시 위치 (실제 가격 위치, 오프셋 없음)
         poc_x_start = mdates.date2num(start_date)
         poc_x_end = mdates.date2num(end_date)
         
-        # POC 수평선 (간단하게)
+        # POC 수평선 (점선으로 표시)
         ax.plot([poc_x_start, poc_x_end], [poc_price, poc_price], 
-               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=7)
+               color=color, linewidth=1.5, linestyle='--', alpha=0.9, zorder=12)
         
         # POC 가격 표시 (중앙에만)
-        ax.text(box_center_x, poc_price + (box['range'] * 0.02), 
-               f"{currency_symbol}{poc_price:.2f}",
-               ha='center', va='bottom', fontsize=8, fontweight='bold',
-               color=color, zorder=8)
+        box_center_x = poc_x_start + (poc_x_end - poc_x_start) / 2
+        ax.text(box_center_x, poc_price, f'POC: {currency_symbol}{poc_price:.2f}', 
+               fontsize=7, color=color, ha='center', va='bottom', fontweight='bold',
+               bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8, edgecolor=color), 
+               zorder=13)
         
     except Exception as e:
         print(f"POC 표시 오류: {e}")
@@ -2044,6 +2116,13 @@ def plot_main_chart_with_volume_profile_overlay(
     target_sell_price: float = None,   # Target 목표가
     stop_loss_price: float = None,     # 손절가
     show_target_prices: bool = False,   # Target 가격 표시 여부
+    # 박스권 옵션들 추가
+    show_box_ranges: bool = True,      # 박스권 표시 여부
+    box_period: int = 20,             # 박스권 계산 기간
+    num_boxes: int = 2,               # 표시할 박스권 개수 (기본값: 2개로 유지)
+    box_overlap: int = 5,             # 박스권 간 겹치는 일수
+    box_style: str = 'default',       # 박스권 스타일 ('default', 'gradient', 'rainbow')
+    avoid_time_overlap: bool = True,  # 시간축 겹침 방지 여부
 ):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
@@ -2092,8 +2171,14 @@ def plot_main_chart_with_volume_profile_overlay(
     else:
         print("⚠️ TNX 또는 인플레이션 데이터 없음으로 TNX 실질금리 계산 불가")
     
-    # 박스권 계산
-    box_ranges = calculate_box_ranges(ohlcv_data, box_period=20, min_box_days=5)
+    # 박스권 계산 (옵션에 따라)
+    if show_box_ranges:
+        box_ranges = calculate_box_ranges(ohlcv_data, box_period=box_period, num_boxes=num_boxes, overlap_days=box_overlap, avoid_time_overlap=avoid_time_overlap)
+        time_overlap_mode = "겹침방지" if avoid_time_overlap else f"겹침허용({box_overlap}일)"
+        print(f"박스권 설정: 기간={box_period}일, 개수={num_boxes}개, 시간축={time_overlap_mode}, 스타일={box_style}")
+    else:
+        box_ranges = []
+        print("박스권 표시 비활성화")
     
     # VIX 데이터 길이 맞추기 (실제 데이터 우선, 동적 생성은 최후의 수단)
     if not vix.empty and len(vix) < len(ohlcv_data):
@@ -2681,47 +2766,10 @@ def plot_main_chart_with_volume_profile_overlay(
     # SMA200일 이동평균선 추가
     ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='SMA200', alpha=0.8)
     
-    # 박스권 표시 (현재 20일 박스권 + 21일전 20일 박스권)
-    if box_ranges:
-        print(f"박스권 {len(box_ranges)}개 표시 (현재 20일 + 21일전 20일)")
-        for i, box in enumerate(box_ranges):
-            # 박스권별 색상 설정 (현재 박스권도 21일전과 동일한 스타일)
-            if "현재" in box['name']:
-                box_color = 'blue'
-                alpha_value = 0.2
-            else:  # 21일전 박스권
-                box_color = 'blue'
-                alpha_value = 0.2
-            
-            # 박스권 사각형 그리기
-            box_width = (box['end_date'] - box['start_date']).days
-            box_rect = mpatches.Rectangle(
-                (mdates.date2num(box['start_date']), box['low']),
-                box_width,
-                box['range'],
-                linewidth=1.5,
-                edgecolor=box_color,
-                facecolor=box_color,
-                alpha=alpha_value,
-                zorder=5
-            )
-            ax_main.add_patch(box_rect)
-            
-            # 박스권 라벨
-            box_center_x = mdates.date2num(box['start_date']) + box_width / 2
-            ax_main.text(box_center_x, box['high'] + (box['range'] * 0.1), 
-                        f"{box['name']}\n{currency_symbol}{box['low']:.2f}-{currency_symbol}{box['high']:.2f}",
-                        ha='center', va='bottom', fontsize=8, 
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor=box_color, alpha=0.8),
-                        color='white', fontweight='bold')
-            
-            # 박스권 중앙선
-            ax_main.plot([box['start_date'], box['end_date']], 
-                        [box['center'], box['center']], 
-                        color=box_color, linestyle='--', linewidth=1, alpha=0.7, zorder=6)
-            
-            # Volume Profile 바 표시
-            plot_volume_profile_bars(ax_main, box, box_color, currency_symbol)
+    # 박스권 표시 (옵션에 따라)
+    if show_box_ranges and box_ranges:
+        print(f"박스권 {len(box_ranges)}개 표시")
+        plot_box_ranges_with_style(ax_main, box_ranges, box_style, currency_symbol)
     
     # Target 가격 라인들 추가 (옵션) - 비활성화됨
     # if show_target_prices:
@@ -3129,6 +3177,11 @@ def plot_main_chart_with_volume_profile_overlay(
         f.write(f"{signal_info['signal']}\n")
     
     print(f"신호 파일 저장 완료: {signal_file_path}")
+    
+    # 매수시그널 테이블 파일 경로 출력
+    buy_signals_table_path = f"output/hma_mantra/{ticker}/{ticker}_buy_signals_table.txt"
+    if os.path.exists(buy_signals_table_path):
+        print(f"매수시그널 테이블: {buy_signals_table_path}")
 
     # 매수/매도 신호 표시
     for signal in trade_signals:

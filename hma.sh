@@ -19,6 +19,13 @@ AUTO_ADJUST="false"  # 기본값: unadjusted 가격 사용
 ELLIOTT_WAVE="false"  # 엘리엇 파동 분석 옵션
 ELLIOTT_MIN_WAVE_SIZE="3.0"  # 엘리엇 파동 최소 크기
 ELLIOTT_ZIGZAG_THRESHOLD="5.0"  # 엘리엇 파동 ZigZag 임계값
+# 박스권 옵션들
+SHOW_BOX_RANGES="true"  # 박스권 표시 여부
+BOX_PERIOD="20"  # 박스권 계산 기간
+NUM_BOXES="2"  # 표시할 박스권 개수
+BOX_OVERLAP="5"  # 박스권 간 겹치는 일수
+BOX_STYLE="default"  # 박스권 스타일 ('default', 'gradient', 'rainbow')
+AVOID_TIME_OVERLAP="true"  # 시간축 겹침 방지 여부
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -90,6 +97,30 @@ while [[ $# -gt 0 ]]; do
     --elliott-zigzag)
       ELLIOTT_ZIGZAG_THRESHOLD="$2"
       shift 2
+      ;;
+    --no-box-ranges)
+      SHOW_BOX_RANGES="false"
+      shift
+      ;;
+    --box-period)
+      BOX_PERIOD="$2"
+      shift 2
+      ;;
+    --num-boxes)
+      NUM_BOXES="$2"
+      shift 2
+      ;;
+    --box-overlap)
+      BOX_OVERLAP="$2"
+      shift 2
+      ;;
+    --box-style)
+      BOX_STYLE="$2"
+      shift 2
+      ;;
+    --allow-time-overlap)
+      AVOID_TIME_OVERLAP="false"
+      shift
       ;;
     *)
       echo "알 수 없는 옵션: $1"
@@ -199,7 +230,7 @@ fi
 
 # 필수 인자 확인 (-s 또는 --file 중 하나는 필수)
 if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
-  echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE] [-e|--elliott]"
+  echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE] [-e|--elliott] [박스권 옵션들]"
   echo "Options:"
   echo "  -s SYMBOL           단일 종목 분석"
   echo "  --file SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
@@ -218,6 +249,14 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  -e, --elliott      엘리엇 파동 분석 활성화"
   echo "  --elliott-min-wave 엘리엇 파동 최소 크기 (%, 기본값: 3.0)"
   echo "  --elliott-zigzag   엘리엇 파동 ZigZag 임계값 (%, 기본값: 5.0)"
+  echo ""
+  echo "박스권 옵션들:"
+  echo "  --no-box-ranges    박스권 표시 비활성화"
+  echo "  --box-period       박스권 계산 기간 (일수, 기본값: 20)"
+  echo "  --num-boxes        표시할 박스권 개수 (기본값: 2)"
+  echo "  --box-overlap      박스권 간 겹치는 일수 (기본값: 5)"
+  echo "  --box-style        박스권 스타일 (default/gradient/rainbow, 기본값: default)"
+  echo "  --allow-time-overlap 시간축 겹침 허용 (기본값: 겹침방지)"
   echo ""
   echo "기간 설정 예시:"
   echo "  -p 30d            30일"
@@ -277,7 +316,10 @@ analyze_stock() {
                     ;;
                 "overlay")
                     echo "Volume Profile (오버레이) 생성 중..."
-                    python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST"
+                    python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST" \
+                        --show-box-ranges "$SHOW_BOX_RANGES" --box-period "$BOX_PERIOD" \
+                        --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
+                        --avoid-time-overlap "$AVOID_TIME_OVERLAP"
                     ;;
                 "none"|*)
                     echo "기본 기술적 분석 실행..."
@@ -317,7 +359,10 @@ analyze_stock() {
             # Volume Profile 차트 생성
             if [ "$VOLUME_PROFILE_TYPE" = "overlay" ]; then
                 echo "Volume Profile (오버레이) 차트 생성 중..."
-                python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST"
+                python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST" \
+                    --show-box-ranges "$SHOW_BOX_RANGES" --box-period "$BOX_PERIOD" \
+                    --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
+                    --avoid-time-overlap "$AVOID_TIME_OVERLAP"
                 echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_overlay_${PERIOD}_chart.png"
             elif [ "$VOLUME_PROFILE_TYPE" = "separate" ]; then
                 echo "Volume Profile (별도 영역) 차트 생성 중..."
@@ -468,4 +513,37 @@ echo -e "\n=== 매수/매도 신호 요약 ==="
 echo "파일 위치: $SUMMARY_FILE"
 echo "-------------------"
 cat "$SUMMARY_FILE"
-echo "-------------------" 
+echo "-------------------"
+
+# 매수시그널 테이블 파일 경로 출력
+if [ ! -z "$SYMBOL" ]; then
+    BUY_SIGNALS_TABLE="output/hma_mantra/${SYMBOL}/${SYMBOL}_buy_signals_table.txt"
+    if [ -f "$BUY_SIGNALS_TABLE" ]; then
+        echo -e "\n📊 매수시그널 테이블 파일:"
+        echo "   $BUY_SIGNALS_TABLE"
+    fi
+elif [ ! -z "$SYMBOL_FILE" ]; then
+    # 파일 목록인 경우 일자별 매수시그널 테이블 생성
+    echo -e "\n📊 일자별 매수시그널 테이블 생성 중..."
+    
+    # 날짜 범위 추출
+    if [ ! -z "$FROM_DATE" ]; then
+        START_DATE="$FROM_DATE"
+    else
+        START_DATE="2025-01-01"
+    fi
+    
+    if [ ! -z "$TO_DATE" ]; then
+        END_DATE="$TO_DATE"
+    else
+        END_DATE=$(date +%Y-%m-%d)
+    fi
+    
+    # Python 스크립트 실행하여 일자별 테이블 생성
+    BUY_SIGNALS_BY_DATE=$(python generate_buy_signals_by_date.py "$SYMBOL_FILE" "$START_DATE" "$END_DATE" 2>&1 | tail -1)
+    
+    if [ ! -z "$BUY_SIGNALS_BY_DATE" ] && [ -f "$BUY_SIGNALS_BY_DATE" ]; then
+        echo -e "\n📅 일자별 매수시그널 테이블 파일:"
+        echo "   $BUY_SIGNALS_BY_DATE"
+    fi
+fi 
