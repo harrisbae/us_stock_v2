@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INHAE D&C 명함 디자인 컬러 베리에이션</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Color Palette */
+            --c-orange: #D97706;
+            --c-navy: #1E3A8A;
+            --c-green: #15803D;
+            --c-charcoal: #262626;
+            --c-teal: #0F766E;
+            
+            --bg-body: #f3f4f6;
+            --bg-white: #ffffff;
+            --text-main: #1f2937;
+            --text-sub: #6b7280;
+        }
+
+        /* Dynamic Theme Variables (Default) */
+        .theme-orange { --theme-color: var(--c-orange); --theme-name: "Original Orange"; }
+        .theme-navy   { --theme-color: var(--c-navy); --theme-name: "Corporate Navy"; }
+        .theme-green  { --theme-color: var(--c-green); --theme-name: "Sustainable Green"; }
+        .theme-charcoal { --theme-color: var(--c-charcoal); --theme-name: "Modern Charcoal"; }
+        .theme-teal   { --theme-color: var(--c-teal); --theme-name: "Innovation Teal"; }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-body);
+            margin: 0;
+            padding: 40px 20px;
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: 900;
+            color: var(--c-charcoal);
+        }
+
+        p.subtitle {
+            color: var(--text-sub);
+            line-height: 1.6;
+        }
+
+        /* Grid Layout for Colors */
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 60px;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .color-section {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .color-badge {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: var(--theme-color);
+            margin-right: 12px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .cards-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+        }
+
+        /* Card Styles */
+        .card-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-sub);
+        }
+
+        .scene {
+            width: 320px; /* Standard Business Card Ratio */
+            height: 180px;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+
+        .card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+
+        .scene:hover .card {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .scene.is-flipped .card {
+            transform: rotateY(180deg);
+        }
+        
+        .scene.is-flipped:hover .card {
+            transform: rotateY(180deg) translateY(-2px);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+            background: white;
+        }
+
+        /* --- Common SVG Logo Components --- */
+        .logo-svg { width: auto; height: 36px; }
+        .logo-text { font-weight: 900; font-size: 16px; letter-spacing: -0.5px; margin-top: 4px; }
+        .logo-sub { font-size: 5px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+        /* =========================================
+           Type A: Clean White (White BG, Colored Elements)
+           ========================================= */
+        .type-a .card-front {
+            background-color: white;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #eee; /* Subtle border for white card */
+        }
+        
+        .type-a .card-front .logo-fill { fill: var(--theme-color); }
+        .type-a .card-front .logo-text { color: var(--theme-color); }
+        .type-a .card-front .logo-sub { color: #999; }
+        
+        /* Bottom accent line for Type A */
+        .type-a .card-front::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 4px;
+            background-color: var(--theme-color);
+        }
+
+        .type-a .card-back {
+            padding: 24px;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 1px solid #eee;
+        }
+
+        .type-a-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .type-a-name h3 { margin: 0; font-size: 16px; color: #111; }
+        .type-a-name p { margin: 2px 0 0; font-size: 9px; color: var(--theme-color); font-weight: 700; }
+        .type-a-logo-mini { height: 16px; }
+        .type-a-logo-mini .logo-fill { fill: #ccc; } /* Subtle logo on back */
+
+        .type-a-info { font-size: 8px; color: #555; line-height: 1.8; }
+        .type-a-info div { display: flex; align-items: center; gap: 6px; }
+        .type-a-icon { width: 10px; height: 10px; fill: var(--theme-color); }
+
+
+        /* =========================================
+           Type B: Solid Impact (Colored BG, White Elements)
+           ========================================= */
+        .type-b .card-front {
+            background-color: var(--theme-color);
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .type-b .card-front .logo-svg { height: 44px; }
+        .type-b .card-front .logo-fill { fill: white; }
+        .type-b .card-front .text-group { text-align: left; color: white; }
+        .type-b .card-front .logo-text { color: white; font-size: 18px; margin-top: 0; }
+        .type-b .card-front .logo-sub { color: rgba(255,255,255,0.6); }
+
+        .type-b .card-back {
+            background-color: white; /* Clean back for readability */
+            padding: 24px;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            border: 1px solid #eee;
+        }
+
+        .type-b .card-back::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 6px;
+            background-color: var(--theme-color);
+        }
+
+        .type-b-content { margin-left: 15px; width: 100%; }
+        .type-b-name { margin-bottom: 15px; }
+        .type-b-name h3 { margin: 0; font-size: 16px; color: #111; }
+        .type-b-name span { font-size: 9px; color: #666; font-weight: 500; display: block; margin-top: 2px;}
+        
+        .type-b-divider { width: 20px; height: 1px; background: #ddd; margin-bottom: 15px; }
+
+        .type-b-details { font-size: 8px; color: #666; line-height: 1.7; display: grid; grid-template-columns: 1fr 1.2fr; gap: 4px; }
+        .type-b-addr { grid-column: span 2; margin-top: 4px; }
+        
+        /* Helper */
+        .flip-hint {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #999;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .flip-icon { width: 12px; height: 12px; fill: #999; }
+
+        @media (min-width: 768px) {
+            .cards-row { flex-wrap: nowrap; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>INHAE D&C Card Collection</h1>
+        <p class="subtitle">
+            CI 가이드의 5가지 컬러 팔레트를 적용한 명함 디자인입니다.<br>
+            각 컬러마다 <strong>Type A (Clean)</strong>와 <strong>Type B (Impact)</strong> 두 가지 스타일을 제안합니다.
+        </p>
+    </header>
+
+    <div class="grid-container">
+
+        <!-- 1. Original Orange -->
+        <div class="color-section theme-orange">
+            <div class="section-header">
+                <span class="color-badge"></span>
+                <span class="section-title">Original Orange (#D97706)</span>
+            </div>
+            <div class="cards-row">
+                <!-- Type A -->
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-a">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80">
+                                    <path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" />
+                                    <path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" />
+                                    <path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" />
+                                </svg>
+                                <div class="logo-text">INHAE D&C</div>
+                                <div class="logo-sub">DEVELOPMENT</div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-a-header">
+                                    <div class="type-a-name">
+                                        <h3>홍 길 동</h3>
+                                        <p>대표이사 / CEO</p>
+                                    </div>
+                                    <svg class="type-a-logo-mini" viewBox="0 0 100 80">
+                                        <path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" />
+                                        <path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" />
+                                        <path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" />
+                                    </svg>
+                                </div>
+                                <div class="type-a-info">
+                                    <div>T. 02-1234-5678</div>
+                                    <div>M. 010-1234-5678</div>
+                                    <div>E. ceo@inhaednc.com</div>
+                                    <div>A. 서울 강남구 테헤란로 123, 인해타워 15F</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type A: Clean White</div>
+                </div>
+
+                <!-- Type B -->
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-b">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80">
+                                    <path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" />
+                                    <path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" />
+                                    <path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" />
+                                </svg>
+                                <div class="text-group">
+                                    <div class="logo-text">INHAE D&C</div>
+                                    <div class="logo-sub">DEVELOPMENT</div>
+                                </div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-b-content">
+                                    <div class="type-b-name">
+                                        <h3>Hong Gil Dong</h3>
+                                        <span>Representative Director</span>
+                                    </div>
+                                    <div class="type-b-divider"></div>
+                                    <div class="type-b-details">
+                                        <div>+82 10-1234-5678</div>
+                                        <div>ceo@inhaednc.com</div>
+                                        <div>+82 02-1234-5678</div>
+                                        <div>www.inhaednc.com</div>
+                                        <div class="type-b-addr">123, Teheran-ro, Gangnam-gu, Seoul</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type B: Solid Impact</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Corporate Navy -->
+        <div class="color-section theme-navy">
+            <div class="section-header">
+                <span class="color-badge"></span>
+                <span class="section-title">Corporate Navy (#1E3A8A)</span>
+            </div>
+            <div class="cards-row">
+                <!-- Type A -->
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-a">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80">
+                                    <path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" />
+                                    <path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" />
+                                    <path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" />
+                                </svg>
+                                <div class="logo-text">INHAE D&C</div>
+                                <div class="logo-sub">DEVELOPMENT</div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-a-header">
+                                    <div class="type-a-name">
+                                        <h3>홍 길 동</h3>
+                                        <p>대표이사 / CEO</p>
+                                    </div>
+                                    <svg class="type-a-logo-mini" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                </div>
+                                <div class="type-a-info">
+                                    <div>T. 02-1234-5678</div>
+                                    <div>M. 010-1234-5678</div>
+                                    <div>E. ceo@inhaednc.com</div>
+                                    <div>A. 서울 강남구 테헤란로 123, 인해타워 15F</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type A: Clean White</div>
+                </div>
+
+                <!-- Type B -->
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-b">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80">
+                                    <path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" />
+                                    <path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" />
+                                    <path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" />
+                                </svg>
+                                <div class="text-group">
+                                    <div class="logo-text">INHAE D&C</div>
+                                    <div class="logo-sub">DEVELOPMENT</div>
+                                </div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-b-content">
+                                    <div class="type-b-name">
+                                        <h3>Hong Gil Dong</h3>
+                                        <span>Representative Director</span>
+                                    </div>
+                                    <div class="type-b-divider"></div>
+                                    <div class="type-b-details">
+                                        <div>+82 10-1234-5678</div>
+                                        <div>ceo@inhaednc.com</div>
+                                        <div>+82 02-1234-5678</div>
+                                        <div>www.inhaednc.com</div>
+                                        <div class="type-b-addr">123, Teheran-ro, Gangnam-gu, Seoul</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type B: Solid Impact</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Sustainable Green -->
+        <div class="color-section theme-green">
+            <div class="section-header">
+                <span class="color-badge"></span>
+                <span class="section-title">Sustainable Green (#15803D)</span>
+            </div>
+            <div class="cards-row">
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-a">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="logo-text">INHAE D&C</div>
+                                <div class="logo-sub">DEVELOPMENT</div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-a-header">
+                                    <div class="type-a-name"><h3>홍 길 동</h3><p>대표이사 / CEO</p></div>
+                                    <svg class="type-a-logo-mini" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                </div>
+                                <div class="type-a-info"><div>T. 02-1234-5678</div><div>M. 010-1234-5678</div><div>E. ceo@inhaednc.com</div><div>A. 서울 강남구 테헤란로 123, 인해타워 15F</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type A: Clean White</div>
+                </div>
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-b">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="text-group"><div class="logo-text">INHAE D&C</div><div class="logo-sub">DEVELOPMENT</div></div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-b-content">
+                                    <div class="type-b-name"><h3>Hong Gil Dong</h3><span>Representative Director</span></div>
+                                    <div class="type-b-divider"></div>
+                                    <div class="type-b-details"><div>+82 10-1234-5678</div><div>ceo@inhaednc.com</div><div>+82 02-1234-5678</div><div>www.inhaednc.com</div><div class="type-b-addr">123, Teheran-ro, Gangnam-gu, Seoul</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type B: Solid Impact</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Modern Charcoal -->
+        <div class="color-section theme-charcoal">
+            <div class="section-header">
+                <span class="color-badge"></span>
+                <span class="section-title">Modern Charcoal (#262626)</span>
+            </div>
+            <div class="cards-row">
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-a">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="logo-text">INHAE D&C</div>
+                                <div class="logo-sub">DEVELOPMENT</div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-a-header">
+                                    <div class="type-a-name"><h3>홍 길 동</h3><p>대표이사 / CEO</p></div>
+                                    <svg class="type-a-logo-mini" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                </div>
+                                <div class="type-a-info"><div>T. 02-1234-5678</div><div>M. 010-1234-5678</div><div>E. ceo@inhaednc.com</div><div>A. 서울 강남구 테헤란로 123, 인해타워 15F</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type A: Clean White</div>
+                </div>
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-b">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="text-group"><div class="logo-text">INHAE D&C</div><div class="logo-sub">DEVELOPMENT</div></div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-b-content">
+                                    <div class="type-b-name"><h3>Hong Gil Dong</h3><span>Representative Director</span></div>
+                                    <div class="type-b-divider"></div>
+                                    <div class="type-b-details"><div>+82 10-1234-5678</div><div>ceo@inhaednc.com</div><div>+82 02-1234-5678</div><div>www.inhaednc.com</div><div class="type-b-addr">123, Teheran-ro, Gangnam-gu, Seoul</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type B: Solid Impact</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Innovation Teal -->
+        <div class="color-section theme-teal">
+            <div class="section-header">
+                <span class="color-badge"></span>
+                <span class="section-title">Innovation Teal (#0F766E)</span>
+            </div>
+            <div class="cards-row">
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-a">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="logo-text">INHAE D&C</div>
+                                <div class="logo-sub">DEVELOPMENT</div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-a-header">
+                                    <div class="type-a-name"><h3>홍 길 동</h3><p>대표이사 / CEO</p></div>
+                                    <svg class="type-a-logo-mini" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                </div>
+                                <div class="type-a-info"><div>T. 02-1234-5678</div><div>M. 010-1234-5678</div><div>E. ceo@inhaednc.com</div><div>A. 서울 강남구 테헤란로 123, 인해타워 15F</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type A: Clean White</div>
+                </div>
+                <div class="card-wrapper">
+                    <div class="scene" onclick="this.classList.toggle('is-flipped')">
+                        <div class="card type-b">
+                            <div class="card-face card-front">
+                                <svg class="logo-svg" viewBox="0 0 100 80"><path class="logo-fill" d="M15 80 V 30 L 35 15 V 80 H 15 Z" /><path class="logo-fill" d="M40 80 V 10 L 50 0 L 60 10 V 80 H 40 Z" /><path class="logo-fill" d="M65 80 V 15 L 85 30 V 80 H 65 Z" /></svg>
+                                <div class="text-group"><div class="logo-text">INHAE D&C</div><div class="logo-sub">DEVELOPMENT</div></div>
+                            </div>
+                            <div class="card-face card-back">
+                                <div class="type-b-content">
+                                    <div class="type-b-name"><h3>Hong Gil Dong</h3><span>Representative Director</span></div>
+                                    <div class="type-b-divider"></div>
+                                    <div class="type-b-details"><div>+82 10-1234-5678</div><div>ceo@inhaednc.com</div><div>+82 02-1234-5678</div><div>www.inhaednc.com</div><div class="type-b-addr">123, Teheran-ro, Gangnam-gu, Seoul</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-label">Type B: Solid Impact</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>

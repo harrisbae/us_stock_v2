@@ -12,10 +12,18 @@ import matplotlib.dates as mdates
 from matplotlib.legend_handler import HandlerTuple
 from ..core import calculate_hma, calculate_mantra_bands, calculate_rsi, calculate_macd
 from ..signals import get_hma_mantra_md_signals
+from ..chart_patterns import (
+    analyze_seven_criteria,
+    normalize_pattern_main_ids,
+    plot_pattern_main_overlays,
+    plot_pattern_strip,
+)
 from ..utils import get_available_font
+from ..box_range_windows import compute_box_range_windows
 import matplotlib.patches as mpatches
 import pandas_datareader.data as web
 from datetime import datetime, timedelta
+from typing import Optional, Sequence
 import os
 
 def calculate_volume_profile(box_data, price_bins=15):
@@ -94,79 +102,43 @@ def calculate_volume_profile(box_data, price_bins=15):
 
 def calculate_box_ranges(data, box_period=20, num_boxes=2, overlap_days=5, min_box_days=5, avoid_time_overlap=True):
     """
-    여러 개의 박스권을 동적으로 계산합니다.
+    메인 차트 파란 박스권 표시 전용.
+
+    기하 창은 box_range_windows.compute_box_range_windows 에 맡기고,
+    Volume Profile·현재가·콘솔 로그만 붙인다.
+    차트 패턴 range_box 는 이 함수를 쓰지 않는다(경량 창만 별도 모듈).
     
     Args:
         data: OHLCV 데이터
         box_period: 박스권 계산 기간 (기본값: 20일)
         num_boxes: 표시할 박스권 개수 (기본값: 2개)
         overlap_days: 박스권 간 겹치는 일수 (기본값: 5일, avoid_time_overlap=True일 때 무시)
-        min_box_days: 최소 박스 유지 기간 (기본값: 5일)
+        min_box_days: 최소 박스 유지 기간 (API 호환, 본문 미사용)
         avoid_time_overlap: 시간축 겹침 방지 여부 (기본값: True)
     
     Returns:
-        list: 박스권 정보 리스트
+        list: 박스권 정보 리스트 (volume_profile·current_price 포함)
     """
     try:
+        windows = compute_box_range_windows(
+            data, box_period, num_boxes, overlap_days, avoid_time_overlap
+        )
         box_ranges = []
-        data_len = len(data)
-        
-        # 박스권 개수만큼 반복
-        for i in range(num_boxes):
-            # 각 박스권의 시작 인덱스 계산
-            if i == 0:
-                # 현재 박스권 (마지막 box_period일)
-                start_idx = data_len - box_period
-                end_idx = data_len
-                box_name = "현재 박스권"
-            else:
-                if avoid_time_overlap:
-                    # 시간축 겹침 방지: 이전 박스권과 완전히 분리
-                    start_idx = data_len - box_period - (i * box_period)
-                    end_idx = start_idx + box_period
-                else:
-                    # 기존 방식: overlap_days만큼 겹침 허용
-                    start_idx = data_len - box_period - (i * (box_period - overlap_days))
-                    end_idx = start_idx + box_period
-                box_name = f"{i+1}번째 박스권"
-            
-            # 데이터 범위 체크
-            if start_idx < 0 or end_idx > data_len or start_idx >= end_idx:
-                continue
-                
-            # 박스권 데이터 추출
-            box_data = data.iloc[start_idx:end_idx]
-            
-            # 고가와 저가 계산
-            box_high = box_data['High'].max()
-            box_low = box_data['Low'].min()
-            box_range = box_high - box_low
-            
-            # 유효한 박스권인지 확인 (최소 범위 체크)
-            if box_range > 0:
-                # 박스권 정보 생성
-                box_info = {
-                    'start_date': data.index[start_idx],
-                    'end_date': data.index[end_idx-1],
-                    'high': box_high,
-                    'low': box_low,
-                    'range': box_range,
-                    'center': (box_high + box_low) / 2,
-                    'name': box_name,
-                    'period': box_period,
-                    'index': i,
-                    'volume_profile': calculate_volume_profile(box_data)
-                }
-                
-                # 현재 박스권의 경우 현재 가격 추가
-                if i == 0:
-                    box_info['current_price'] = data.iloc[-1]['Close']
-                
-                # 박스권 정보 출력 (디버깅용)
-                print(f"박스권 {i+1}: {box_name} | 날짜: {data.index[start_idx].strftime('%Y-%m-%d')} ~ {data.index[end_idx-1].strftime('%Y-%m-%d')} | 가격범위: ${box_low:.2f} ~ ${box_high:.2f} | 범위: ${box_range:.2f}")
-                
-                box_ranges.append(box_info)
-        
+        for win in windows:
+            sd = win["start_date"]
+            ed = win["end_date"]
+            box_data = data.loc[(data.index >= sd) & (data.index <= ed)]
+            box_info = dict(win)
+            box_info["volume_profile"] = calculate_volume_profile(box_data)
+            idx_i = int(win["index"])
+            if idx_i == 0:
+                box_info["current_price"] = data.iloc[-1]["Close"]
+            print(
+                f"박스권 {idx_i + 1}: {win['name']} | 날짜: "
+                f"{pd.Timestamp(sd).strftime('%Y-%m-%d')} ~ {pd.Timestamp(ed).strftime('%Y-%m-%d')} | "
+                f"가격범위: ${win['low']:.2f} ~ ${win['high']:.2f} | 범위: ${win['range']:.2f}"
+            )
+            box_ranges.append(box_info)
         return box_ranges
     except Exception as e:
         print(f"박스권 계산 오류: {e}")
@@ -2123,6 +2095,17 @@ def plot_main_chart_with_volume_profile_overlay(
     box_overlap: int = 5,             # 박스권 간 겹치는 일수
     box_style: str = 'default',       # 박스권 스타일 ('default', 'gradient', 'rainbow')
     avoid_time_overlap: bool = True,  # 시간축 겹침 방지 여부
+    show_pattern_strip: bool = False,  # 메인 아래 패턴 타임라인 서브플롯(chart_patterns 행 수)
+    pattern_main_overlays: Optional[Sequence[str]] = None,
+    # 메인 차트에 그릴 패턴 id (쉼표 구분 문자열을 테스트 스크립트에서 리스트로 전달).
+    # None/빈 리스트 → 메인에 패턴 도형 없음. 예: ("triple_bottom_w", "asc_triangle") 또는 ("all",)
+    # range_box 패턴 후보만: show_box_ranges / box_period 와 무관한 전용 파라미터
+    pattern_range_box_period: int = 20,
+    pattern_range_box_num: int = 2,
+    pattern_range_box_overlap: int = 5,
+    pattern_range_box_avoid_time_overlap: bool = True,
+    # 메인 차트 range_box: 후보 중 상위 N건만(신뢰도·종료일). 스트립은 전체 유지. 0이면 메인에 미표시.
+    pattern_range_box_main_max: int = 1,
 ):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
@@ -2171,14 +2154,23 @@ def plot_main_chart_with_volume_profile_overlay(
     else:
         print("⚠️ TNX 또는 인플레이션 데이터 없음으로 TNX 실질금리 계산 불가")
     
-    # 박스권 계산 (옵션에 따라)
+    # 메인 차트 파란 박스만 계산 (show_box_ranges). range_box 패턴과 완전히 별도.
+    display_box_ranges: list = []
     if show_box_ranges:
-        box_ranges = calculate_box_ranges(ohlcv_data, box_period=box_period, num_boxes=num_boxes, overlap_days=box_overlap, avoid_time_overlap=avoid_time_overlap)
+        display_box_ranges = calculate_box_ranges(
+            ohlcv_data,
+            box_period=box_period,
+            num_boxes=num_boxes,
+            overlap_days=box_overlap,
+            avoid_time_overlap=avoid_time_overlap,
+        )
         time_overlap_mode = "겹침방지" if avoid_time_overlap else f"겹침허용({box_overlap}일)"
-        print(f"박스권 설정: 기간={box_period}일, 개수={num_boxes}개, 시간축={time_overlap_mode}, 스타일={box_style}")
+        print(
+            f"박스권(표시용): 기간={box_period}일, 개수={num_boxes}개, "
+            f"시간축={time_overlap_mode}, 스타일={box_style}"
+        )
     else:
-        box_ranges = []
-        print("박스권 표시 비활성화")
+        print("박스권 표시 비활성화 (메인 파란 박스 없음). range_box 패턴은 별도 계산.")
     
     # VIX 데이터 길이 맞추기 (실제 데이터 우선, 동적 생성은 최후의 수단)
     if not vix.empty and len(vix) < len(ohlcv_data):
@@ -2516,12 +2508,21 @@ def plot_main_chart_with_volume_profile_overlay(
     print(f"시장 심리 요약: {market_summary}")
     print(f"전략 가이드: {strategy_guide}")
     
-    # 차트 생성 (6x1 레이아웃: 메인차트 + 거래량 + RSI + MACD + 금리통합 + 시장심리통합)
-    fig = plt.figure(figsize=(20, 20))  # 높이 조정
-    gs = GridSpec(6, 1, height_ratios=[3, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)  # 간격 조정
-    
+    # 차트 생성: 6x1 기본, show_pattern_strip 시 메인 바로 아래 패턴 스트립 행 삽입 (7x1)
+    ax_pattern = None
+    if show_pattern_strip:
+        fig = plt.figure(figsize=(20, 21))
+        gs = GridSpec(7, 1, height_ratios=[3, 0.45, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)
+        vol_row, rsi_row, macd_row, rates_row, sent_row = 2, 3, 4, 5, 6
+    else:
+        fig = plt.figure(figsize=(20, 20))
+        gs = GridSpec(6, 1, height_ratios=[3, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)
+        vol_row, rsi_row, macd_row, rates_row, sent_row = 1, 2, 3, 4, 5
+
     # 메인 차트 (상단)
     ax_main = fig.add_subplot(gs[0, 0])
+    if show_pattern_strip:
+        ax_pattern = fig.add_subplot(gs[1, 0], sharex=ax_main)
     
     # 종목 정보 가져오기
     long_name, sector, industry = get_stock_info(ticker)
@@ -2543,20 +2544,19 @@ def plot_main_chart_with_volume_profile_overlay(
     
     # 시장 심리 요약을 최상단 우측에 표시
     if market_summary and market_summary != "시장 데이터 부족":
-        # 시장 심리 요약을 최상단 우측에 박스 형태로 표시
-        ax_summary = fig.add_axes([0.6, 0.95, 0.35, 0.03])  # 최상단 우측에 배치
-    ax_summary.set_facecolor('lightblue')
-    ax_summary.set_xlim(0, 1)
-    ax_summary.set_ylim(0, 1)
-    ax_summary.axis('off')
-    ax_summary.set_zorder(1000)  # 최고 zorder 값 설정
-    
-    # 시장 심리 요약 텍스트를 박스 안에 표시
-    ax_summary.text(0.5, 0.5, market_summary, 
-                   fontsize=12, fontweight='bold', ha='center', va='center',
-                   bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
-                            edgecolor='navy', linewidth=2),
-                   zorder=1001)  # 텍스트도 최고 zorder 값 설정
+        ax_summary = fig.add_axes([0.6, 0.95, 0.35, 0.03])
+        ax_summary.set_facecolor('lightblue')
+        ax_summary.set_xlim(0, 1)
+        ax_summary.set_ylim(0, 1)
+        ax_summary.axis('off')
+        ax_summary.set_zorder(1000)
+        ax_summary.text(
+            0.5, 0.5, market_summary,
+            fontsize=12, fontweight='bold', ha='center', va='center',
+            bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue',
+                      edgecolor='navy', linewidth=2),
+            zorder=1001,
+        )
     
     # 버핏 지수 계산 (표시는 통합 박스에서 처리)
     buffett_data = calculate_buffett_indicator()
@@ -2581,15 +2581,15 @@ def plot_main_chart_with_volume_profile_overlay(
                            zorder=1001)  # 텍스트도 최고 zorder 값 설정
     
     # 거래량 차트
-    ax_volume = fig.add_subplot(gs[1, 0], sharex=ax_main)
+    ax_volume = fig.add_subplot(gs[vol_row, 0], sharex=ax_main)
     # RSI 차트
-    ax_rsi = fig.add_subplot(gs[2, 0], sharex=ax_main)
+    ax_rsi = fig.add_subplot(gs[rsi_row, 0], sharex=ax_main)
     # MACD 차트
-    ax_macd = fig.add_subplot(gs[3, 0], sharex=ax_main)
+    ax_macd = fig.add_subplot(gs[macd_row, 0], sharex=ax_main)
     # 금리 통합 차트 (FFR + CD 금리 + TNX)
-    ax_rates = fig.add_subplot(gs[4, 0], sharex=ax_main)
+    ax_rates = fig.add_subplot(gs[rates_row, 0], sharex=ax_main)
     # 시장 심리 통합 지표 차트
-    ax_sentiment = fig.add_subplot(gs[5, 0], sharex=ax_main)
+    ax_sentiment = fig.add_subplot(gs[sent_row, 0], sharex=ax_main)
 
     # 메인 차트 설정 (투명도 높임)
     candlestick_ohlc(ax_main, 
@@ -2766,10 +2766,10 @@ def plot_main_chart_with_volume_profile_overlay(
     # SMA200일 이동평균선 추가
     ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='SMA200', alpha=0.8)
     
-    # 박스권 표시 (옵션에 따라)
-    if show_box_ranges and box_ranges:
-        print(f"박스권 {len(box_ranges)}개 표시")
-        plot_box_ranges_with_style(ax_main, box_ranges, box_style, currency_symbol)
+    # 박스권 표시: display_box_ranges 만 사용 (패턴 range_box 후보와 무관).
+    if show_box_ranges and display_box_ranges:
+        print(f"박스권 {len(display_box_ranges)}개 표시")
+        plot_box_ranges_with_style(ax_main, display_box_ranges, box_style, currency_symbol)
     
     # Target 가격 라인들 추가 (옵션) - 비활성화됨
     # if show_target_prices:
@@ -3240,6 +3240,8 @@ def plot_main_chart_with_volume_profile_overlay(
         ax_volume.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
         ax_rsi.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
         ax_macd.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
+        if show_pattern_strip and ax_pattern is not None:
+            ax_pattern.axvline(dt, color='magenta', linestyle='--', alpha=0.7, linewidth=1.0, zorder=10)
         
         # 종가 기준 수평선 (거래량에 따른 두께 적용)
         close = ohlcv_data.loc[dt, 'Close']
@@ -3837,6 +3839,51 @@ def plot_main_chart_with_volume_profile_overlay(
     except Exception as e:
         print(f"메인 차트에 RSI 다이버전스 표시 실패: {e}")
         pass
+
+    _enabled_main = normalize_pattern_main_ids(pattern_main_overlays or [])
+    _need_pattern_analysis = show_pattern_strip or bool(_enabled_main)
+    if _need_pattern_analysis:
+        try:
+            # 차트 패턴 전용: 기하 창만(box_range_windows). VP·표시용 로그 없음 — calculate_box_ranges 와 분리
+            pattern_box_ranges = compute_box_range_windows(
+                ohlcv_data,
+                pattern_range_box_period,
+                pattern_range_box_num,
+                pattern_range_box_overlap,
+                pattern_range_box_avoid_time_overlap,
+            )
+            print(
+                f"패턴 range_box 후보 창: 기간={pattern_range_box_period}일, "
+                f"개수={pattern_range_box_num}, 겹침={pattern_range_box_overlap}일 "
+                f"(box_range_windows · 메인 파란 박스와 별도)"
+            )
+            # 박스권(range_box) 후보를 먼저 넣어 분석 → 스트립/메인은 동일 pat_events 사용
+            pat_events = analyze_seven_criteria(ohlcv_data, box_ranges=pattern_box_ranges)
+            _rb_ev = sum(1 for e in pat_events if e.get("pattern_id") == "range_box")
+            print(
+                f"차트 패턴 분석: {len(pat_events)}개 구간 "
+                f"(range_box={_rb_ev}건, 응축 조건 통과분만·그 외 휴리스틱)"
+            )
+            if pattern_box_ranges and _rb_ev == 0 and (
+                show_pattern_strip or ("range_box" in _enabled_main)
+            ):
+                print(
+                    "  참고: 패턴용 박스 후보는 있으나 range_box 응축 필터(횡보·변동폭 등)를 통과한 구간이 없습니다."
+                )
+            if show_pattern_strip and ax_pattern is not None:
+                plot_pattern_strip(ax_pattern, ohlcv_data, pat_events)
+                ax_pattern.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+                ax_pattern.tick_params(axis='x', labelbottom=False)
+            if _enabled_main:
+                plot_pattern_main_overlays(
+                    ax_main,
+                    ohlcv_data,
+                    pat_events,
+                    _enabled_main,
+                    range_box_main_max=pattern_range_box_main_max,
+                )
+        except Exception as e:
+            print(f"차트 패턴(스트립/메인) 표시 실패: {e}")
 
     # x축 날짜 포맷 설정
     ax_volume.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))

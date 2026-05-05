@@ -32,7 +32,27 @@ def main():
     parser.add_argument('--box-overlap', type=int, default=5, help='박스권 간 겹치는 일수 (기본값: 5)')
     parser.add_argument('--box-style', default='default', help='박스권 스타일 (default/gradient/rainbow, 기본값: default)')
     parser.add_argument('--avoid-time-overlap', default='true', help='시간축 겹침 방지 여부 (기본값: true)')
-    
+    parser.add_argument(
+        '--show-pattern-strip',
+        action='store_true',
+        help='메인 차트 아래 차트 패턴 타임라인 서브플롯 표시(행 수=CHART_PATTERN_CRITERIA)',
+    )
+    parser.add_argument(
+        '--pattern-main',
+        default='',
+        help=(
+            '메인 차트에 그릴 패턴 id (쉼표 구분). all=전 id. '
+            '예: post_box_bull,fvg_gap,triple_bottom_w,range_box,...'
+        ),
+    )
+    parser.add_argument(
+        '--pattern-range-box-main-max',
+        type=int,
+        default=1,
+        metavar='N',
+        help='메인 차트 range_box 최대 표시 개수(신뢰도·종료일 선별). 스트립은 전체. 0=메인 미표시 (기본 1)',
+    )
+
     # argparse로 인자 파싱
     args = parser.parse_args()
     
@@ -50,7 +70,10 @@ def main():
     box_overlap = args.box_overlap
     box_style = args.box_style
     avoid_time_overlap = args.avoid_time_overlap.lower() in ['true', '1', 'yes', 'y']
-    
+    show_pattern_strip = args.show_pattern_strip
+    pm = (args.pattern_main or '').strip()
+    pattern_main_overlays = None if not pm else [x.strip() for x in pm.split(',') if x.strip()]
+
     # Target 가격 옵션들
     target_buy_price = None
     target_sell_price = None
@@ -129,7 +152,10 @@ def main():
         num_boxes=num_boxes,
         box_overlap=box_overlap,
         box_style=box_style,
-        avoid_time_overlap=avoid_time_overlap
+        avoid_time_overlap=avoid_time_overlap,
+        show_pattern_strip=show_pattern_strip,
+        pattern_main_overlays=pattern_main_overlays,
+        pattern_range_box_main_max=args.pattern_range_box_main_max,
     )
     
     print(f"차트 저장 완료: {save_path}")

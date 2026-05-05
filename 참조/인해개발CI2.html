@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INHAE D&C - CI Color Proposals</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Montserrat', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // 로고 컴포넌트: 단일 색상(color)만 받아 전체에 적용
+        const Logo = ({ color, className }) => {
+            return (
+                <div className={`flex flex-col items-center ${className}`}>
+                    {/* Symbol Area */}
+                    <svg viewBox="0 0 100 110" className="w-32 h-32 mb-4 drop-shadow-sm">
+                        {/* Geometry Correction:
+                           - Total Width: ~90 units
+                           - Pillars: 15 units wide
+                           - Gaps: 5 units wide
+                           - Center Gap: 10 units wide (for H-bar)
+                        */}
+                        
+                        {/* Base Line */}
+                        <rect x="5" y="90" width="90" height="5" fill={color} />
+                        
+                        {/* Left Outer Pillar (x: 10~25) */}
+                        <path d="M10,90 L10,45 L25,35 L25,90 Z" fill={color} />
+                        
+                        {/* Left Inner Pillar (x: 30~45) */}
+                        <path d="M30,90 L30,30 L45,15 L45,90 Z" fill={color} />
+                        
+                        {/* Right Inner Pillar (x: 55~70) */}
+                        <path d="M55,90 L55,15 L70,30 L70,90 Z" fill={color} />
+                        
+                        {/* Right Outer Pillar (x: 75~90) */}
+                        <path d="M75,90 L75,35 L90,45 L90,90 Z" fill={color} />
+
+                        {/* H-Bar Connecting Inner Pillars (x: 45~55) */}
+                        <rect x="45" y="45" width="10" height="8" fill={color} />
+                    </svg>
+                    
+                    {/* Text Area */}
+                    <div className="text-center">
+                        <h1 className="text-3xl font-black tracking-tight leading-none mb-1" style={{ color: color }}>
+                            INHAE D&C
+                        </h1>
+                        <p className="text-[10px] font-bold tracking-[0.2em]" style={{ color: color }}>
+                            DEVELOPMENT
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        const ColorCard = ({ title, desc, hex, note, Component }) => {
+            return (
+                <div className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col">
+                    <div className="p-10 flex-grow flex items-center justify-center bg-gray-50 border-b border-gray-100">
+                        {Component}
+                    </div>
+                    <div className="p-6">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono text-gray-400">{hex}</span>
+                                <div className="w-8 h-8 rounded-full border border-gray-200 shadow-inner" style={{ backgroundColor: hex }}></div>
+                            </div>
+                        </div>
+                        <p className="text-sm text-gray-600 leading-relaxed mb-4">{desc}</p>
+                        <div className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-2 rounded-lg">
+                            💡 {note}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            // 단일 색상 변형 리스트
+            const variations = [
+                {
+                    title: "Original Orange",
+                    hex: "#D97706", // Amber-600
+                    desc: "기존 CI의 정체성을 유지하는 따뜻한 오렌지 컬러입니다. 건설의 활력과 에너지를 상징합니다.",
+                    note: "안전모, 벽돌 등 현장감 있는 요소와 연결됨"
+                },
+                {
+                    title: "Corporate Navy",
+                    hex: "#1E3A8A", // Blue-900
+                    desc: "깊이감 있는 네이비 색상으로 변경하여 '무한한 신뢰'와 '대규모 프로젝트' 수행 능력을 강조합니다.",
+                    note: "금융, 법률, 대형 건설사가 선호하는 색상"
+                },
+                {
+                    title: "Sustainable Green",
+                    hex: "#15803D", // Green-700
+                    desc: "자연과 환경을 생각하는 짙은 녹색입니다. 조경 사업이나 친환경 주거 단지 개발에 적합합니다.",
+                    note: "성장, 조화, 편안함을 주는 이미지"
+                },
+                {
+                    title: "Modern Charcoal",
+                    hex: "#262626", // Neutral-800
+                    desc: "군더더기 없는 다크 그레이/차콜 컬러로 모던하고 세련된 도시적 감성을 표현합니다.",
+                    note: "하이엔드 브랜드나 미니멀리즘 건축 지향"
+                },
+                {
+                    title: "Innovation Teal",
+                    hex: "#0F766E", // Teal-700
+                    desc: "청록색 계열로 스마트 시티, 기술 혁신 등 미래지향적인 개발사의 이미지를 줍니다.",
+                    note: "젊고 혁신적인 기업 분위기 연출"
+                },
+                {
+                    title: "Luxury Violet",
+                    hex: "#5B21B6", // Violet-800
+                    desc: "깊고 풍부한 바이올렛 색상으로 고귀함과 세련된 럭셔리함을 표현합니다. 차별화된 프리미엄 브랜드 이미지를 구축합니다.",
+                    note: "하이엔드 주거, 예술적 가치가 있는 프로젝트"
+                }
+            ];
+
+            return (
+                <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h1 className="text-4xl font-extrabold text-gray-900 mb-4">INHAE D&C</h1>
+                        <h2 className="text-2xl font-medium text-gray-500">Color Variation Proposals</h2>
+                        <p className="mt-4 max-w-2xl mx-auto text-gray-600">
+                            기존 CI의 형태를 유지하며 색상 변화만으로 브랜드 이미지를 재해석했습니다.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {variations.map((v, idx) => (
+                            <ColorCard 
+                                key={idx}
+                                title={v.title}
+                                desc={v.desc}
+                                hex={v.hex}
+                                note={v.note}
+                                Component={
+                                    <Logo color={v.hex} />
+                                }
+                            />
+                        ))}
+                    </div>
+
+                    <div className="mt-16 bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">🎨 색상 제안 요약</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
+                            <div className="flex items-start">
+                                <div className="w-4 h-4 mt-1 rounded-full bg-blue-900 flex-shrink-0 mr-3"></div>
+                                <div>
+                                    <strong>신뢰/안정성 (Corporate Navy):</strong> 관공서 입찰이나 대규모 토목 공사 등 보수적인 신뢰가 필요할 때 추천합니다.
+                                </div>
+                            </div>
+                            <div className="flex items-start">
+                                <div className="w-4 h-4 mt-1 rounded-full bg-green-700 flex-shrink-0 mr-3"></div>
+                                <div>
+                                    <strong>친환경/성장 (Sustainable Green):</strong> 숲세권 아파트, 공원 조성 등 환경 친화적 프로젝트 브랜딩에 효과적입니다.
+                                </div>
+                            </div>
+                            <div className="flex items-start">
+                                <div className="w-4 h-4 mt-1 rounded-full bg-neutral-800 flex-shrink-0 mr-3"></div>
+                                <div>
+                                    <strong>고급/모던 (Modern Charcoal):</strong> 색상을 배제하여 형태의 구조미를 강조하며, 프리미엄 이미지를 구축합니다.
+                                </div>
+                            </div>
+                             <div className="flex items-start">
+                                <div className="w-4 h-4 mt-1 rounded-full bg-teal-700 flex-shrink-0 mr-3"></div>
+                                <div>
+                                    <strong>혁신/미래 (Innovation Teal):</strong> 기존 건설사의 딱딱한 이미지에서 벗어나 스마트하고 세련된 느낌을 줍니다.
+                                </div>
+                            </div>
+                            <div className="flex items-start">
+                                <div className="w-4 h-4 mt-1 rounded-full bg-violet-800 flex-shrink-0 mr-3"></div>
+                                <div>
+                                    <strong>예술/럭셔리 (Luxury Violet):</strong> 차별화된 디자인 철학이나 하이엔드 주거 공간을 표현할 때 효과적입니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

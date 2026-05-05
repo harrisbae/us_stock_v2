@@ -26,6 +26,11 @@ NUM_BOXES="2"  # 표시할 박스권 개수
 BOX_OVERLAP="5"  # 박스권 간 겹치는 일수
 BOX_STYLE="default"  # 박스권 스타일 ('default', 'gradient', 'rainbow')
 AVOID_TIME_OVERLAP="true"  # 시간축 겹침 방지 여부
+SHOW_PATTERN_STRIP="false"  # -v overlay 시 메인 아래 차트 패턴 스트립(CHART_PATTERN_CRITERIA 행 수)
+# 메인 차트 패턴 오버레이 (--pattern-main, 쉼표 구분)
+# 패턴 ID: double_top_m, bear_flag, bear_diamond, range_box, triple_bottom_w, bull_flag, asc_triangle | all 또는 *
+PATTERN_MAIN=""
+PATTERN_RANGE_BOX_MAIN_MAX="1"  # 메인 range_box 표시 최대 개수(선별). 스트립은 전체
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -121,6 +126,18 @@ while [[ $# -gt 0 ]]; do
     --allow-time-overlap)
       AVOID_TIME_OVERLAP="false"
       shift
+      ;;
+    --show-pattern-strip)
+      SHOW_PATTERN_STRIP="true"
+      shift
+      ;;
+    --pattern-main)
+      PATTERN_MAIN="$2"
+      shift 2
+      ;;
+    --pattern-range-box-main-max)
+      PATTERN_RANGE_BOX_MAIN_MAX="$2"
+      shift 2
       ;;
     *)
       echo "알 수 없는 옵션: $1"
@@ -257,6 +274,20 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --box-overlap      박스권 간 겹치는 일수 (기본값: 5)"
   echo "  --box-style        박스권 스타일 (default/gradient/rainbow, 기본값: default)"
   echo "  --allow-time-overlap 시간축 겹침 허용 (기본값: 겹침방지)"
+  echo "  --show-pattern-strip  -v overlay일 때 차트 패턴 타임라인 서브플롯 표시"
+  echo "  --pattern-main LIST   메인 차트 패턴 오버레이 (쉼표로 패턴 ID 나열). all 또는 *=전 패턴 id. -v overlay 전용"
+  echo "                        패턴 ID (chart_patterns.py CHART_PATTERN_CRITERIA와 동일):"
+  echo "                          double_top_m      쌍봉(M)"
+  echo "                          bear_flag         하락깃발"
+  echo "                          bear_diamond      하락다이아"
+  echo "                          range_box         박스권"
+  echo "                          triple_bottom_w   역삼중창(W)"
+  echo "                          bull_flag         상승깃발"
+  echo "                          asc_triangle      상승삼각"
+  echo "                          post_box_bull     박스후장대양봉"
+  echo "                          fvg_gap           FVG(갭)"
+  echo "                        예: --pattern-main triple_bottom_w,double_top_m  |  --pattern-main all"
+  echo "  --pattern-range-box-main-max N  메인 range_box 최대 N건(신뢰도·종료일 선별, 기본 1). 0=메인 미표시"
   echo ""
   echo "기간 설정 예시:"
   echo "  -p 30d            30일"
@@ -267,6 +298,7 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --from 2024-01-01 --to 2024-12-31  특정 날짜 범위"
   echo "  --from 2024-08-01 --to 2025-08-01  12개월 특정 기간"
   echo "  --from 2025-01-01                   2025년 1월 1일부터 오늘까지"
+  echo "  overlay + 패턴스트립 예: ./hma.sh --from 2025-04-01 -v overlay --num-boxes 7 -s NVDA --show-pattern-strip"
   echo "  --to 2025-08-01 -p 30d             2025-08-01로부터 30일 전까지"
   echo "  --to 2025-08-01 -p 6mo             2025-08-01로부터 6개월 전까지"
   echo "  --to 2025-08-01 -p 1y              2025-08-01로부터 1년 전까지"
@@ -319,7 +351,10 @@ analyze_stock() {
                     python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST" \
                         --show-box-ranges "$SHOW_BOX_RANGES" --box-period "$BOX_PERIOD" \
                         --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
-                        --avoid-time-overlap "$AVOID_TIME_OVERLAP"
+                        --avoid-time-overlap "$AVOID_TIME_OVERLAP" \
+                        --pattern-range-box-main-max "$PATTERN_RANGE_BOX_MAIN_MAX" \
+                        $( [ "$SHOW_PATTERN_STRIP" = "true" ] && echo --show-pattern-strip ) \
+                        $( [ -n "$PATTERN_MAIN" ] && echo --pattern-main "$PATTERN_MAIN" )
                     ;;
                 "none"|*)
                     echo "기본 기술적 분석 실행..."
@@ -362,7 +397,10 @@ analyze_stock() {
                 python test/volume_profile_overlay_test.py "$symbol" "$PERIOD" --auto_adjust "$AUTO_ADJUST" \
                     --show-box-ranges "$SHOW_BOX_RANGES" --box-period "$BOX_PERIOD" \
                     --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
-                    --avoid-time-overlap "$AVOID_TIME_OVERLAP"
+                    --avoid-time-overlap "$AVOID_TIME_OVERLAP" \
+                    --pattern-range-box-main-max "$PATTERN_RANGE_BOX_MAIN_MAX" \
+                    $( [ "$SHOW_PATTERN_STRIP" = "true" ] && echo --show-pattern-strip ) \
+                    $( [ -n "$PATTERN_MAIN" ] && echo --pattern-main "$PATTERN_MAIN" )
                 echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_overlay_${PERIOD}_chart.png"
             elif [ "$VOLUME_PROFILE_TYPE" = "separate" ]; then
                 echo "Volume Profile (별도 영역) 차트 생성 중..."

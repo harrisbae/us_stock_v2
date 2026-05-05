@@ -1,0 +1,24 @@
+#하락장세 CNN 공포탐욕에 대한 매수 타이밍 찾기
+##주요 추천 종목 및 ETF
+CEG
+TEM
+RKLB
+OKLO
+SMR
+#센트러스에너지
+LEU
+IONQ
+TSLA
+PLTR
+NVDA
+META
+MSFT
+GOOGL
+#성장종목
+HIMS
+#바이오
+RXRX
+#New 관심
+HOOD
+
+

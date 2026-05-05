@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INHAE D&C - Brand & Business Card Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Removed external lucide-react dependency to prevent loading errors -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700;900&family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .font-eng { font-family: 'Montserrat', sans-serif; }
+        .font-serif-eng { font-family: 'Playfair+Display', serif; }
+        
+        /* Business Card Ratio: 90mm x 50mm -> 1.8 aspect ratio */
+        .card-preview {
+            aspect-ratio: 1.8;
+            transition: all 0.3s ease;
+        }
+        
+        /* Neumorphism Shadow Classes */
+        .neumorphic-out {
+            background: #f0f0f3;
+            box-shadow: 10px 10px 20px #d1d1d4, -10px -10px 20px #ffffff;
+        }
+        .neumorphic-in {
+            background: #f0f0f3;
+            box-shadow: inset 5px 5px 10px #d1d1d4, inset -5px -5px 10px #ffffff;
+        }
+
+        /* Paper Blind Emboss Effect (Refined for Color Backgrounds) */
+        .paper-texture {
+            background-color: #EBEAEF;
+        }
+        .blind-emboss {
+            /* Note: Fill is handled by the component using currentColor to match background */
+            /* Stronger contrast for colored backgrounds */
+            filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.3)) 
+                    drop-shadow(-1px -1px 2px rgba(255, 255, 255, 0.5));
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef } = React;
+
+        // --- Inline Icon Components ---
+        const Icon = ({ size = 24, color = "currentColor", children, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>{children}</svg>
+        );
+        const Phone = (props) => (<Icon {...props}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></Icon>);
+        const Mail = (props) => (<Icon {...props}><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></Icon>);
+        const MapPin = (props) => (<Icon {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></Icon>);
+        const Check = (props) => (<Icon {...props}><polyline points="20 6 9 17 4 12" /></Icon>);
+        const Download = (props) => (<Icon {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></Icon>);
+        const RefreshCw = (props) => (<Icon {...props}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></Icon>);
+        const User = (props) => (<Icon {...props}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></Icon>);
+
+        // --- Logo Component ---
+        const Logo = ({ color, className, lightMode = false, monoMode = false, type = 'vertical', symbolSize, textScale = 1, effectClass = "" }) => {
+            const fill = lightMode ? "#FFFFFF" : (monoMode ? "#1a1a1a" : color);
+            
+            // 1. Horizontal Layout
+            if (type === 'horizontal') {
+                return (
+                    <div className={`flex items-center gap-3 ${className}`}>
+                        <div className={`${symbolSize || 'w-10 h-10'} flex-shrink-0 ${effectClass}`}>
+                            <svg viewBox="0 0 100 110" className="w-full h-full">
+                                <rect x="5" y="90" width="90" height="5" fill={effectClass ? "currentColor" : fill} />
+                                <path d="M10,90 L10,45 L25,35 L25,90 Z" fill={effectClass ? "currentColor" : fill} />
+                                <path d="M30,90 L30,30 L45,15 L45,90 Z" fill={effectClass ? "currentColor" : fill} />
+                                <path d="M55,90 L55,15 L70,30 L70,90 Z" fill={effectClass ? "currentColor" : fill} />
+                                <path d="M75,90 L75,35 L90,45 L90,90 Z" fill={effectClass ? "currentColor" : fill} />
+                                <rect x="45" y="45" width="10" height="8" fill={effectClass ? "currentColor" : fill} />
+                            </svg>
+                        </div>
+                        <div className={`text-left flex flex-col justify-center ${effectClass}`}>
+                            <h1 className="font-eng font-black tracking-tighter leading-none whitespace-nowrap" style={{ color: effectClass ? "currentColor" : fill, fontSize: `${1.4 * textScale}em` }}>
+                                INHAE D&C
+                            </h1>
+                            <p className="font-eng font-bold tracking-[0.3em] mt-0.5 ml-0.5" style={{ color: effectClass ? "currentColor" : fill, fontSize: `${0.5 * textScale}em` }}>
+                                DEVELOPMENT
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // 2. Vertical Layout (Default)
+            return (
+                <div className={`flex flex-col items-center ${className}`}>
+                    <div className={`${symbolSize || "w-full"} ${effectClass}`}>
+                        <svg viewBox="0 0 100 110" className="w-full h-full">
+                            <rect x="5" y="90" width="90" height="5" fill={effectClass ? "currentColor" : fill} />
+                            <path d="M10,90 L10,45 L25,35 L25,90 Z" fill={effectClass ? "currentColor" : fill} />
+                            <path d="M30,90 L30,30 L45,15 L45,90 Z" fill={effectClass ? "currentColor" : fill} />
+                            <path d="M55,90 L55,15 L70,30 L70,90 Z" fill={effectClass ? "currentColor" : fill} />
+                            <path d="M75,90 L75,35 L90,45 L90,90 Z" fill={effectClass ? "currentColor" : fill} />
+                            <rect x="45" y="45" width="10" height="8" fill={effectClass ? "currentColor" : fill} />
+                        </svg>
+                    </div>
+                    <div className={`text-center mt-2 w-full ${effectClass}`}>
+                        <h1 className="font-eng font-black tracking-tight leading-none w-full text-justify" style={{ color: effectClass ? "currentColor" : fill, fontSize: `${1.8 * textScale}em` }}>
+                            INHAE D&C
+                        </h1>
+                        <p className="font-eng font-bold tracking-[0.2em] mt-1" style={{ color: effectClass ? "currentColor" : fill, fontSize: `${0.6 * textScale}em` }}>
+                            DEVELOPMENT
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Data ---
+        const colorVariations = [
+            { title: "Original Orange", hex: "#D97706", desc: "활력, 에너지, 창의성" },
+            { title: "Corporate Navy", hex: "#1E3A8A", desc: "신뢰, 전문성, 안정감" },
+            { title: "Sustainable Green", hex: "#15803D", desc: "친환경, 성장, 조화" },
+            { title: "Modern Charcoal", hex: "#262626", desc: "모던, 세련됨, 도시적" },
+            { title: "Innovation Teal", hex: "#0F766E", desc: "혁신, 미래지향, 스마트" },
+            { title: "Luxury Violet", hex: "#5B21B6", desc: "고귀함, 럭셔리, 예술" }
+        ];
+
+        // --- Business Card Component ---
+        const BusinessCard = ({ layout, info, color, side = 'front' }) => {
+            // Layout 0: Standard
+            if (layout === 0) {
+                 if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex items-center justify-center p-8" style={{ backgroundColor: color }}>
+                            <div className="w-32 text-white">
+                                <Logo color={color} lightMode={true} />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex">
+                        <div className="w-1/3 flex items-center justify-center p-6 border-r border-gray-100 bg-gray-50">
+                            <div className="w-24">
+                                <Logo color={color} />
+                            </div>
+                        </div>
+                        <div className="w-2/3 p-8 flex flex-col justify-center relative">
+                            <div className="absolute top-0 right-0 w-24 h-24 opacity-5 pointer-events-none">
+                                <Logo color={color} />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-900 mb-1">{info.name}</h2>
+                            <p className="text-sm font-medium mb-6 font-eng uppercase tracking-wider" style={{ color: color }}>{info.title}</p>
+                            
+                            <div className="space-y-2 text-xs text-gray-600 font-eng">
+                                <div className="flex items-center gap-2">
+                                    <Phone size={12} color={color} /> <span>{info.mobile}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Mail size={12} color={color} /> <span>{info.email}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <MapPin size={12} color={color} /> <span>{info.address}</span>
+                                </div>
+                            </div>
+                            <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: color }}></div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 1: Modern
+            if (layout === 1) {
+                 if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex items-center justify-center p-8" style={{ backgroundColor: color }}>
+                            <div className="w-32 text-white">
+                                <Logo color={color} lightMode={true} />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex">
+                        <div className="w-2/5 h-full flex flex-col items-center justify-center p-6" style={{ backgroundColor: color }}>
+                            <div className="w-24 text-white">
+                                <Logo color={color} lightMode={true} />
+                            </div>
+                        </div>
+                        <div className="w-3/5 p-8 flex flex-col justify-center">
+                            <div className="text-right mb-6">
+                                <h2 className="text-xl font-bold text-gray-900">{info.name}</h2>
+                                <p className="text-xs font-medium text-gray-500 font-eng uppercase tracking-widest">{info.title}</p>
+                            </div>
+                            <div className="space-y-2 text-xs text-gray-500 text-right font-eng">
+                                <p>{info.mobile}</p>
+                                <p>{info.email}</p>
+                                <p>{info.address}</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 2: Premium
+            if (layout === 2) {
+                const isDarkTheme = ['#262626', '#1E3A8A'].includes(color);
+                const bgColor = isDarkTheme ? color : '#18181b'; 
+                const accentColor = isDarkTheme ? '#D4D4D8' : color; 
+
+                if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center p-8" style={{ backgroundColor: bgColor }}>
+                            <div className="absolute inset-0 border-[1px] border-white/10 m-3"></div>
+                            <div className="w-32 text-white">
+                                <Logo color={accentColor} />
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="relative w-full h-full shadow-xl overflow-hidden flex flex-col items-center justify-center p-8 text-center" style={{ backgroundColor: bgColor }}>
+                        <div className="absolute inset-0 border-[1px] border-white/10 m-4"></div>
+                        <div className="flex flex-col items-center justify-center z-10 pb-4">
+                            <div className="w-16 mb-6 opacity-90">
+                                <Logo color={accentColor} />
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <h2 className="text-3xl font-serif-eng font-bold text-white mb-2 tracking-widest">{info.name}</h2>
+                                <div className="w-8 h-[1px] bg-white/40 mb-3"></div>
+                                <p className="text-[9px] font-medium text-white/60 font-eng uppercase tracking-[0.3em]">{info.title}</p>
+                            </div>
+                        </div>
+                        <div className="absolute bottom-8 flex flex-col gap-1 text-[8px] text-white/50 font-eng tracking-widest uppercase z-10">
+                             <div className="flex gap-3 justify-center">
+                                <span>{info.mobile}</span>
+                                <span className="opacity-50">•</span>
+                                <span>{info.email}</span>
+                             </div>
+                             <p className="opacity-60 scale-90">{info.address}</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 3: Energetic
+            if (layout === 3) {
+                 if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full bg-white shadow-xl overflow-hidden">
+                            <div className="absolute inset-0 transform -skew-x-12 origin-top-left scale-150" style={{ backgroundColor: color }}></div>
+                             <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-40 text-white transform -rotate-6 mix-blend-overlay opacity-30">
+                                    <Logo color="#FFFFFF" lightMode={true} />
+                                </div>
+                                <div className="absolute z-10 w-32 text-white drop-shadow-lg">
+                                    <Logo color="#FFFFFF" lightMode={true} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden">
+                        <div className="absolute top-0 right-0 w-2/3 h-full transform skew-x-[-20deg] translate-x-20" style={{ backgroundColor: color }}></div>
+                        <div className="relative h-full flex">
+                            <div className="w-1/2 h-full p-8 flex flex-col justify-center z-10 pl-10 relative">
+                                <div className="mb-6">
+                                    <div className="w-24">
+                                        <Logo color={color} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 className="text-3xl font-black text-gray-900 italic leading-none tracking-tight">{info.name}</h2>
+                                    <p className="text-sm font-bold text-gray-400 uppercase tracking-tighter mt-2">{info.title}</p>
+                                    <div className="w-8 h-1 mt-4" style={{ backgroundColor: color }}></div>
+                                </div>
+                            </div>
+                            <div className="w-1/2 p-8 flex flex-col justify-center items-end z-10 text-right text-white">
+                                <div className="space-y-1 text-xs font-eng font-medium drop-shadow-md">
+                                    <p>{info.mobile}</p>
+                                    <p>{info.email}</p>
+                                    <p>{info.tel}</p>
+                                    <p className="mt-4 opacity-90 text-[10px]">{info.address}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 4: Embossed
+            if (layout === 4) {
+                if (side === 'back') {
+                     return (
+                        <div className="relative w-full h-full neumorphic-out shadow-xl overflow-hidden flex items-center justify-center p-8">
+                            <div className="w-40 h-40 neumorphic-in rounded-full flex items-center justify-center">
+                                <div className="w-24 opacity-70">
+                                    <Logo color={color} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full neumorphic-out shadow-xl overflow-hidden flex items-center justify-center p-8">
+                        <div className="w-full h-full border border-white/50 rounded-lg p-6 flex flex-col relative">
+                            <div className="absolute top-6 right-6 w-16 h-16 neumorphic-in rounded-xl flex items-center justify-center p-3">
+                                <Logo color={color} />
+                            </div>
+                            <div className="mt-auto">
+                                <h2 className="text-2xl font-bold text-gray-700 tracking-tight" style={{ textShadow: '1px 1px 2px #d1d1d4, -1px -1px 2px #ffffff' }}>{info.name}</h2>
+                                <p className="text-xs font-medium text-gray-400 mb-6 uppercase tracking-widest">{info.title}</p>
+                                <div className="space-y-2 text-[11px] text-gray-500 font-eng pl-2 border-l-2" style={{ borderColor: color }}>
+                                    <p>{info.mobile}</p>
+                                    <p>{info.email}</p>
+                                    <p>{info.address}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 5: Minimalist
+            if (layout === 5) {
+                if (side === 'back') {
+                    // Back: Solid Black (or very dark grey) with tiny white logo
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: "#111" }}>
+                            <div className="w-16">
+                                <Logo color="#FFF" lightMode={true} />
+                            </div>
+                        </div>
+                    );
+                }
+                // Front: White canvas, minimal black text
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden p-10">
+                        {/* Top Left: Logo + Name Group */}
+                        <div className="absolute top-10 left-10">
+                            <div className="w-14 mb-6">
+                                <Logo color="#000" monoMode={true} />
+                            </div>
+                            <h2 className="text-2xl font-light text-black tracking-tight leading-none">{info.name}</h2>
+                            <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">{info.title}</p>
+                        </div>
+
+                        {/* Bottom Right: Contact Info (Right aligned, stark) */}
+                        <div className="absolute bottom-10 right-10 text-right">
+                            <div className="space-y-1 text-[10px] text-black font-eng font-light tracking-wide leading-relaxed">
+                                <p>{info.mobile}</p>
+                                <p>{info.email}</p>
+                                <p>{info.address}</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 6: MinA
+            if (layout === 6) {
+                if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: color }}>
+                            <div className="w-32 text-white">
+                                <Logo color="#FFF" lightMode={true} />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex flex-col">
+                        <div className="h-2/3 w-full p-8 flex justify-between items-center">
+                            <div className="flex flex-col justify-center">
+                                <h2 className="text-3xl font-black text-gray-900 tracking-tighter leading-none mb-2">{info.name}</h2>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{info.title}</p>
+                            </div>
+                            <div className="">
+                                <Logo color={color} type="horizontal" />
+                            </div>
+                        </div>
+                        <div className="w-full h-[1px] bg-gray-200 relative">
+                            <div className="absolute left-0 top-0 h-full w-20" style={{ backgroundColor: color }}></div>
+                        </div>
+                        <div className="h-1/3 w-full px-8 py-4 flex flex-col justify-center bg-gray-50/30">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[9px] font-eng font-medium text-gray-600">
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Mobile</span><span className="text-gray-900 font-bold">{info.mobile}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">E-mail</span><span className="text-gray-900 truncate">{info.email}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Office</span><span className="text-gray-900">{info.tel}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Fax</span><span className="text-gray-900">{info.fax}</span></div>
+                                <div className="col-span-2 flex items-center"><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Address</span><span className="text-gray-900">{info.address}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 7: MinB
+            if (layout === 7) {
+                if (side === 'back') {
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: color }}>
+                            <div className="text-white">
+                                <Logo color="#FFF" lightMode={true} type="horizontal" symbolSize="w-[100px] h-[100px]" />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex flex-col">
+                        <div className="h-2/3 w-full p-8 flex justify-between items-center">
+                            <div className="flex flex-col justify-center">
+                                <h2 className="text-3xl font-black text-gray-900 tracking-tighter leading-none mb-2">{info.name}</h2>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{info.title}</p>
+                            </div>
+                            <div className="">
+                                <Logo color={color} type="horizontal" symbolSize="w-20 h-20" />
+                            </div>
+                        </div>
+                        <div className="w-full h-[1px] bg-gray-200 relative">
+                            <div className="absolute left-0 top-0 h-full w-20" style={{ backgroundColor: color }}></div>
+                        </div>
+                        <div className="h-1/3 w-full px-8 py-4 flex flex-col justify-center bg-gray-50/30">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[9px] font-eng font-medium text-gray-600">
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Mobile</span><span className="text-gray-900 font-bold">{info.mobile}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">E-mail</span><span className="text-gray-900 truncate">{info.email}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Office</span><span className="text-gray-900">{info.tel}</span></div>
+                                <div><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Fax</span><span className="text-gray-900">{info.fax}</span></div>
+                                <div className="col-span-2 flex items-center"><span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Address</span><span className="text-gray-900">{info.address}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 8: MinC (Vertical Logo on Right, Name on Left)
+            if (layout === 8) {
+                if (side === 'back') {
+                    // Back: Brand Color Background with White Horizontal Logo
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: color }}>
+                            <div className="text-white">
+                                <Logo color="#FFF" lightMode={true} type="horizontal" symbolSize="w-[100px] h-[100px]" />
+                            </div>
+                        </div>
+                    );
+                }
+                // Front: Architectural Layout (2/3 Top, 1/3 Bottom Split)
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex flex-col">
+                        {/* Top Area: Name (Left) & Vertical Logo (Right) */}
+                        <div className="h-2/3 w-full p-8 flex justify-between items-center">
+                            {/* Name & Title: Restored to Left Alignment */}
+                            <div className="flex flex-col justify-center">
+                                <h2 className="text-3xl font-black text-gray-900 tracking-tighter leading-none mb-2">{info.name}</h2>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{info.title}</p>
+                            </div>
+                            
+                            {/* Logo: Kept as Vertical, text scale restored to default (1.0) */}
+                            <div className="">
+                                <Logo color={color} type="vertical" symbolSize="w-20 h-20" />
+                            </div>
+                        </div>
+
+                        {/* Architectural Ground Line with Accent */}
+                        <div className="w-full h-[1px] bg-gray-200 relative">
+                            {/* Accent line position */}
+                            <div className="absolute left-0 top-0 h-full w-20" style={{ backgroundColor: color }}></div>
+                        </div>
+
+                        {/* Bottom Area: Contact Info (Takes 1/3 height) */}
+                        <div className="h-1/3 w-full px-8 py-4 flex flex-col justify-center bg-gray-50/30">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[9px] font-eng font-medium text-gray-600">
+                                <div>
+                                    <span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Mobile</span>
+                                    <span className="text-gray-900 font-bold">{info.mobile}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">E-mail</span>
+                                    <span className="text-gray-900 truncate">{info.email}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Office</span>
+                                    <span className="text-gray-900">{info.tel}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Fax</span>
+                                    <span className="text-gray-900">{info.fax}</span>
+                                </div>
+                                <div className="col-span-2 flex items-center">
+                                    <span className="text-gray-400 uppercase text-[8px] tracking-wider mr-2">Address</span>
+                                    <span className="text-gray-900">{info.address}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 9: MinX (Clone of Minimalist with Theme Color)
+            if (layout === 9) {
+                if (side === 'back') {
+                    // Back: Brand Color Background (Updated from #111 to color)
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: color }}>
+                            <div className="w-16 text-white">
+                                <Logo color="#FFF" lightMode={true} />
+                            </div>
+                        </div>
+                    );
+                }
+                // Front: White canvas with Theme Color accents
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden p-10">
+                        {/* Top Left: Logo (Theme Color) */}
+                        <div className="absolute top-10 left-10">
+                            <div className="w-14">
+                                <Logo color={color} />
+                            </div>
+                        </div>
+
+                        {/* Top Right: Name & Title (Aligned horizontally with Logo) */}
+                        <div className="absolute top-10 right-10 text-right mt-2">
+                            <h2 className="text-2xl font-light text-gray-900 tracking-tight leading-none">{info.name}</h2>
+                            {/* Title uses theme color for accent */}
+                            <p className="text-[10px] font-bold mt-1 uppercase tracking-widest" style={{ color: color }}>{info.title}</p>
+                        </div>
+
+                        {/* Bottom Right: Contact Info (Right aligned, stark) */}
+                        <div className="absolute bottom-10 right-10 text-right">
+                            <div className="space-y-1 text-[10px] text-gray-600 font-eng font-light tracking-wide leading-relaxed">
+                                <p>{info.mobile}</p>
+                                <p>{info.email}</p>
+                                <p>{info.address}</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 10: MinY (Theme Color Back with Blind Emboss, Theme Front)
+            if (layout === 10) {
+                if (side === 'back') {
+                    // Back: Brand Color Background + Embossed Logo (Color on Color)
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: color }}>
+                            {/* Adjusted Size: Reduced by ~30% (w-64 -> w-44) */}
+                            <div className="w-44" style={{ color: color }}>
+                                {/* Using 'blind-emboss' class. 
+                                    The Logo component uses 'currentColor' when effectClass is present.
+                                    We set the parent div color to {color} so the logo fills with the same color as background,
+                                    creating the blind emboss effect via shadows defined in CSS.
+                                */}
+                                <Logo effectClass="blind-emboss" type="vertical" />
+                            </div>
+                        </div>
+                    );
+                }
+                // Front: White canvas with Theme Color accents (Same as MinX)
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden p-10">
+                        {/* Top Left: Logo (Theme Color) */}
+                        <div className="absolute top-10 left-10">
+                            <div className="w-14">
+                                <Logo color={color} />
+                            </div>
+                        </div>
+
+                        {/* Top Right: Name & Title (Aligned horizontally with Logo) */}
+                        <div className="absolute top-10 right-10 text-right mt-2">
+                            <h2 className="text-2xl font-light text-gray-900 tracking-tight leading-none">{info.name}</h2>
+                            {/* Title uses theme color for accent */}
+                            <p className="text-[10px] font-bold mt-1 uppercase tracking-widest" style={{ color: color }}>{info.title}</p>
+                        </div>
+
+                        {/* Bottom Right: Contact Info (Right aligned, stark) */}
+                        <div className="absolute bottom-10 right-10 text-right">
+                            <div className="space-y-1 text-[10px] text-gray-600 font-eng font-light tracking-wide leading-relaxed">
+                                <p>{info.mobile}</p>
+                                <p>{info.email}</p>
+                                <p>{info.address}</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 11: StandardX (Duplicate of Standard with Embossed Back)
+            if (layout === 11) {
+                 if (side === 'back') {
+                    // Back: MinY Style (Embossed) but maintaining StandardX size (w-32)
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center p-8" style={{ backgroundColor: color }}>
+                            {/* Size kept at w-32 as requested, color set to background color for blind emboss effect */}
+                            <div className="w-32" style={{ color: color }}>
+                                <Logo effectClass="blind-emboss" type="vertical" />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex">
+                        <div className="w-1/3 flex items-center justify-center p-6 border-r border-gray-100 bg-gray-50">
+                            <div className="w-24">
+                                <Logo color={color} />
+                            </div>
+                        </div>
+                        <div className="w-2/3 p-8 flex flex-col justify-center relative">
+                            <div className="absolute top-0 right-0 w-24 h-24 opacity-5 pointer-events-none">
+                                <Logo color={color} />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-900 mb-1">{info.name}</h2>
+                            <p className="text-sm font-medium mb-6 font-eng uppercase tracking-wider" style={{ color: color }}>{info.title}</p>
+                            
+                            <div className="space-y-2 text-xs text-gray-600 font-eng">
+                                <div className="flex items-center gap-2">
+                                    <Phone size={12} color={color} /> <span>{info.mobile}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Mail size={12} color={color} /> <span>{info.email}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <MapPin size={12} color={color} /> <span>{info.address}</span>
+                                </div>
+                            </div>
+                            <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: color }}></div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Layout 12: StandardZ (Duplicate of StandardX)
+            if (layout === 12) {
+                 if (side === 'back') {
+                    // Back: MinY Style (Embossed) with adjusted logo size
+                    return (
+                        <div className="relative w-full h-full shadow-xl overflow-hidden flex items-center justify-center p-8" style={{ backgroundColor: color }}>
+                            <div style={{ color: color }}>
+                                {/* Symbol size reduced by 30% (200px -> 140px) */}
+                                <Logo effectClass="blind-emboss" type="vertical" symbolSize="w-[140px] h-[140px]" />
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="relative w-full h-full bg-white shadow-xl overflow-hidden flex">
+                        <div className="w-1/3 flex items-center justify-center p-6 border-r border-gray-100 bg-gray-50">
+                            <div className="w-24">
+                                <Logo color={color} />
+                            </div>
+                        </div>
+                        <div className="w-2/3 p-8 flex flex-col justify-center relative">
+                            <div className="absolute top-0 right-0 w-24 h-24 opacity-5 pointer-events-none">
+                                <Logo color={color} />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-900 mb-1">{info.name}</h2>
+                            <p className="text-sm font-medium mb-6 font-eng uppercase tracking-wider" style={{ color: color }}>{info.title}</p>
+                            
+                            <div className="space-y-2 text-xs text-gray-600 font-eng">
+                                <div className="flex items-center gap-2">
+                                    <Phone size={12} color={color} /> <span>{info.mobile}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Mail size={12} color={color} /> <span>{info.email}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <MapPin size={12} color={color} /> <span>{info.address}</span>
+                                </div>
+                            </div>
+                            <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: color }}></div>
+                        </div>
+                    </div>
+                );
+            }
+        };
+
+        const App = () => {
+            const [selectedColor, setSelectedColor] = useState(colorVariations[0].hex);
+            const [selectedLayout, setSelectedLayout] = useState(12); // Default to StandardZ
+            const [cardInfo, setCardInfo] = useState({
+                name: "장미영",
+                title: "대표이사",
+                mobile: "010-7150-5222",
+                tel: "02-408-5222",
+                fax: "0508-9604-3587",
+                email: "myj3802@naver.com",
+                address: "서울 송파구 충민로 10 (문정동, 가든파이브툴) 8층 E-16"
+            });
+            const [isConfirmed, setIsConfirmed] = useState(false);
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setCardInfo(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleConfirm = () => {
+                setIsConfirmed(true);
+                setTimeout(() => setIsConfirmed(false), 3000);
+            };
+
+            const scrollToSimulator = () => {
+                const element = document.getElementById('simulator');
+                if (element) element.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            return (
+                <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="text-center mb-16">
+                        <h1 className="font-eng text-4xl font-extrabold text-gray-900 mb-4">INHAE D&C</h1>
+                        <h2 className="font-eng text-xl font-medium text-gray-500">Brand Identity & Business Card Simulator</h2>
+                        <p className="mt-4 max-w-2xl mx-auto text-gray-600">
+                            브랜드 컬러 아이덴티티를 확인하고, 직접 명함을 디자인하여 시뮬레이션 해보세요.
+                        </p>
+                    </div>
+
+                    {/* Section 1: Color Palette (Clickable) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-20">
+                        {colorVariations.map((v, idx) => (
+                            <div 
+                                key={idx}
+                                onClick={() => { setSelectedColor(v.hex); scrollToSimulator(); }}
+                                className={`cursor-pointer group bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 ring-2 ${selectedColor === v.hex ? 'ring-offset-2 ring-blue-500' : 'ring-transparent'}`}
+                            >
+                                <div className="p-8 flex items-center justify-center bg-gray-50 border-b border-gray-100 group-hover:bg-gray-100 transition-colors h-48">
+                                    <div className="w-24">
+                                        <Logo color={v.hex} />
+                                    </div>
+                                </div>
+                                <div className="p-5">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="font-eng font-bold text-gray-800">{v.title}</h3>
+                                        <div className="w-6 h-6 rounded-full border border-gray-200" style={{ backgroundColor: v.hex }}></div>
+                                    </div>
+                                    <p className="text-sm text-gray-600 word-keep-all">{v.desc}</p>
+                                    <p className="text-xs text-blue-500 mt-3 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                        클릭하여 명함에 적용하기 →
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Section 2: Simulator */}
+                    <div id="simulator" className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
+                        <div className="p-6 bg-gray-800 text-white flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-bold">Business Card Simulator</h3>
+                                <p className="text-sm text-gray-400 mt-1">원하는 스타일과 컬러를 선택하고 정보를 입력하세요.</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs bg-gray-700 px-3 py-1 rounded-full">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedColor }}></div>
+                                <span className="font-mono">{selectedColor}</span>
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col lg:flex-row">
+                            {/* Editor Panel */}
+                            <div className="w-full lg:w-1/3 p-8 border-r border-gray-100 bg-gray-50">
+                                <div className="space-y-8">
+                                    {/* 1. Layout Selection */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-3">1. 레이아웃 선택 (Layout)</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            {['Standard', 'Modern', 'Premium', 'Energetic', 'Embossed', 'Minimalist', 'MinA', 'MinB', 'MinC', 'MinX', 'MinY', 'StandardX', 'StandardZ'].map((label, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setSelectedLayout(idx)}
+                                                    className={`px-2 py-3 text-sm rounded-lg border transition-all ${selectedLayout === idx 
+                                                        ? 'bg-white border-blue-500 text-blue-600 shadow-sm font-bold ring-1 ring-blue-500' 
+                                                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 2. Color Selection (Mini) */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-3">2. 컬러 선택 (Theme Color)</label>
+                                        <div className="flex flex-wrap gap-3">
+                                            {colorVariations.map((v, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setSelectedColor(v.hex)}
+                                                    title={v.title}
+                                                    className={`w-8 h-8 rounded-full border-2 transition-all shadow-sm ${selectedColor === v.hex ? 'border-gray-900 scale-110 ring-2 ring-gray-200' : 'border-transparent hover:scale-105'}`}
+                                                    style={{ backgroundColor: v.hex }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 3. Info Input */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-3">3. 정보 입력 (Information)</label>
+                                        <div className="space-y-3">
+                                            <input 
+                                                type="text" name="name" value={cardInfo.name} onChange={handleInputChange} placeholder="이름 (영문 권장)"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                            />
+                                            <input 
+                                                type="text" name="title" value={cardInfo.title} onChange={handleInputChange} placeholder="직함 (예: CEO / FOUNDER)"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                            />
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input 
+                                                    type="text" name="mobile" value={cardInfo.mobile} onChange={handleInputChange} placeholder="Mobile"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                />
+                                                 <input 
+                                                    type="text" name="tel" value={cardInfo.tel} onChange={handleInputChange} placeholder="Tel"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input 
+                                                    type="text" name="email" value={cardInfo.email} onChange={handleInputChange} placeholder="E-mail"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                />
+                                                 <input 
+                                                    type="text" name="fax" value={cardInfo.fax} onChange={handleInputChange} placeholder="Fax"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                />
+                                            </div>
+                                            <input 
+                                                type="text" name="address" value={cardInfo.address} onChange={handleInputChange} placeholder="주소"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Preview Panel */}
+                            <div className="w-full lg:w-2/3 p-8 lg:p-12 bg-gray-200 flex flex-col items-center justify-center min-h-[500px] overflow-y-auto">
+                                {/* Card Area - Front & Back */}
+                                <div className="flex flex-col gap-8 w-full max-w-[500px]">
+                                    <div>
+                                        <h4 className="text-gray-500 text-sm font-medium mb-2 tracking-widest uppercase text-center">Front (앞면)</h4>
+                                        <div className="card-preview shadow-2xl transform transition-transform duration-500 hover:scale-[1.02]">
+                                            <BusinessCard layout={selectedLayout} info={cardInfo} color={selectedColor} side="front" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-gray-500 text-sm font-medium mb-2 tracking-widest uppercase text-center">Back (뒷면)</h4>
+                                        <div className="card-preview shadow-2xl transform transition-transform duration-500 hover:scale-[1.02]">
+                                            <BusinessCard layout={selectedLayout} info={cardInfo} color={selectedColor} side="back" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="mt-10 flex gap-4">
+                                    <button 
+                                        onClick={() => {
+                                            setCardInfo({
+                                                name: "", title: "", mobile: "", tel: "", fax: "", email: "", address: ""
+                                            });
+                                        }}
+                                        className="flex items-center gap-2 px-6 py-3 bg-white text-gray-700 rounded-lg shadow-sm hover:bg-gray-50 transition-colors font-medium border border-gray-200"
+                                    >
+                                        <RefreshCw size={18} />
+                                        초기화
+                                    </button>
+                                    <button 
+                                        onClick={handleConfirm}
+                                        className={`flex items-center gap-2 px-8 py-3 rounded-lg shadow-lg text-white font-bold transition-all transform active:scale-95 ${isConfirmed ? 'bg-green-600' : 'bg-gray-900 hover:bg-black'}`}
+                                    >
+                                        {isConfirmed ? <Check size={18} /> : <Download size={18} />}
+                                        {isConfirmed ? "확정 완료!" : "시안 확정하기"}
+                                    </button>
+                                </div>
+                                {isConfirmed && (
+                                    <p className="mt-4 text-green-600 text-sm font-medium animate-bounce">
+                                        디자인이 성공적으로 확정되었습니다. (시뮬레이션)
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
