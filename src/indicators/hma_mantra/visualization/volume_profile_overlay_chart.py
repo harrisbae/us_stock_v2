@@ -20,6 +20,11 @@ from ..chart_patterns import (
 )
 from ..utils import get_available_font
 from ..box_range_windows import compute_box_range_windows
+from ..disparity_strategy import analyze_disparity_strategy
+from ..buffett_indicator import calculate_buffett_indicator, get_buffett_sentiment
+from ..fear_greed_indicator import calculate_fear_greed_indicator
+from ..peg_indicator import calculate_peg_indicator
+from ..adx_dmi_indicator import analyze_adx_dmi, plot_adx_buy_on_main
 import matplotlib.patches as mpatches
 import pandas_datareader.data as web
 from datetime import datetime, timedelta
@@ -1538,99 +1543,6 @@ def calculate_period_return(ohlcv_data, start_date, end_date):
         print(f"기간 수익률 계산 오류: {e}")
         return None
 
-def calculate_buffett_indicator():
-    """버핏 지수를 계산합니다. (실제 데이터 사용)"""
-    try:
-        import yfinance as yf
-        from datetime import datetime
-        
-        # Wilshire 5000 시가총액 (실제 데이터)
-        try:
-            # Wilshire 5000 Total Market Full Cap Index
-            from datetime import datetime, timedelta
-            end_date = datetime.now().date()
-            start_date = end_date - timedelta(days=7)  # 최근 1주일 데이터
-            
-            wilshire = yf.download('^W5000', start=start_date, end=end_date)
-            if not wilshire.empty:
-                # 시가총액은 지수 값에 비례하므로 근사값 계산
-                # 2025년 8월 기준: Wilshire 5000 지수가 약 60,000 수준으로 상승
-                # 실제 시가총액은 약 55-60조 달러로 추정
-                wilshire_index = wilshire['Close'].iloc[-1]
-                wilshire_market_cap = (wilshire_index / 60000) * 57.5  # 조 달러 (2025년 8월 추정)
-                wilshire_date = wilshire.index[-1].strftime('%Y-%m-%d')
-                print(f"Wilshire 5000 지수: {wilshire_index:.0f}, 시가총액: {wilshire_market_cap:.1f}조 달러")
-            else:
-                # 데이터가 없는 경우 2025년 8월 추정값 사용
-                wilshire_market_cap = 57.2  # 조 달러 (2025년 8월 추정)
-                wilshire_date = "2025-08-22"
-        except Exception as e:
-            print(f"Wilshire 5000 데이터 로드 실패: {e}")
-            wilshire_market_cap = 57.2  # 조 달러 (2025년 8월 추정)
-            wilshire_date = "2025-08-22"
-        
-        # US GDP (실제 데이터)
-        try:
-            # FRED API를 통한 GDP 데이터 (현재는 최신 추정값 사용)
-            # 2025년 2분기 기준 미국 GDP는 지속적인 성장으로 약 29.1조 달러로 추정
-            us_gdp = 29.1  # 조 달러 (2025년 2분기 추정)
-            gdp_date = "2025-Q2"
-            print(f"US GDP: {us_gdp}조 달러 ({gdp_date})")
-        except Exception as e:
-            print(f"GDP 데이터 로드 실패: {e}")
-            us_gdp = 29.1  # 조 달러 (2025년 2분기 추정)
-            gdp_date = "2025-Q2"
-        
-        # 버핏 지수 계산
-        buffett_indicator = (wilshire_market_cap / us_gdp) * 100
-        
-        # 계산 결과와 기준일 저장
-        result = {
-            'value': round(buffett_indicator, 1),
-            'wilshire_market_cap': round(wilshire_market_cap, 1),
-            'wilshire_date': wilshire_date,
-            'us_gdp': round(us_gdp, 1),
-            'gdp_date': gdp_date
-        }
-        
-        print(f"🔄 버핏 지수 계산 완료 (2025년 8월 최신):")
-        print(f"  - Wilshire 5000 시가총액: {result['wilshire_market_cap']}조 달러 ({result['wilshire_date']})")
-        print(f"  - US GDP: {result['us_gdp']}조 달러 ({result['gdp_date']})")
-        print(f"  - 버핏 지수: {result['value']}% (최신 데이터 기준)")
-        
-        return result
-    except Exception as e:
-        print(f"버핏 지수 계산 오류: {e}")
-        return None
-
-def get_buffett_sentiment(buffett_value):
-    """버핏 지수 해석 및 투자 가이드를 제공합니다."""
-    if buffett_value is None:
-        return "N/A", "gray", "데이터 부족"
-    
-    if buffett_value <= 50:
-        sentiment = "극도 과매도"
-        color = "darkgreen"
-        guide = "강력한 매수 기회 - 주식 비중 80%+ 고려"
-    elif buffett_value <= 75:
-        sentiment = "과매도"
-        color = "green"
-        guide = "매수 기회 - 주식 비중 70-80% 고려"
-    elif buffett_value <= 90:
-        sentiment = "균형"
-        color = "orange"
-        guide = "균형적 배분 - 주식 비중 50-60% 유지"
-    elif buffett_value <= 115:
-        sentiment = "과열"
-        color = "red"
-        guide = "주의 필요 - 주식 비중 30-40% 고려"
-    else:
-        sentiment = "극도 과열"
-        color = "darkred"
-        guide = "강력한 매도 신호 - 주식 비중 20% 이하 고려"
-    
-    return sentiment, color, guide
-
 def calculate_volume_profile(ohlcv_data, num_bins=50):
     """Fixed Range Volume Profile 계산 (Net Volume 포함)"""
     # 가격 범위 설정
@@ -2106,6 +2018,21 @@ def plot_main_chart_with_volume_profile_overlay(
     pattern_range_box_avoid_time_overlap: bool = True,
     # 메인 차트 range_box: 후보 중 상위 N건만(신뢰도·종료일). 스트립은 전체 유지. 0이면 메인에 미표시.
     pattern_range_box_main_max: int = 1,
+    # 메인 차트 패턴 오버레이 최소 신뢰도(0~1). 스트립에는 영향 없음.
+    pattern_main_min_confidence: float = 0.0,
+    # 이격도(20MA 기준) 전략 표시
+    show_disparity_strategy: bool = False,
+    disparity_ma: int = 20,
+    disparity_low: float = 95.0,
+    disparity_high: float = 105.0,
+    disparity_conf_weight_depth: float = 0.22,
+    disparity_conf_weight_volume: float = 0.16,
+    disparity_conf_weight_trend: float = 0.10,
+    show_adx_dmi: bool = False,
+    adx_period: int = 14,
+    adx_sideways: float = 20.0,
+    adx_trend: float = 25.0,
+    adx_strong: float = 40.0,
 ):
     """Volume Profile이 메인차트에 오버레이된 차트"""
     # 폰트 설정
@@ -2433,9 +2360,24 @@ def plot_main_chart_with_volume_profile_overlay(
     
         # 볼린저 밴드 계산
     bb_ma, bb_upper, bb_lower = calculate_bollinger_bands(ohlcv_data['Close'])
+    disparity_result = analyze_disparity_strategy(
+        ohlcv_data,
+        rsi14=rsi14,
+        macd=macd,
+        macd_signal=macd_signal,
+        bb_upper=bb_upper,
+        bb_lower=bb_lower,
+        disparity_ma=disparity_ma,
+        disparity_low=disparity_low,
+        disparity_high=disparity_high,
+        conf_weight_depth=disparity_conf_weight_depth,
+        conf_weight_volume=disparity_conf_weight_volume,
+        conf_weight_trend=disparity_conf_weight_trend,
+    )
     
     # SMA200일 이동평균선 계산
     sma200 = ohlcv_data['Close'].rolling(window=200).mean()
+    sma20 = ohlcv_data['Close'].rolling(window=20).mean()
     
     # 신호 생성
     trade_signals = get_hma_mantra_md_signals(ohlcv_data, ticker)
@@ -2508,21 +2450,31 @@ def plot_main_chart_with_volume_profile_overlay(
     print(f"시장 심리 요약: {market_summary}")
     print(f"전략 가이드: {strategy_guide}")
     
-    # 차트 생성: 6x1 기본, show_pattern_strip 시 메인 바로 아래 패턴 스트립 행 삽입 (7x1)
+    # 차트 생성: 옵션에 따라 GridSpec 행 동적 구성
     ax_pattern = None
-    if show_pattern_strip:
-        fig = plt.figure(figsize=(20, 21))
-        gs = GridSpec(7, 1, height_ratios=[3, 0.45, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)
-        vol_row, rsi_row, macd_row, rates_row, sent_row = 2, 3, 4, 5, 6
-    else:
-        fig = plt.figure(figsize=(20, 20))
-        gs = GridSpec(6, 1, height_ratios=[3, 1, 1, 1, 1.5, 1.2], figure=fig, hspace=0.12)
-        vol_row, rsi_row, macd_row, rates_row, sent_row = 1, 2, 3, 4, 5
+    ax_disparity = None
+    ax_adx = None
 
-    # 메인 차트 (상단)
-    ax_main = fig.add_subplot(gs[0, 0])
+    height_ratios = [3.0]
     if show_pattern_strip:
-        ax_pattern = fig.add_subplot(gs[1, 0], sharex=ax_main)
+        height_ratios.append(0.45)
+    height_ratios.extend([1.0, 1.0, 1.0])  # Volume, RSI, MACD
+    if show_adx_dmi:
+        height_ratios.append(0.85)
+    if show_disparity_strategy:
+        height_ratios.append(0.95)
+    height_ratios.extend([1.5, 1.2])  # 금리, 시장심리
+
+    fig_height = 19 + len(height_ratios) * 0.55
+    fig = plt.figure(figsize=(20, fig_height))
+    gs = GridSpec(len(height_ratios), 1, height_ratios=height_ratios, figure=fig, hspace=0.12)
+
+    row = 0
+    ax_main = fig.add_subplot(gs[row, 0])
+    row += 1
+    if show_pattern_strip:
+        ax_pattern = fig.add_subplot(gs[row, 0], sharex=ax_main)
+        row += 1
     
     # 종목 정보 가져오기
     long_name, sector, industry = get_stock_info(ticker)
@@ -2558,44 +2510,358 @@ def plot_main_chart_with_volume_profile_overlay(
             zorder=1001,
         )
     
-    # 버핏 지수 계산 (표시는 통합 박스에서 처리)
+    # 버핏 지수·공포탐욕 지수 (표시는 통합 박스에서 처리)
+    buffett_data = None
+    buffett_value = None
+    buffett_sentiment = None
+    buffett_guide = None
+    fear_greed_data = None
+    fear_greed_score = None
+    fear_greed_sentiment = None
+    fear_greed_guide = None
+    peg_data = None
+    peg_value = None
+    peg_sentiment = None
+    peg_guide = None
+
     buffett_data = calculate_buffett_indicator()
     if buffett_data:
         buffett_value = buffett_data['value']
         buffett_sentiment, buffett_color, buffett_guide = get_buffett_sentiment(buffett_value)
-        
-        # 전략 가이드를 시장 심리 요약 아래에 표시 (zorder 최고값 설정)
-        if strategy_guide:
-            ax_strategy = fig.add_axes([0.1, 0.91, 0.8, 0.03])
-            ax_strategy.set_facecolor('lightyellow')
-            ax_strategy.set_xlim(0, 1)
-            ax_strategy.set_ylim(0, 1)
-            ax_strategy.axis('off')
-            ax_strategy.set_zorder(1000)  # 최고 zorder 값 설정
-            
-            # 전략 가이드 텍스트를 박스 안에 표시 (폰트 크기 30% 감소)
-            ax_strategy.text(0.5, 0.5, strategy_guide, 
-                           fontsize=7.7, fontweight='bold', ha='center', va='center',
-                           bbox=dict(boxstyle="round,pad=0.4", facecolor='lightyellow', 
-                                    edgecolor='orange', linewidth=2),
-                           zorder=1001)  # 텍스트도 최고 zorder 값 설정
-    
-    # 거래량 차트
-    ax_volume = fig.add_subplot(gs[vol_row, 0], sharex=ax_main)
-    # RSI 차트
-    ax_rsi = fig.add_subplot(gs[rsi_row, 0], sharex=ax_main)
-    # MACD 차트
-    ax_macd = fig.add_subplot(gs[macd_row, 0], sharex=ax_main)
-    # 금리 통합 차트 (FFR + CD 금리 + TNX)
-    ax_rates = fig.add_subplot(gs[rates_row, 0], sharex=ax_main)
-    # 시장 심리 통합 지표 차트
-    ax_sentiment = fig.add_subplot(gs[sent_row, 0], sharex=ax_main)
+
+    fear_greed_data = calculate_fear_greed_indicator()
+    if fear_greed_data:
+        fear_greed_score = fear_greed_data['score']
+        fear_greed_sentiment = fear_greed_data.get('sentiment')
+        fear_greed_guide = fear_greed_data.get('guide')
+
+    if ticker:
+        peg_data = calculate_peg_indicator(ticker)
+        if peg_data:
+            peg_value = peg_data.get('peg')
+            peg_sentiment = peg_data.get('sentiment')
+            peg_guide = peg_data.get('guide')
+
+    # 전략 가이드를 시장 심리 요약 아래에 표시 (zorder 최고값 설정)
+    if strategy_guide:
+        ax_strategy = fig.add_axes([0.1, 0.91, 0.8, 0.03])
+        ax_strategy.set_facecolor('lightyellow')
+        ax_strategy.set_xlim(0, 1)
+        ax_strategy.set_ylim(0, 1)
+        ax_strategy.axis('off')
+        ax_strategy.set_zorder(1000)  # 최고 zorder 값 설정
+
+        # 전략 가이드 텍스트를 박스 안에 표시 (폰트 크기 30% 감소)
+        ax_strategy.text(0.5, 0.5, strategy_guide,
+                       fontsize=7.7, fontweight='bold', ha='center', va='center',
+                       bbox=dict(boxstyle="round,pad=0.4", facecolor='lightyellow',
+                                edgecolor='orange', linewidth=2),
+                       zorder=1001)  # 텍스트도 최고 zorder 값 설정
+
+    ax_volume = fig.add_subplot(gs[row, 0], sharex=ax_main)
+    row += 1
+    ax_rsi = fig.add_subplot(gs[row, 0], sharex=ax_main)
+    row += 1
+    ax_macd = fig.add_subplot(gs[row, 0], sharex=ax_main)
+    row += 1
+    if show_adx_dmi:
+        ax_adx = fig.add_subplot(gs[row, 0], sharex=ax_main)
+        row += 1
+    if show_disparity_strategy:
+        ax_disparity = fig.add_subplot(gs[row, 0], sharex=ax_main)
+        row += 1
+    ax_rates = fig.add_subplot(gs[row, 0], sharex=ax_main)
+    row += 1
+    ax_sentiment = fig.add_subplot(gs[row, 0], sharex=ax_main)
+
+    adx_dmi_data = None
+    if show_adx_dmi:
+        try:
+            adx_dmi_data = analyze_adx_dmi(
+                ohlcv_data,
+                period=adx_period,
+                adx_sideways=adx_sideways,
+                adx_trend=adx_trend,
+                adx_strong=adx_strong,
+            )
+            n_buy = adx_dmi_data.get("buy_signal_count", 0)
+            print(
+                f"ADX/DMI: {adx_dmi_data.get('summary')} "
+                f"(ADX={adx_dmi_data.get('adx')}, +DI={adx_dmi_data.get('plus_di')}, "
+                f"-DI={adx_dmi_data.get('minus_di')}, ADX buy={n_buy}건)"
+            )
+        except Exception as e:
+            print(f"ADX/DMI 분석 실패: {e}")
 
     # 메인 차트 설정 (투명도 높임)
     candlestick_ohlc(ax_main, 
                      [[mdates.date2num(date), o, h, l, c] for date, (o, h, l, c) in 
                       zip(ohlcv_data.index, ohlcv_data[['Open', 'High', 'Low', 'Close']].values)],
                      width=0.6, colorup='green', colordown='red', alpha=0.9)
+    if show_disparity_strategy:
+        try:
+            disp_series_main = disparity_result.get("disparity")
+            if disp_series_main is not None and len(disp_series_main):
+                # 메인 차트 이격도는 우측 보조축(%) 기준으로 표시
+                ax_main_disp = ax_main.twinx()
+                dmin = float(np.nanmin(disp_series_main.values))
+                dmax = float(np.nanmax(disp_series_main.values))
+                my0 = min(float(disparity_low) - 2.0, dmin - 1.0)
+                my1 = max(float(disparity_high) + 2.0, dmax + 1.0)
+                ax_main_disp.set_ylim(my0, my1)
+                ax_main_disp.plot(
+                    ohlcv_data.index,
+                    disp_series_main,
+                    color="#2c3e50",
+                    linewidth=0.75,
+                    alpha=0.70,
+                    label=f"Disparity({disparity_ma}) [right axis]",
+                    zorder=18,
+                )
+                ax_main_disp.axhline(float(disparity_low), color="#27ae60", linestyle="--", linewidth=0.55, alpha=0.65, zorder=17)
+                ax_main_disp.axhline(100.0, color="#7f8c8d", linestyle=":", linewidth=0.5, alpha=0.6, zorder=17)
+                ax_main_disp.axhline(float(disparity_high), color="#c0392b", linestyle="--", linewidth=0.55, alpha=0.65, zorder=17)
+                ax_main_disp.set_ylabel(f"Disparity({disparity_ma})", fontsize=6, color="#2c3e50")
+                ax_main_disp.tick_params(axis='y', labelsize=6, colors="#2c3e50")
+                ax_main_disp.grid(False)
+                ax_main_disp.legend(loc='upper right', fontsize=6, framealpha=0.75)
+
+                sma_base = ohlcv_data['Close'].rolling(window=disparity_ma).mean()
+                eq_95 = sma_base * (float(disparity_low) / 100.0)
+                eq_100 = sma_base
+                eq_105 = sma_base * (float(disparity_high) / 100.0)
+                ax_main.plot(
+                    ohlcv_data.index,
+                    eq_100,
+                    color="#8e44ad",
+                    linewidth=0.55,
+                    linestyle=":",
+                    alpha=0.65,
+                    label=f"Eq 100% (SMA{disparity_ma})",
+                    zorder=16,
+                )
+                ax_main.plot(
+                    ohlcv_data.index,
+                    eq_95,
+                    color="#27ae60",
+                    linewidth=0.45,
+                    linestyle="--",
+                    alpha=0.45,
+                    label=f"Eq {disparity_low:.0f}%",
+                    zorder=15,
+                )
+                ax_main.plot(
+                    ohlcv_data.index,
+                    eq_105,
+                    color="#c0392b",
+                    linewidth=0.45,
+                    linestyle="--",
+                    alpha=0.45,
+                    label=f"Eq {disparity_high:.0f}%",
+                    zorder=15,
+                )
+
+                # 메인 차트 하단에 이격도 신호 레인(매수/매도/관망) 표시
+                evs_main = disparity_result.get("events", [])
+                lane_buy, lane_sell, lane_wait = [], [], []
+                for ev in evs_main:
+                    ts = pd.Timestamp(ev.get("date"))
+                    act = str(ev.get("action", "wait"))
+                    if act == "buy_scale_in":
+                        lane_buy.append(ts)
+                    elif act in ("take_profit", "reduce"):
+                        lane_sell.append(ts)
+                    else:
+                        lane_wait.append(ts)
+
+                def _thin_dates(dates, min_gap_days=5, max_n=40):
+                    out = []
+                    last = None
+                    for dt in sorted(dates):
+                        if last is None or abs((dt - last).days) >= min_gap_days:
+                            out.append(dt)
+                            last = dt
+                    return out[-max_n:]
+
+                lane_buy = _thin_dates(lane_buy, min_gap_days=4, max_n=36)
+                lane_sell = _thin_dates(lane_sell, min_gap_days=4, max_n=36)
+                lane_wait = _thin_dates(lane_wait, min_gap_days=6, max_n=28)
+
+                xtrans = ax_main.get_xaxis_transform()  # x=data, y=axes-fraction
+                if lane_buy:
+                    for dt in lane_buy:
+                        ax_main.axvline(
+                            x=dt,
+                            ymin=0.02,
+                            ymax=0.98,
+                            color="#27ae60",
+                            linestyle="--",
+                            linewidth=0.55,
+                            alpha=0.28,
+                            zorder=14,
+                        )
+                    ax_main.scatter(
+                        lane_buy,
+                        [0.055] * len(lane_buy),
+                        transform=xtrans,
+                        marker="^",
+                        s=22,
+                        color="#27ae60",
+                        alpha=0.95,
+                        zorder=19,
+                        clip_on=False,
+                        label="Disparity 매수",
+                    )
+                if lane_sell:
+                    for dt in lane_sell:
+                        ax_main.axvline(
+                            x=dt,
+                            ymin=0.02,
+                            ymax=0.98,
+                            color="#c0392b",
+                            linestyle="--",
+                            linewidth=0.55,
+                            alpha=0.28,
+                            zorder=14,
+                        )
+                    ax_main.scatter(
+                        lane_sell,
+                        [0.095] * len(lane_sell),
+                        transform=xtrans,
+                        marker="v",
+                        s=22,
+                        color="#c0392b",
+                        alpha=0.95,
+                        zorder=19,
+                        clip_on=False,
+                        label="Disparity 매도",
+                    )
+                if lane_wait:
+                    ax_main.scatter(
+                        lane_wait,
+                        [0.135] * len(lane_wait),
+                        transform=xtrans,
+                        marker="o",
+                        s=10,
+                        color="#7f8c8d",
+                        alpha=0.65,
+                        zorder=18,
+                        clip_on=False,
+                        label="Disparity 관망",
+                    )
+        except Exception as e:
+            print(f"메인 차트 이격도 표시 실패: {e}")
+    if show_disparity_strategy and ax_disparity is not None:
+        try:
+            disp_series = disparity_result.get("disparity")
+            if disp_series is not None and len(disp_series):
+                disp_min = float(np.nanmin(disp_series.values))
+                disp_max = float(np.nanmax(disp_series.values))
+                y0 = min(float(disparity_low) - 2.0, disp_min - 1.0)
+                y1 = max(float(disparity_high) + 2.0, disp_max + 1.0)
+                ax_disparity.set_ylim(y0, y1)
+                ax_disparity.plot(
+                    ohlcv_data.index,
+                    disp_series,
+                    color="#34495e",
+                    linewidth=1.0,
+                    alpha=0.95,
+                    label=f"Disparity({disparity_ma})",
+                )
+                ax_disparity.axhline(float(disparity_low), color="#27ae60", linestyle="--", linewidth=0.9, alpha=0.9, label=f"Low {disparity_low:.0f}%")
+                ax_disparity.axhline(100.0, color="#7f8c8d", linestyle=":", linewidth=0.8, alpha=0.85, label="Mid 100%")
+                ax_disparity.axhline(float(disparity_high), color="#c0392b", linestyle="--", linewidth=0.9, alpha=0.9, label=f"High {disparity_high:.0f}%")
+
+                ax_disparity.fill_between(
+                    ohlcv_data.index,
+                    y0,
+                    float(disparity_low),
+                    color="#2ecc71",
+                    alpha=0.06,
+                )
+                ax_disparity.fill_between(
+                    ohlcv_data.index,
+                    float(disparity_high),
+                    y1,
+                    color="#e74c3c",
+                    alpha=0.06,
+                )
+
+                evs = disparity_result.get("events", [])
+                buy_pts, sell_pts, wait_pts = [], [], []
+                for ev in evs:
+                    ts = pd.Timestamp(ev.get("date"))
+                    dv = float(ev.get("disparity", np.nan))
+                    act = str(ev.get("action", "wait"))
+                    tdir = str(ev.get("trend_short", "S")).upper()
+                    tslope = float(ev.get("trend_slope", 0.0))
+                    vdir = str(ev.get("volume_short", "F")).upper()
+                    if np.isnan(dv):
+                        continue
+                    if act == "buy_scale_in":
+                        buy_pts.append((ts, dv, tdir, tslope, vdir))
+                    elif act in ("take_profit", "reduce"):
+                        sell_pts.append((ts, dv, tdir, tslope, vdir))
+                    else:
+                        wait_pts.append((ts, dv, tdir, tslope, vdir))
+                if buy_pts:
+                    buy_x = [p[0] for p in buy_pts]
+                    buy_y = [p[1] for p in buy_pts]
+                    ax_disparity.scatter(buy_x, buy_y, marker="^", s=26, color="#27ae60", label="매수", zorder=6)
+                    for bx, by, bt, bs, bv in buy_pts[-6:]:
+                        ax_disparity.annotate(
+                            f"BUY (T:{bt},{bs:+.2f} / V:{bv})",
+                            xy=(bx, by),
+                            xytext=(0, 7),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=6,
+                            color="#1e8449",
+                            zorder=7,
+                            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="#27ae60", alpha=0.85),
+                        )
+                if sell_pts:
+                    sell_x = [p[0] for p in sell_pts]
+                    sell_y = [p[1] for p in sell_pts]
+                    ax_disparity.scatter(sell_x, sell_y, marker="v", s=26, color="#c0392b", label="매도", zorder=6)
+                    for sx, sy, st, ss, sv in sell_pts[-6:]:
+                        ax_disparity.annotate(
+                            f"SELL (T:{st},{ss:+.2f} / V:{sv})",
+                            xy=(sx, sy),
+                            xytext=(0, -8),
+                            textcoords="offset points",
+                            ha="center",
+                            va="top",
+                            fontsize=6,
+                            color="#922b21",
+                            zorder=7,
+                            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="#c0392b", alpha=0.85),
+                        )
+                if wait_pts:
+                    wait_x = [p[0] for p in wait_pts]
+                    wait_y = [p[1] for p in wait_pts]
+                    ax_disparity.scatter(wait_x, wait_y, marker="o", s=14, color="#7f8c8d", alpha=0.7, label="관망", zorder=5)
+                    for wx, wy, wt, ws, wv in wait_pts[-4:]:
+                        ax_disparity.annotate(
+                            f"WAIT (T:{wt},{ws:+.2f} / V:{wv})",
+                            xy=(wx, wy),
+                            xytext=(0, 8),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=5.5,
+                            color="#4d5656",
+                            zorder=6,
+                            bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="#7f8c8d", alpha=0.78),
+                        )
+
+                ax_disparity.set_title(f"Disparity Strategy ({disparity_ma}MA)", fontsize=9)
+                ax_disparity.set_ylabel("Disparity %", fontsize=8)
+                ax_disparity.grid(True, alpha=0.25, linestyle=":")
+                ax_disparity.legend(loc="upper left", fontsize=6, framealpha=0.85, ncol=3)
+        except Exception as e:
+            print(f"이격도 subplot 표시 실패: {e}")
     
     # 배당일을 메인차트 최상단(top)에 "D"로 표시
     if dividend_dates:
@@ -2762,6 +3028,7 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.plot(ohlcv_data.index, bb_ma, color='purple', linewidth=0.175, label='BB MA(20)')
     ax_main.plot(ohlcv_data.index, bb_upper, color='purple', linewidth=0.175, linestyle=':', label='BB Upper')
     ax_main.plot(ohlcv_data.index, bb_lower, color='purple', linewidth=0.175, linestyle=':', label='BB Lower')
+    ax_main.plot(ohlcv_data.index, sma20, color='#8e44ad', linewidth=0.85, linestyle='-', alpha=0.9, label='SMA20')
     
     # SMA200일 이동평균선 추가
     ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='SMA200', alpha=0.8)
@@ -2965,9 +3232,63 @@ def plot_main_chart_with_volume_profile_overlay(
             info_text += f'\n\n버핏지수: {buffett_value}% ({buffett_sentiment})\n시장가이드: {buffett_guide}'
             info_text += f'\nWilshire 5000: {buffett_data["wilshire_market_cap"]}조 달러 ({buffett_data["wilshire_date"]})'
             info_text += f'\nUS GDP: {buffett_data["us_gdp"]}조 달러 ({buffett_data["gdp_date"]})'
-        
+            if buffett_data.get('used_fallback'):
+                info_text += '\n⚠️ 버핏지수: 일부 fallback 데이터'
+
+        if fear_greed_score is not None and fear_greed_data:
+            fg_rating = fear_greed_data.get('rating_ko', fear_greed_data.get('rating', ''))
+            info_text += f'\n\n공포탐욕: {fear_greed_score} ({fg_rating})'
+            if fear_greed_sentiment:
+                info_text += f'\n심리: {fear_greed_sentiment}'
+            if fear_greed_guide:
+                info_text += f'\n가이드: {fear_greed_guide}'
+            if fear_greed_data.get('previous_close') is not None:
+                info_text += f"\n전일: {fear_greed_data['previous_close']}"
+            if fear_greed_data.get('timestamp'):
+                info_text += f"\n기준: {fear_greed_data['timestamp']} ({fear_greed_data.get('source', 'CNN')})"
+            if fear_greed_data.get('used_fallback'):
+                info_text += '\n⚠️ 공포탐욕: crypto fallback'
+
+        if peg_data is not None:
+            pe_line = (
+                f"{peg_data.get('pe_label', 'PER')} {peg_data.get('pe')}"
+                if peg_data.get('pe') is not None
+                else ""
+            )
+            peg_lines = []
+            if peg_data.get('peg_1y') is not None:
+                peg_lines.append(
+                    f"PEG 1년: {peg_data['peg_1y']} ({peg_data.get('peg_1y_sentiment')}) "
+                    f"EPS YoY {peg_data.get('growth_1y_pct')}%"
+                )
+            else:
+                peg_lines.append("PEG 1년: N/A")
+            if peg_data.get('peg_3y') is not None:
+                peg_lines.append(
+                    f"PEG 3년: {peg_data['peg_3y']} ({peg_data.get('peg_3y_sentiment')}) "
+                    f"EPS CAGR {peg_data.get('growth_3y_cagr_pct')}%"
+                )
+            else:
+                peg_lines.append("PEG 3년: N/A")
+            if peg_data.get('yf_peg_ratio') is not None:
+                peg_lines.append(f"(참고 Yahoo PEG {peg_data['yf_peg_ratio']})")
+            info_text += "\n\n" + "\n".join(peg_lines)
+            if pe_line:
+                info_text += f"\n{pe_line}"
+
+        if adx_dmi_data is not None and adx_dmi_data.get("adx") is not None:
+            info_text += (
+                f"\n\n추세(ADX/DMI): {adx_dmi_data.get('summary')}"
+                f"\nADX={adx_dmi_data.get('adx')}"
+                f" | DMI +DI={adx_dmi_data.get('plus_di')}"
+                f" −DI={adx_dmi_data.get('minus_di')}"
+            )
+            n_adx_buy = adx_dmi_data.get("buy_signal_count", 0)
+            if n_adx_buy:
+                info_text += f"\nADX buy 신호: {n_adx_buy}건 (DI↑ & ADX≥{adx_trend:.0f})"
+
         # 실시간 가격 하이라이트 텍스트 박스를 메인차트 밖 오른쪽에 표시
-        ax_realtime = fig.add_axes([0.78, 0.5, 0.20, 0.15])  # 메인차트 오른쪽에 배치
+        ax_realtime = fig.add_axes([0.78, 0.42, 0.20, 0.28])  # 버핏·F&G·PEG·ADX
         ax_realtime.set_facecolor('white')
         ax_realtime.set_xlim(0, 1)
         ax_realtime.set_ylim(0, 1)
@@ -2985,6 +3306,22 @@ def plot_main_chart_with_volume_profile_overlay(
                         color='black', 
                         fontweight='bold',
                         zorder=1001)  # 텍스트도 최고 zorder 값 설정
+
+        if show_disparity_strategy:
+            try:
+                latest_event = disparity_result.get("latest_event") or {}
+                disp_v = latest_event.get("disparity", np.nan)
+                disp_txt = f"{disp_v:.2f}" if pd.notna(disp_v) else "N/A"
+                state_txt = str(latest_event.get("state", "NEUTRAL"))
+                action_txt = str(disparity_result.get("final_action", "관망"))
+                info_text += (
+                    f"\n\n[이격도]\n"
+                    f"현재 이격도: {disp_txt}\n"
+                    f"상태: {state_txt}\n"
+                    f"액션: {action_txt}"
+                )
+            except Exception as e:
+                print(f"이격도 정보 텍스트 구성 실패: {e}")
         
         # 현재가 수직선 - 원래 위치로 복원
         if current_price_line_style == 'thin':
@@ -3060,7 +3397,33 @@ def plot_main_chart_with_volume_profile_overlay(
         'wilshire_market_cap': buffett_data.get('wilshire_market_cap') if buffett_data else None,
         'wilshire_date': buffett_data.get('wilshire_date') if buffett_data else None,
         'us_gdp': buffett_data.get('us_gdp') if buffett_data else None,
-        'gdp_date': buffett_data.get('gdp_date') if buffett_data else None
+        'gdp_date': buffett_data.get('gdp_date') if buffett_data else None,
+        'fear_greed_score': fear_greed_score,
+        'fear_greed_rating': fear_greed_data.get('rating_ko') if fear_greed_data else None,
+        'fear_greed_sentiment': fear_greed_sentiment,
+        'fear_greed_guide': fear_greed_guide,
+        'fear_greed_source': fear_greed_data.get('source') if fear_greed_data else None,
+        'fear_greed_timestamp': fear_greed_data.get('timestamp') if fear_greed_data else None,
+        'peg': peg_value,
+        'peg_1y': peg_data.get('peg_1y') if peg_data else None,
+        'peg_3y': peg_data.get('peg_3y') if peg_data else None,
+        'peg_1y_sentiment': peg_data.get('peg_1y_sentiment') if peg_data else None,
+        'peg_3y_sentiment': peg_data.get('peg_3y_sentiment') if peg_data else None,
+        'peg_sentiment': peg_sentiment,
+        'peg_guide': peg_guide,
+        'peg_pe': peg_data.get('pe') if peg_data else None,
+        'peg_growth_1y_pct': peg_data.get('growth_1y_pct') if peg_data else None,
+        'peg_growth_3y_cagr_pct': peg_data.get('growth_3y_cagr_pct') if peg_data else None,
+        'peg_growth_pct': peg_data.get('growth_1y_pct') if peg_data else None,
+        'peg_source': peg_data.get('source') if peg_data else None,
+        'yf_peg_ratio': peg_data.get('yf_peg_ratio') if peg_data else None,
+        'adx': adx_dmi_data.get('adx') if adx_dmi_data else None,
+        'plus_di': adx_dmi_data.get('plus_di') if adx_dmi_data else None,
+        'minus_di': adx_dmi_data.get('minus_di') if adx_dmi_data else None,
+        'adx_direction': adx_dmi_data.get('direction') if adx_dmi_data else None,
+        'adx_strength': adx_dmi_data.get('strength') if adx_dmi_data else None,
+        'adx_summary': adx_dmi_data.get('summary') if adx_dmi_data else None,
+        'adx_buy_count': adx_dmi_data.get('buy_signal_count') if adx_dmi_data else None,
     }
     
     # 실제 매수/매도 신호를 기반으로 신호 결정
@@ -3173,6 +3536,37 @@ def plot_main_chart_with_volume_profile_overlay(
         f.write(f"버핏가이드: {signal_info['buffett_guide']}\n")
         f.write(f"Wilshire 5000 시가총액: {signal_info['wilshire_market_cap']}조 달러 ({signal_info['wilshire_date']})\n")
         f.write(f"US GDP: {signal_info['us_gdp']}조 달러 ({signal_info['gdp_date']})\n")
+        if signal_info.get('fear_greed_score') is not None:
+            f.write(
+                f"공포탐욕: {signal_info['fear_greed_score']} "
+                f"({signal_info.get('fear_greed_rating', 'N/A')})\n"
+            )
+            f.write(f"공포탐욕 심리: {signal_info.get('fear_greed_sentiment', 'N/A')}\n")
+            f.write(f"공포탐욕 가이드: {signal_info.get('fear_greed_guide', 'N/A')}\n")
+        if peg_data is not None:
+            f.write(
+                f"PEG 1년: {signal_info.get('peg_1y', 'N/A')} "
+                f"({signal_info.get('peg_1y_sentiment', 'N/A')}), "
+                f"EPS YoY: {signal_info.get('peg_growth_1y_pct', 'N/A')}%\n"
+            )
+            f.write(
+                f"PEG 3년: {signal_info.get('peg_3y', 'N/A')} "
+                f"({signal_info.get('peg_3y_sentiment', 'N/A')}), "
+                f"EPS CAGR: {signal_info.get('peg_growth_3y_cagr_pct', 'N/A')}%\n"
+            )
+            if signal_info.get('peg_pe') is not None:
+                f.write(f"PER: {signal_info['peg_pe']}\n")
+            if signal_info.get('yf_peg_ratio') is not None:
+                f.write(f"Yahoo pegRatio(참고): {signal_info['yf_peg_ratio']}\n")
+        if signal_info.get('adx') is not None:
+            f.write(
+                f"추세(ADX/DMI): {signal_info.get('adx_summary')} "
+                f"(ADX={signal_info.get('adx')}, "
+                f"DMI +DI={signal_info.get('plus_di')}, "
+                f"−DI={signal_info.get('minus_di')})\n"
+            )
+            if signal_info.get('adx_buy_count'):
+                f.write(f"ADX buy 신호(+DI↑−DI & ADX≥25): {signal_info['adx_buy_count']}건\n")
         f.write(f"=== 신호 요약 ===\n")
         f.write(f"{signal_info['signal']}\n")
     
@@ -3182,6 +3576,14 @@ def plot_main_chart_with_volume_profile_overlay(
     buy_signals_table_path = f"output/hma_mantra/{ticker}/{ticker}_buy_signals_table.txt"
     if os.path.exists(buy_signals_table_path):
         print(f"매수시그널 테이블: {buy_signals_table_path}")
+
+    if show_adx_dmi and adx_dmi_data:
+        buy_sigs = adx_dmi_data.get("buy_signals") or []
+        if buy_sigs:
+            try:
+                plot_adx_buy_on_main(ax_main, buy_sigs, ohlcv_data)
+            except Exception as e:
+                print(f"ADX buy 메인 표시 실패: {e}")
 
     # 매수/매도 신호 표시
     for signal in trade_signals:
@@ -3499,6 +3901,70 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_macd.set_ylabel('MACD')
     ax_macd.legend(fontsize=8, loc='upper left')
     ax_macd.grid(True, alpha=0.3)
+
+    if show_adx_dmi and ax_adx is not None and adx_dmi_data is not None:
+        try:
+            adx_series = adx_dmi_data.get("series")
+            if adx_series is not None and not adx_series.empty:
+                ax_adx.plot(
+                    adx_series.index,
+                    adx_series["Plus_DI"],
+                    color="#27ae60",
+                    linewidth=0.8,
+                    alpha=0.9,
+                    label="+DI",
+                )
+                ax_adx.plot(
+                    adx_series.index,
+                    adx_series["Minus_DI"],
+                    color="#c0392b",
+                    linewidth=0.8,
+                    alpha=0.9,
+                    label="-DI",
+                )
+                ax_adx.plot(
+                    adx_series.index,
+                    adx_series["ADX"],
+                    color="#000000",
+                    linewidth=1.2,
+                    alpha=0.95,
+                    label="ADX",
+                )
+                ax_adx.axhline(
+                    float(adx_sideways),
+                    color="#7f8c8d",
+                    linestyle=":",
+                    linewidth=0.7,
+                    alpha=0.8,
+                    label=f"횡보 {adx_sideways:.0f}",
+                )
+                ax_adx.axhline(
+                    float(adx_trend),
+                    color="#f39c12",
+                    linestyle="--",
+                    linewidth=0.7,
+                    alpha=0.85,
+                    label=f"추세 {adx_trend:.0f}",
+                )
+                ax_adx.axhline(
+                    float(adx_strong),
+                    color="#8e44ad",
+                    linestyle="--",
+                    linewidth=0.7,
+                    alpha=0.85,
+                    label=f"강추세 {adx_strong:.0f}",
+                )
+                ax_adx.set_ylim(0, max(55, float(adx_series[["ADX", "Plus_DI", "Minus_DI"]].max().max()) * 1.08))
+                title_suffix = adx_dmi_data.get("summary", "")
+                ax_adx.set_title(
+                    f"ADX/DMI ({adx_period}) — {title_suffix}",
+                    fontsize=9,
+                )
+                ax_adx.set_ylabel("ADX / DMI", fontsize=8)
+                ax_adx.legend(loc="upper left", fontsize=6, framealpha=0.85, ncol=3)
+                ax_adx.grid(True, alpha=0.25, linestyle=":")
+        except Exception as e:
+            print(f"ADX/DMI subplot 표시 실패: {e}")
     
     # 금리 통합 차트 표시 (FFR + TNX + 실질금리)
     rates_plotted = False
@@ -3881,6 +4347,7 @@ def plot_main_chart_with_volume_profile_overlay(
                     pat_events,
                     _enabled_main,
                     range_box_main_max=pattern_range_box_main_max,
+                    main_min_confidence=pattern_main_min_confidence,
                 )
         except Exception as e:
             print(f"차트 패턴(스트립/메인) 표시 실패: {e}")

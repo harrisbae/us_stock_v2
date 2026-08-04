@@ -51,17 +51,36 @@ CHART_PATTERN_CRITERIA: List[Dict[str, Any]] = [
         "color": "#8e44ad",
         "definition": "3봉 기준 Fair Value Gap — 상방: 3번째 저가>1번째 고가, 하방: 3번째 고가<1번째 저가",
     },
+    {"id": "bull_hammer", "label": "강세해머", "confidence": 0.56, "color": "#27ae60"},
+    {"id": "bull_engulf", "label": "강세엥걸핑", "confidence": 0.62, "color": "#2ecc71"},
+    {"id": "bear_hanging_man", "label": "행잉맨", "confidence": 0.56, "color": "#e74c3c"},
+    {"id": "bear_engulf", "label": "약세엥걸핑", "confidence": 0.62, "color": "#c0392b"},
+    {"id": "doji", "label": "도지(중립)", "confidence": 0.45, "color": "#7f8c8d"},
 ]
 
 ID_TO_ROW = {c["id"]: i for i, c in enumerate(CHART_PATTERN_CRITERIA)}
 
 ALL_PATTERN_IDS: Tuple[str, ...] = tuple(c["id"] for c in CHART_PATTERN_CRITERIA)
+CANDLE_PATTERN_IDS: Tuple[str, ...] = (
+    "bull_hammer",
+    "bull_engulf",
+    "bear_hanging_man",
+    "bear_engulf",
+    "doji",
+)
+CHART_SHAPE_PATTERN_IDS: Tuple[str, ...] = tuple(pid for pid in ALL_PATTERN_IDS if pid not in CANDLE_PATTERN_IDS)
+BULL_CANDLE_IDS: Tuple[str, ...] = ("bull_hammer", "bull_engulf")
+BEAR_CANDLE_IDS: Tuple[str, ...] = ("bear_hanging_man", "bear_engulf")
+NEUTRAL_CANDLE_IDS: Tuple[str, ...] = ("doji",)
 
 
 def normalize_pattern_main_ids(arg: Optional[Sequence[str]]) -> Set[str]:
     """
     메인 차트에 그릴 패턴 id 집합. None/빈 시퀀스 → 아무 것도 안 그림.
     'all' 또는 '*' → CHART_PATTERN_CRITERIA 전 id.
+    'chart_all' → 기존 차트 패턴만.
+    'candle_all' → 캔들 패턴만.
+    'bull_candles'/'bear_candles'/'neutral_candles' 지원.
     """
     if not arg:
         return set()
@@ -72,6 +91,21 @@ def normalize_pattern_main_ids(arg: Optional[Sequence[str]]) -> Set[str]:
             continue
         if s in ("all", "*"):
             return set(ALL_PATTERN_IDS)
+        if s == "chart_all":
+            out.update(CHART_SHAPE_PATTERN_IDS)
+            continue
+        if s == "candle_all":
+            out.update(CANDLE_PATTERN_IDS)
+            continue
+        if s == "bull_candles":
+            out.update(BULL_CANDLE_IDS)
+            continue
+        if s == "bear_candles":
+            out.update(BEAR_CANDLE_IDS)
+            continue
+        if s == "neutral_candles":
+            out.update(NEUTRAL_CANDLE_IDS)
+            continue
         if s in ID_TO_ROW:
             out.add(s)
     return out
@@ -654,6 +688,107 @@ def _detect_fvg_gaps(
     return out
 
 
+def _detect_candle_patterns(ohlcv: pd.DataFrame) -> List[Dict[str, Any]]:
+    """캔들 패턴(상승/하락/중립) 간단 휴리스틱 감지."""
+    out: List[Dict[str, Any]] = []
+    n = len(ohlcv)
+    if n < 2:
+        return out
+    o = ohlcv["Open"].astype(float).values
+    h = ohlcv["High"].astype(float).values
+    l = ohlcv["Low"].astype(float).values
+    c = ohlcv["Close"].astype(float).values
+
+    def _body(i: int) -> float:
+        return abs(c[i] - o[i])
+
+    for i in range(n):
+        rng = max(h[i] - l[i], 1e-12)
+        body = _body(i)
+        up_w = h[i] - max(o[i], c[i])
+        lo_w = min(o[i], c[i]) - l[i]
+
+        # doji: 몸통이 전체 레인지 대비 매우 작을 때
+        if body / rng <= 0.10:
+            ts = _idx_ts(ohlcv, i)
+            out.append(
+                {
+                    "pattern_id": "doji",
+                    "start": ts,
+                    "end": ts,
+                    "confidence": 0.45,
+                    "direction": "neutral",
+                }
+            )
+
+        if i < 2:
+            continue
+        prev_close = c[i - 1]
+        min_prev = float(np.min(c[max(0, i - 5) : i]))
+        max_prev = float(np.max(c[max(0, i - 5) : i]))
+        near_recent_low = prev_close <= (min_prev * 1.035)
+        near_recent_high = prev_close >= (max_prev * 0.985)
+
+        # bull_hammer: 저점권 + 긴 아래꼬리 + 작은 몸통
+        if near_recent_low and lo_w >= body * 2.0 and up_w <= body * 0.8 and body / rng <= 0.45:
+            ts = _idx_ts(ohlcv, i)
+            out.append(
+                {
+                    "pattern_id": "bull_hammer",
+                    "start": ts,
+                    "end": ts,
+                    "confidence": 0.56,
+                    "direction": "bull",
+                }
+            )
+
+        # bear_hanging_man: 고점권 + 긴 아래꼬리 + 작은 몸통
+        if near_recent_high and lo_w >= body * 2.0 and up_w <= body * 0.8 and body / rng <= 0.45:
+            ts = _idx_ts(ohlcv, i)
+            out.append(
+                {
+                    "pattern_id": "bear_hanging_man",
+                    "start": ts,
+                    "end": ts,
+                    "confidence": 0.56,
+                    "direction": "bear",
+                }
+            )
+
+        # engulfing: 직전 몸통을 현재 몸통이 감싸는지
+        po, pc = o[i - 1], c[i - 1]
+        prev_bear = pc < po
+        prev_bull = pc > po
+        curr_bull = c[i] > o[i]
+        curr_bear = c[i] < o[i]
+        prev_lo, prev_hi = min(po, pc), max(po, pc)
+        curr_lo, curr_hi = min(o[i], c[i]), max(o[i], c[i])
+        engulf = curr_lo <= prev_lo and curr_hi >= prev_hi
+        if prev_bear and curr_bull and engulf and near_recent_low:
+            ts = _idx_ts(ohlcv, i)
+            out.append(
+                {
+                    "pattern_id": "bull_engulf",
+                    "start": ts,
+                    "end": ts,
+                    "confidence": 0.62,
+                    "direction": "bull",
+                }
+            )
+        if prev_bull and curr_bear and engulf and near_recent_high:
+            ts = _idx_ts(ohlcv, i)
+            out.append(
+                {
+                    "pattern_id": "bear_engulf",
+                    "start": ts,
+                    "end": ts,
+                    "confidence": 0.62,
+                    "direction": "bear",
+                }
+            )
+    return out
+
+
 def analyze_seven_criteria(
     ohlcv: pd.DataFrame,
     box_ranges: Optional[Sequence[Dict[str, Any]]] = None,
@@ -666,6 +801,7 @@ def analyze_seven_criteria(
       2) post_box_bull — range_box 이벤트 기준 직후 장대 양봉
       3) fvg_gap — 3봉 FVG
       4) 기존 6종 — _detect_non_range_box_patterns
+      5) 캔들 패턴 5종 — _detect_candle_patterns
 
     box_ranges: box_range_windows.compute_box_range_windows 결과.
     """
@@ -685,6 +821,7 @@ def analyze_seven_criteria(
     merged.extend(_detect_post_box_long_bull(ohlcv, rb_events))
     merged.extend(_detect_fvg_gaps(ohlcv))
     merged.extend(_detect_non_range_box_patterns(ohlcv))
+    merged.extend(_detect_candle_patterns(ohlcv))
 
     return merged
 
@@ -708,7 +845,7 @@ def plot_pattern_strip(
     )
     n_pat = len(CHART_PATTERN_CRITERIA)
     ax.set_title(
-        f"차트 패턴 ({n_pat}행, 휴리스틱) — 행: 표시명 · --pattern-main id",
+        f"차트/캔들 패턴 ({n_pat}행, 휴리스틱) — 행: 표시명 · --pattern-main id",
         fontsize=8,
         loc="left",
         pad=2,
@@ -1238,14 +1375,32 @@ def plot_fvg_gap_on_main(
     events: Optional[List[Dict[str, Any]]] = None,
     ohlcv: Optional[pd.DataFrame] = None,
 ) -> None:
-    """FVG 갭 구간을 가격대 박스로 표시."""
+    """FVG 갭 구간을 가격대 박스로 표시. 상승/하락 최신 각 1개에 FVG↑/FVG↓ 라벨."""
     events = events or []
     if ohlcv is None or not len(events):
         return
+
     col_base = CHART_PATTERN_CRITERIA[ID_TO_ROW["fvg_gap"]]["color"]
-    for ev in events:
-        if ev.get("pattern_id") != "fvg_gap":
-            continue
+    fvg_events: List[Dict[str, Any]] = [
+        ev for ev in events if ev.get("pattern_id") == "fvg_gap"
+    ]
+    if not fvg_events:
+        return
+
+    fvg_events_sorted = sorted(
+        fvg_events,
+        key=lambda ev: pd.Timestamp(ev.get("end") or ev.get("start")),
+    )
+    latest_bull = None
+    latest_bear = None
+    for ev in fvg_events_sorted:
+        if (ev.get("direction") or "bull") == "bear":
+            latest_bear = ev
+        else:
+            latest_bull = ev
+    label_set = {id(x) for x in (latest_bull, latest_bear) if x is not None}
+
+    for ev in fvg_events_sorted:
         gl = ev.get("gap_low")
         gh = ev.get("gap_high")
         if gl is None or gh is None:
@@ -1257,26 +1412,84 @@ def plot_fvg_gap_on_main(
         t1 = mdates.date2num(pd.Timestamp(ev["end"]).to_pydatetime())
         direction = ev.get("direction") or "bull"
         col = "#27ae60" if direction == "bull" else "#c0392b"
+
         poly = MplPolygon(
             [(t0, gl), (t1, gl), (t1, gh), (t0, gh)],
             closed=True,
             facecolor=col,
             edgecolor=col_base,
-            alpha=0.14,
-            linewidth=1.0,
+            alpha=0.10,
+            linewidth=0.7,
             zorder=32,
         )
         ax.add_patch(poly)
+
+        if id(ev) in label_set:
+            tag = "FVG↓" if direction == "bear" else "FVG↑"
+            ax.annotate(
+                tag,
+                xy=(mdates.num2date((t0 + t1) / 2.0), (gl + gh) / 2.0),
+                fontsize=6,
+                color=col,
+                fontweight="bold",
+                zorder=40,
+                ha="center",
+                va="center",
+                bbox=dict(
+                    boxstyle="round,pad=0.2",
+                    facecolor="white",
+                    alpha=0.75,
+                    edgecolor=col,
+                    linewidth=0.5,
+                ),
+            )
+
+
+def plot_candle_patterns_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+) -> None:
+    """캔들 패턴 마커(강세 ▲ / 약세 ▼ / 중립 ●)를 메인 차트에 표시."""
+    events = events or []
+    if ohlcv is None or not len(events):
+        return
+    ohlcv_n = _normalize_ohlcv(ohlcv)
+    low_s = ohlcv_n["Low"].astype(float)
+    high_s = ohlcv_n["High"].astype(float)
+    cmin = float(low_s.min())
+    cmax = float(high_s.max())
+    pad = max((cmax - cmin) * 0.012, 1e-6)
+
+    marker_map = {
+        "bull_hammer": ("^", "#27ae60", "BH", "bull"),
+        "bull_engulf": ("^", "#2ecc71", "BE", "bull"),
+        "bear_hanging_man": ("v", "#e74c3c", "HM", "bear"),
+        "bear_engulf": ("v", "#c0392b", "SE", "bear"),
+        "doji": ("o", "#7f8c8d", "DJ", "neutral"),
+    }
+    for ev in events:
+        pid = str(ev.get("pattern_id") or "")
+        if pid not in marker_map:
+            continue
+        ts = pd.Timestamp(ev.get("start"))
+        if ts not in ohlcv_n.index:
+            continue
+        marker, color, short, direction = marker_map[pid]
+        low_v = float(low_s.loc[ts])
+        high_v = float(high_s.loc[ts])
+        y = low_v - pad if direction == "bull" else (high_v + pad if direction == "bear" else (low_v + high_v) / 2.0)
+        ax.scatter([ts], [y], marker=marker, s=28, color=color, zorder=41, edgecolors="white", linewidths=0.5)
         ax.annotate(
-            f"FVG · fvg_gap ({direction})",
-            xy=(mdates.num2date((t0 + t1) / 2.0), (gl + gh) / 2.0),
-            fontsize=6,
-            color=col_base,
-            fontweight="bold",
-            zorder=40,
+            short,
+            xy=(ts, y),
+            xytext=(0, -8 if direction == "bull" else 8),
+            textcoords="offset points",
+            fontsize=5,
+            color=color,
             ha="center",
-            va="center",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.85, edgecolor=col_base, linewidth=0.6),
+            va="top" if direction == "bull" else "bottom",
+            zorder=42,
         )
 
 
@@ -1287,6 +1500,7 @@ def plot_pattern_main_overlays(
     enabled_ids: Set[str],
     *,
     range_box_main_max: int = 1,
+    main_min_confidence: float = 0.0,
 ) -> None:
     """pattern_id별 메인 차트 오버레이. enabled_ids가 비어 있으면 아무 것도 안 함.
 
@@ -1302,7 +1516,8 @@ def plot_pattern_main_overlays(
     by_id: Dict[str, List[Dict[str, Any]]] = {}
     for e in events:
         pid = e.get("pattern_id")
-        if pid in enabled_ids:
+        conf = float(e.get("confidence", 0.0))
+        if pid in enabled_ids and conf >= float(main_min_confidence):
             by_id.setdefault(pid, []).append(e)
     if "triple_bottom_w" in enabled_ids:
         plot_triple_bottom_w_on_main(ax, by_id.get("triple_bottom_w"), ohlcv_n)
@@ -1332,3 +1547,9 @@ def plot_pattern_main_overlays(
         plot_post_box_bull_on_main(ax, by_id.get("post_box_bull"), ohlcv_n)
     if "fvg_gap" in enabled_ids:
         plot_fvg_gap_on_main(ax, by_id.get("fvg_gap"), ohlcv_n)
+    candle_ids = set(CANDLE_PATTERN_IDS)
+    if enabled_ids & candle_ids:
+        candle_events: List[Dict[str, Any]] = []
+        for cid in candle_ids:
+            candle_events.extend(by_id.get(cid, []))
+        plot_candle_patterns_on_main(ax, candle_events, ohlcv_n)

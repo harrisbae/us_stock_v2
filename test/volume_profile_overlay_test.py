@@ -52,6 +52,33 @@ def main():
         metavar='N',
         help='메인 차트 range_box 최대 표시 개수(신뢰도·종료일 선별). 스트립은 전체. 0=메인 미표시 (기본 1)',
     )
+    parser.add_argument(
+        '--pattern-main-min-confidence',
+        type=float,
+        default=0.0,
+        metavar='F',
+        help='메인 차트 패턴 오버레이 최소 신뢰도(0~1, 기본 0.0). 스트립에는 영향 없음',
+    )
+    parser.add_argument('--show-disparity-strategy', action='store_true', help='이격도 95/105 전략 마커/요약 표시')
+    parser.add_argument('--disparity-ma', type=int, default=20, help='이격도 기준 이동평균 기간 (기본 20)')
+    parser.add_argument('--disparity-low', type=float, default=95.0, help='이격도 저평가 임계값 (기본 95)')
+    parser.add_argument('--disparity-high', type=float, default=105.0, help='이격도 고평가 임계값 (기본 105)')
+    parser.add_argument('--disparity-conf-weight-depth', type=float, default=0.22, help='이격도 conf 가중치(깊이, 기본 0.22)')
+    parser.add_argument('--disparity-conf-weight-volume', type=float, default=0.16, help='이격도 conf 가중치(거래량, 기본 0.16)')
+    parser.add_argument('--disparity-conf-weight-trend', type=float, default=0.10, help='이격도 conf 가중치(추세, 기본 0.10)')
+    parser.add_argument(
+        '--disparity-conf-preset',
+        default='',
+        help='이격도 conf 프리셋(growth|balanced|defensive). 지정 시 개별 weight보다 우선',
+    )
+    parser.add_argument('--show-adx-dmi', action='store_true', help='ADX·DMI(+DI/−DI) 추세·강도 서브플롯 표시')
+    parser.add_argument('--adx-period', type=int, default=14, help='ADX/DMI 기간 (기본 14)')
+    parser.add_argument('--adx-sideways', type=float, default=20.0, help='ADX 횡보 임계 (기본 20)')
+    parser.add_argument('--adx-trend', type=float, default=25.0, help='ADX 추세 시작 (기본 25)')
+    parser.add_argument('--adx-strong', type=float, default=40.0, help='ADX 강추세 (기본 40)')
+    parser.add_argument('--tech-chart', action='store_true', help='기술 분석 주석 차트(별도 PNG) 추가 생성')
+    parser.add_argument('--tech-chart-only', action='store_true', help='기술 분석 주석 차트만 생성 (메인 오버레이 차트 생략)')
+    parser.add_argument('--show-bb', action='store_true', help='기술 분석 주석 차트에 볼린저 밴드 선 표시 (기본은 이탈/돌파 태그만)')
 
     # argparse로 인자 파싱
     args = parser.parse_args()
@@ -73,6 +100,33 @@ def main():
     show_pattern_strip = args.show_pattern_strip
     pm = (args.pattern_main or '').strip()
     pattern_main_overlays = None if not pm else [x.strip() for x in pm.split(',') if x.strip()]
+    disparity_conf_preset = (args.disparity_conf_preset or '').strip().lower()
+
+    # 프리셋 적용: 지정 시 개별 weight보다 우선
+    preset_map = {
+        'growth': (0.28, 0.10, 0.08),
+        'balanced': (0.22, 0.16, 0.10),
+        'defensive': (0.16, 0.14, 0.18),
+    }
+    if disparity_conf_preset:
+        if disparity_conf_preset in preset_map:
+            w_depth, w_volume, w_trend = preset_map[disparity_conf_preset]
+            print(
+                f"이격도 conf 프리셋 적용: {disparity_conf_preset} "
+                f"(depth={w_depth}, volume={w_volume}, trend={w_trend})"
+            )
+        else:
+            print(
+                f"알 수 없는 disparity conf 프리셋: {disparity_conf_preset} "
+                f"(허용: growth|balanced|defensive) → 개별 weight 사용"
+            )
+            w_depth = args.disparity_conf_weight_depth
+            w_volume = args.disparity_conf_weight_volume
+            w_trend = args.disparity_conf_weight_trend
+    else:
+        w_depth = args.disparity_conf_weight_depth
+        w_volume = args.disparity_conf_weight_volume
+        w_trend = args.disparity_conf_weight_trend
 
     # Target 가격 옵션들
     target_buy_price = None
@@ -130,7 +184,28 @@ def main():
     output_dir = f"output/hma_mantra/{ticker}"
     os.makedirs(output_dir, exist_ok=True)
     save_path = f"{output_dir}/{ticker}_volume_profile_overlay_{period}_chart.png"
-    
+
+    # 기술 분석 주석 차트 (별도 파일, 생성 일자 포함 — 일자별 보존)
+    if args.tech_chart or args.tech_chart_only:
+        from src.indicators.hma_mantra.visualization.tech_annotation_chart import plot_tech_annotation_chart
+        from datetime import datetime as _dt
+        date_tag = _dt.now().strftime('%Y%m%d')
+        tech_save_path = f"{output_dir}/{ticker}_tech_annotation_{period}_{date_tag}_chart.png"
+        print("기술 분석 주석 차트 생성 중...")
+        plot_tech_annotation_chart(
+            data=data,
+            ticker=ticker,
+            save_path=tech_save_path,
+            adx_period=args.adx_period,
+            target_buy_price=target_buy_price,
+            target_sell_price=target_sell_price,
+            stop_loss_price=stop_loss_price,
+            show_target_prices=show_target_prices,
+            show_bb=bool(args.show_bb),
+        )
+        if args.tech_chart_only:
+            return
+
     print(f"Volume Profile 오버레이 차트 생성 중...")
     
     # Volume Profile 오버레이 차트 생성
@@ -156,6 +231,19 @@ def main():
         show_pattern_strip=show_pattern_strip,
         pattern_main_overlays=pattern_main_overlays,
         pattern_range_box_main_max=args.pattern_range_box_main_max,
+        pattern_main_min_confidence=args.pattern_main_min_confidence,
+        show_disparity_strategy=args.show_disparity_strategy,
+        disparity_ma=args.disparity_ma,
+        disparity_low=args.disparity_low,
+        disparity_high=args.disparity_high,
+        disparity_conf_weight_depth=w_depth,
+        disparity_conf_weight_volume=w_volume,
+        disparity_conf_weight_trend=w_trend,
+        show_adx_dmi=args.show_adx_dmi,
+        adx_period=args.adx_period,
+        adx_sideways=args.adx_sideways,
+        adx_trend=args.adx_trend,
+        adx_strong=args.adx_strong,
     )
     
     print(f"차트 저장 완료: {save_path}")

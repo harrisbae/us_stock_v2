@@ -31,6 +31,28 @@ SHOW_PATTERN_STRIP="false"  # -v overlay 시 메인 아래 차트 패턴 스트�
 # 패턴 ID: double_top_m, bear_flag, bear_diamond, range_box, triple_bottom_w, bull_flag, asc_triangle | all 또는 *
 PATTERN_MAIN=""
 PATTERN_RANGE_BOX_MAIN_MAX="1"  # 메인 range_box 표시 최대 개수(선별). 스트립은 전체
+PATTERN_MAIN_MIN_CONFIDENCE="0.0"  # 메인 패턴 최소 신뢰도(스트립 영향 없음)
+SHOW_DISPARITY_STRATEGY="false"
+DISPARITY_MA="20"
+DISPARITY_LOW="95"
+DISPARITY_HIGH="105"
+DISPARITY_CONF_WEIGHT_DEPTH="0.22"
+DISPARITY_CONF_WEIGHT_VOLUME="0.16"
+DISPARITY_CONF_WEIGHT_TREND="0.10"
+DISPARITY_CONF_PRESET=""
+SHOW_ADX_DMI="false"
+ADX_PERIOD="14"
+ADX_SIDEWAYS="20"
+ADX_TREND="25"
+ADX_STRONG="40"
+TECH_CHART="false"
+TECH_CHART_ONLY="false"
+SHOW_BB="false"
+FILTER_SURGE_SETUP="false"
+FILTER_SURGE_MIN_SCORE="40"
+FILTER_SURGE_INCLUDE_ACTIVE="false"
+FILTER_SURGE_KINDS=""
+FILTER_SURGE_OUT_DIR="output/analysis"
 
 # 명령행 인자 처리
 while [[ $# -gt 0 ]]; do
@@ -137,6 +159,94 @@ while [[ $# -gt 0 ]]; do
       ;;
     --pattern-range-box-main-max)
       PATTERN_RANGE_BOX_MAIN_MAX="$2"
+      shift 2
+      ;;
+    --pattern-main-min-confidence)
+      PATTERN_MAIN_MIN_CONFIDENCE="$2"
+      shift 2
+      ;;
+    --show-disparity-strategy)
+      SHOW_DISPARITY_STRATEGY="true"
+      shift
+      ;;
+    --disparity-ma)
+      DISPARITY_MA="$2"
+      shift 2
+      ;;
+    --disparity-low)
+      DISPARITY_LOW="$2"
+      shift 2
+      ;;
+    --disparity-high)
+      DISPARITY_HIGH="$2"
+      shift 2
+      ;;
+    --disparity-conf-weight-depth)
+      DISPARITY_CONF_WEIGHT_DEPTH="$2"
+      shift 2
+      ;;
+    --disparity-conf-weight-volume)
+      DISPARITY_CONF_WEIGHT_VOLUME="$2"
+      shift 2
+      ;;
+    --disparity-conf-weight-trend)
+      DISPARITY_CONF_WEIGHT_TREND="$2"
+      shift 2
+      ;;
+    --disparity-conf-preset)
+      DISPARITY_CONF_PRESET="$2"
+      shift 2
+      ;;
+    --show-adx-dmi)
+      SHOW_ADX_DMI="true"
+      shift
+      ;;
+    --adx-period)
+      ADX_PERIOD="$2"
+      shift 2
+      ;;
+    --adx-sideways)
+      ADX_SIDEWAYS="$2"
+      shift 2
+      ;;
+    --adx-trend)
+      ADX_TREND="$2"
+      shift 2
+      ;;
+    --adx-strong)
+      ADX_STRONG="$2"
+      shift 2
+      ;;
+    --tech-chart)
+      TECH_CHART="true"
+      shift
+      ;;
+    --tech-chart-only)
+      TECH_CHART_ONLY="true"
+      shift
+      ;;
+    --show-bb)
+      SHOW_BB="true"
+      shift
+      ;;
+    --filter-surge-setup)
+      FILTER_SURGE_SETUP="true"
+      shift
+      ;;
+    --filter-surge-min-score)
+      FILTER_SURGE_MIN_SCORE="$2"
+      shift 2
+      ;;
+    --filter-surge-include-active)
+      FILTER_SURGE_INCLUDE_ACTIVE="true"
+      shift
+      ;;
+    --filter-surge-kinds)
+      FILTER_SURGE_KINDS="$2"
+      shift 2
+      ;;
+    --filter-surge-out-dir)
+      FILTER_SURGE_OUT_DIR="$2"
       shift 2
       ;;
     *)
@@ -288,6 +398,31 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "                          fvg_gap           FVG(갭)"
   echo "                        예: --pattern-main triple_bottom_w,double_top_m  |  --pattern-main all"
   echo "  --pattern-range-box-main-max N  메인 range_box 최대 N건(신뢰도·종료일 선별, 기본 1). 0=메인 미표시"
+  echo "  --pattern-main-min-confidence F 메인 패턴 최소 신뢰도(0~1, 기본 0.0). 스트립에는 영향 없음"
+  echo "  --show-disparity-strategy    이격도(95/105) 전략 마커/요약 표시"
+  echo "  --disparity-ma N             이격도 이동평균 기간(기본 20)"
+  echo "  --disparity-low F            이격도 저평가 임계값(기본 95)"
+  echo "  --disparity-high F           이격도 고평가 임계값(기본 105)"
+  echo "  --disparity-conf-weight-depth F  이격도 conf 깊이 가중치(기본 0.22)"
+  echo "  --disparity-conf-weight-volume F 이격도 conf 거래량 가중치(기본 0.16)"
+  echo "  --disparity-conf-weight-trend F  이격도 conf 추세 가중치(기본 0.10)"
+  echo "  --disparity-conf-preset P   이격도 conf 프리셋(growth|balanced|defensive)"
+  echo "  --show-adx-dmi              ADX·DMI(+DI/−DI) 추세·강도 서브플롯 표시"
+  echo "  --adx-period N              ADX/DMI 기간 (기본 14)"
+  echo "  --adx-sideways F            ADX 횡보 임계 (기본 20)"
+  echo "  --adx-trend F               ADX 추세 시작 (기본 25)"
+  echo "  --adx-strong F              ADX 강추세 (기본 40)"
+  echo "  --tech-chart                기술 분석 주석 차트(별도 PNG) 추가 생성"
+  echo "  --tech-chart-only           기술 분석 주석 차트만 생성 (메인 차트 생략)"
+  echo "  --show-bb                   기술 분석 주석 차트에 볼린저 밴드 선 표시"
+  echo ""
+  echo "급등 셋업 필터:"
+  echo "  --filter-surge-setup              종목 목록(--file)에서 급등 셋업/급등 후보만 필터 (분석 생략)"
+  echo "  --filter-surge-min-score N        최소 점수 (기본 40)"
+  echo "  --filter-surge-include-active     이미 급등진행/급등과열 종목도 포함"
+  echo "  --filter-surge-kinds A,B          셋업 종류만 (예: A 또는 A,B)"
+  echo "  --filter-surge-out-dir DIR        결과 저장 경로 (기본 output/analysis)"
+  echo "  예: ./hma.sh --filter-surge-setup -f stocks/us_Harris_Wish.txt -p 6mo"
   echo ""
   echo "기간 설정 예시:"
   echo "  -p 30d            30일"
@@ -303,6 +438,34 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --to 2025-08-01 -p 6mo             2025-08-01로부터 6개월 전까지"
   echo "  --to 2025-08-01 -p 1y              2025-08-01로부터 1년 전까지"
   exit 1
+fi
+
+# 급등 셋업 필터 모드: 목록만 걸러내고 종료 (전체 분석 루프 생략)
+if [ "$FILTER_SURGE_SETUP" = "true" ]; then
+  if [ -z "$SYMBOL_FILE" ]; then
+    echo "오류: --filter-surge-setup 은 --file SYMBOL_FILE 이 필요합니다."
+    exit 1
+  fi
+  if [ ! -f "$SYMBOL_FILE" ]; then
+    echo "오류: 종목 파일을 찾을 수 없습니다: $SYMBOL_FILE"
+    exit 1
+  fi
+  FILTER_ARGS=(
+    python filter_surge_setup.py
+    --file "$SYMBOL_FILE"
+    -p "$PERIOD"
+    --min-score "$FILTER_SURGE_MIN_SCORE"
+    --out-dir "$FILTER_SURGE_OUT_DIR"
+  )
+  if [ "$FILTER_SURGE_INCLUDE_ACTIVE" = "true" ]; then
+    FILTER_ARGS+=(--include-active)
+  fi
+  if [ -n "$FILTER_SURGE_KINDS" ]; then
+    FILTER_ARGS+=(--kinds "$FILTER_SURGE_KINDS")
+  fi
+  echo "급등 셋업 필터 실행: $SYMBOL_FILE"
+  "${FILTER_ARGS[@]}"
+  exit $?
 fi
 
 # 분석 함수 정의
@@ -353,6 +516,23 @@ analyze_stock() {
                         --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
                         --avoid-time-overlap "$AVOID_TIME_OVERLAP" \
                         --pattern-range-box-main-max "$PATTERN_RANGE_BOX_MAIN_MAX" \
+                        --pattern-main-min-confidence "$PATTERN_MAIN_MIN_CONFIDENCE" \
+                        --disparity-ma "$DISPARITY_MA" \
+                        --disparity-low "$DISPARITY_LOW" \
+                        --disparity-high "$DISPARITY_HIGH" \
+                        --disparity-conf-weight-depth "$DISPARITY_CONF_WEIGHT_DEPTH" \
+                        --disparity-conf-weight-volume "$DISPARITY_CONF_WEIGHT_VOLUME" \
+                        --disparity-conf-weight-trend "$DISPARITY_CONF_WEIGHT_TREND" \
+                        $( [ -n "$DISPARITY_CONF_PRESET" ] && echo --disparity-conf-preset "$DISPARITY_CONF_PRESET" ) \
+                        $( [ "$SHOW_DISPARITY_STRATEGY" = "true" ] && echo --show-disparity-strategy ) \
+                        $( [ "$SHOW_ADX_DMI" = "true" ] && echo --show-adx-dmi ) \
+                        --adx-period "$ADX_PERIOD" \
+                        --adx-sideways "$ADX_SIDEWAYS" \
+                        --adx-trend "$ADX_TREND" \
+                        --adx-strong "$ADX_STRONG" \
+                        $( [ "$TECH_CHART" = "true" ] && echo --tech-chart ) \
+                        $( [ "$TECH_CHART_ONLY" = "true" ] && echo --tech-chart-only ) \
+                        $( [ "$SHOW_BB" = "true" ] && echo --show-bb ) \
                         $( [ "$SHOW_PATTERN_STRIP" = "true" ] && echo --show-pattern-strip ) \
                         $( [ -n "$PATTERN_MAIN" ] && echo --pattern-main "$PATTERN_MAIN" )
                     ;;
@@ -399,6 +579,23 @@ analyze_stock() {
                     --num-boxes "$NUM_BOXES" --box-overlap "$BOX_OVERLAP" --box-style "$BOX_STYLE" \
                     --avoid-time-overlap "$AVOID_TIME_OVERLAP" \
                     --pattern-range-box-main-max "$PATTERN_RANGE_BOX_MAIN_MAX" \
+                    --pattern-main-min-confidence "$PATTERN_MAIN_MIN_CONFIDENCE" \
+                    --disparity-ma "$DISPARITY_MA" \
+                    --disparity-low "$DISPARITY_LOW" \
+                    --disparity-high "$DISPARITY_HIGH" \
+                    --disparity-conf-weight-depth "$DISPARITY_CONF_WEIGHT_DEPTH" \
+                    --disparity-conf-weight-volume "$DISPARITY_CONF_WEIGHT_VOLUME" \
+                    --disparity-conf-weight-trend "$DISPARITY_CONF_WEIGHT_TREND" \
+                    $( [ -n "$DISPARITY_CONF_PRESET" ] && echo --disparity-conf-preset "$DISPARITY_CONF_PRESET" ) \
+                    $( [ "$SHOW_DISPARITY_STRATEGY" = "true" ] && echo --show-disparity-strategy ) \
+                    $( [ "$SHOW_ADX_DMI" = "true" ] && echo --show-adx-dmi ) \
+                    --adx-period "$ADX_PERIOD" \
+                    --adx-sideways "$ADX_SIDEWAYS" \
+                    --adx-trend "$ADX_TREND" \
+                    --adx-strong "$ADX_STRONG" \
+                    $( [ "$TECH_CHART" = "true" ] && echo --tech-chart ) \
+                    $( [ "$TECH_CHART_ONLY" = "true" ] && echo --tech-chart-only ) \
+                    $( [ "$SHOW_BB" = "true" ] && echo --show-bb ) \
                     $( [ "$SHOW_PATTERN_STRIP" = "true" ] && echo --show-pattern-strip ) \
                     $( [ -n "$PATTERN_MAIN" ] && echo --pattern-main "$PATTERN_MAIN" )
                 echo "Volume Profile 차트 저장 완료: output/hma_mantra/$symbol/${symbol}_volume_profile_overlay_${PERIOD}_chart.png"

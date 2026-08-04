@@ -27,22 +27,22 @@
 ## 📈 데이터 소스
 
 ### 1. Wilshire 5000 시가총액
-- **지수**: `^W5000FLT` (Wilshire 5000 Total Market Full Cap Index)
-- **데이터 제공**: Yahoo Finance
-- **업데이트**: 실시간
+- **지수**: `^W5000` (Yahoo Finance)
+- **달러 환산**: 검증된 캘리브레이션 `(지수 / 기준지수) × 기준시총(조$)`
+- **캘리브 기준**: `src/indicators/hma_mantra/buffett_indicator.py` 상수 (buffettindicator.org 등과 교차검증 후 갱신)
 - **기준일**: 최신 거래일
 
 ### 2. US GDP
-- **데이터 제공**: FRED (Federal Reserve Economic Data)
+- **데이터 제공**: FRED `GDP` (pandas_datareader 또는 `FRED_API_KEY` + fredapi)
+- **단위**: 10억 달러 → 조 달러 (`/ 1000`)
 - **업데이트**: 분기별
-- **기준일**: 2025년 2분기 (2025-Q2)
-- **현재 값**: 29.1조 달러 (2025년 8월 최신)
+- **실패 시**: 최근 FRED 관측치 fallback
 
 ## 🔧 구현 방법
 
 ### 기본 사용법
 ```python
-from src.indicators.hma_mantra.visualization.volume_profile_overlay_chart import calculate_buffett_indicator
+from src.indicators.hma_mantra.buffett_indicator import calculate_buffett_indicator
 
 # 버핏 지수 계산
 buffett_data = calculate_buffett_indicator()
@@ -108,7 +108,8 @@ signal_info = {
 
 ### 테스트 스크립트 실행
 ```bash
-python test_buffett_indicator.py
+python test_buffett_indicator.py          # 자동 검증
+python test_buffett_indicator.py --no-external  # 외부 참조 비교 생략
 ```
 
 ### 테스트 내용
