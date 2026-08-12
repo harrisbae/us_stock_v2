@@ -1459,7 +1459,7 @@ def plot_candle_patterns_on_main(
     high_s = ohlcv_n["High"].astype(float)
     cmin = float(low_s.min())
     cmax = float(high_s.max())
-    pad = max((cmax - cmin) * 0.012, 1e-6)
+    pad = max((cmax - cmin) * 0.022, 1e-6)
 
     marker_map = {
         "bull_hammer": ("^", "#27ae60", "BH", "bull"),
@@ -1478,19 +1478,72 @@ def plot_candle_patterns_on_main(
         marker, color, short, direction = marker_map[pid]
         low_v = float(low_s.loc[ts])
         high_v = float(high_s.loc[ts])
-        y = low_v - pad if direction == "bull" else (high_v + pad if direction == "bear" else (low_v + high_v) / 2.0)
-        ax.scatter([ts], [y], marker=marker, s=28, color=color, zorder=41, edgecolors="white", linewidths=0.5)
-        ax.annotate(
-            short,
-            xy=(ts, y),
-            xytext=(0, -8 if direction == "bull" else 8),
-            textcoords="offset points",
-            fontsize=5,
-            color=color,
-            ha="center",
-            va="top" if direction == "bull" else "bottom",
-            zorder=42,
+        if direction == "bull":
+            y_m = low_v - pad * 0.35
+            y_t = low_v - pad * 1.15
+            va = "top"
+        elif direction == "bear":
+            y_m = high_v + pad * 0.35
+            y_t = high_v + pad * 1.15
+            va = "bottom"
+        else:
+            y_m = (low_v + high_v) / 2.0
+            y_t = y_m
+            va = "center"
+        ax.scatter(
+            [ts], [y_m],
+            marker=marker, s=26, color=color, zorder=41,
+            edgecolors="white", linewidths=0.5,
         )
+        if direction == "neutral":
+            ax.annotate(
+                short,
+                xy=(ts, y_m),
+                xytext=(6, 0),
+                textcoords="offset points",
+                fontsize=5.2,
+                fontweight="bold",
+                color=color,
+                ha="left",
+                va="center",
+                zorder=42,
+                bbox=dict(
+                    boxstyle="round,pad=0.12",
+                    facecolor="white",
+                    edgecolor=color,
+                    linewidth=0.55,
+                    alpha=0.90,
+                ),
+            )
+        else:
+            ax.annotate(
+                short,
+                xy=(ts, y_m),
+                xytext=(ts, y_t),
+                textcoords="data",
+                fontsize=5.2,
+                fontweight="bold",
+                color=color,
+                ha="center",
+                va=va,
+                zorder=42,
+                bbox=dict(
+                    boxstyle="round,pad=0.12",
+                    facecolor="white",
+                    edgecolor=color,
+                    linewidth=0.55,
+                    alpha=0.90,
+                ),
+                arrowprops=dict(
+                    arrowstyle="-",
+                    color=color,
+                    lw=0.55,
+                    linestyle=":",
+                    alpha=0.55,
+                    shrinkA=0,
+                    shrinkB=1,
+                ),
+            )
 
 
 def plot_pattern_main_overlays(

@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.gridspec import GridSpec
-from matplotlib.patches import FancyBboxPatch
+from matplotlib.patches import ConnectionPatch, FancyBboxPatch
 from matplotlib.ticker import FuncFormatter
 from mplfinance.original_flavor import candlestick_ohlc
 
@@ -1142,56 +1142,84 @@ def _draw_bb_visuals(
             ax.annotate(
                 "BB↓이탈",
                 xy=(d, y),
-                xytext=(0, -16),
+                xytext=(0, -22),
                 textcoords="offset points",
-                fontsize=7.5,
+                fontsize=7.2,
                 fontweight="bold",
                 color=bb_color,
                 ha="center",
                 va="top",
                 zorder=25,
-                arrowprops=dict(arrowstyle="->", color=bb_color, lw=0.9),
+                bbox=dict(
+                    boxstyle="round,pad=0.15",
+                    facecolor="white",
+                    edgecolor=bb_color,
+                    linewidth=0.7,
+                    alpha=0.92,
+                ),
+                arrowprops=dict(arrowstyle="-", color=bb_color, lw=0.75, linestyle=":", alpha=0.7),
             )
             if i == last_i and bb_lo is not None:
                 ax.annotate(
                     f"BB하단 {fmt_price(float(bb_lo))}",
                     xy=(d, float(bb_lo)),
-                    xytext=(8, -2),
+                    xytext=(10, -4),
                     textcoords="offset points",
-                    fontsize=7.0,
+                    fontsize=6.8,
                     color=bb_color,
                     ha="left",
                     va="top",
                     zorder=25,
                     alpha=0.9,
+                    bbox=dict(
+                        boxstyle="round,pad=0.12",
+                        facecolor="white",
+                        edgecolor=bb_color,
+                        linewidth=0.55,
+                        alpha=0.88,
+                    ),
                 )
         else:
             y = float(high_s.iloc[i])
             ax.annotate(
                 "BB↑돌파",
                 xy=(d, y),
-                xytext=(0, 14),
+                xytext=(0, 20),
                 textcoords="offset points",
-                fontsize=7.5,
+                fontsize=7.2,
                 fontweight="bold",
                 color=bb_color,
                 ha="center",
                 va="bottom",
                 zorder=25,
-                arrowprops=dict(arrowstyle="->", color=bb_color, lw=0.9),
+                bbox=dict(
+                    boxstyle="round,pad=0.15",
+                    facecolor="white",
+                    edgecolor=bb_color,
+                    linewidth=0.7,
+                    alpha=0.92,
+                ),
+                arrowprops=dict(arrowstyle="-", color=bb_color, lw=0.75, linestyle=":", alpha=0.7),
             )
             if i == last_i and bb_up is not None:
                 ax.annotate(
                     f"BB상단 {fmt_price(float(bb_up))}",
                     xy=(d, float(bb_up)),
-                    xytext=(8, 2),
+                    xytext=(10, 4),
                     textcoords="offset points",
-                    fontsize=7.0,
+                    fontsize=6.8,
                     color=bb_color,
                     ha="left",
                     va="bottom",
                     zorder=25,
                     alpha=0.9,
+                    bbox=dict(
+                        boxstyle="round,pad=0.12",
+                        facecolor="white",
+                        edgecolor=bb_color,
+                        linewidth=0.55,
+                        alpha=0.88,
+                    ),
                 )
 
 
@@ -1374,6 +1402,66 @@ def _peg_panel_lines(peg_view: Optional[Dict[str, Any]]) -> List[str]:
         return []
     lines = list(peg_view.get("lines") or [])
     return lines[:6]
+
+
+def _adx_insight_sentence(adx_res: Dict[str, Any]) -> str:
+    """ADX/DMI 1문장 해석 (인사이트 확인용)."""
+    adx = adx_res.get("adx")
+    if adx is None:
+        return "ADX 데이터 부족"
+    try:
+        adx_f = float(adx)
+    except (TypeError, ValueError):
+        return "ADX 데이터 부족"
+
+    direction = str(adx_res.get("direction") or "")
+    strength = str(adx_res.get("strength") or "")
+    plus_di, minus_di = adx_res.get("plus_di"), adx_res.get("minus_di")
+    di_bit = ""
+    if plus_di is not None and minus_di is not None:
+        gap = float(plus_di) - float(minus_di)
+        if abs(gap) < 2:
+            di_bit = "DI혼조"
+        elif gap > 0:
+            di_bit = f"+DI우세(갭{gap:+.0f})"
+        else:
+            di_bit = f"-DI우세(갭{gap:+.0f})"
+
+    if adx_f < 20:
+        base = "횡보권 · 돌파/이탈 확인 전 관망 비중"
+        return f"{base} · {di_bit}" if di_bit else base
+    if direction == "상승":
+        base = f"상승 추세({strength}) · ③④ 가점"
+        return f"{base} · {di_bit}" if di_bit else base
+    if direction == "하락":
+        base = f"하락 추세({strength}) · ①② 가점"
+        return f"{base} · {di_bit}" if di_bit else base
+    summary = adx_res.get("summary") or "국면 불명"
+    return f"{summary} · {di_bit}" if di_bit else str(summary)
+
+
+def _adx_panel_lines(adx_res: Optional[Dict[str, Any]]) -> List[str]:
+    """인사이트 패널용 [ADX/DMI] 블록 — 수치·국면·해석 1문장."""
+    if not adx_res or adx_res.get("adx") is None:
+        return []
+    adx = adx_res.get("adx")
+    plus_di = adx_res.get("plus_di")
+    minus_di = adx_res.get("minus_di")
+    summary = adx_res.get("summary") or "—"
+
+    lines: List[str] = ["[ADX/DMI]"]
+    # 수치 줄
+    bits = [f"ADX {adx} ({summary})"]
+    if plus_di is not None and minus_di is not None:
+        p, m = float(plus_di), float(minus_di)
+        gap = p - m
+        if p >= m:
+            bits.append(f"+DI {p:.1f} > -DI {m:.1f} (갭 {gap:+.1f})")
+        else:
+            bits.append(f"-DI {m:.1f} > +DI {p:.1f} (갭 {gap:+.1f})")
+    lines.append(" | ".join(bits))
+    lines.append(f"해석: {_adx_insight_sentence(adx_res)}")
+    return lines
 
 
 def _aux_indicator_panel_lines(aux: Dict[str, Any], *, current: float, fmt_price) -> List[str]:
@@ -1603,34 +1691,85 @@ def _surge_panel_lines(surge: Dict[str, Any]) -> List[str]:
     return [" · ".join(bits)]
 
 
+def _draw_surge_status_caption(
+    ax,
+    text: str,
+    *,
+    fc: str,
+    ec: str,
+    row: int = 0,
+    target_xy: Optional[Tuple[Any, float]] = None,
+) -> None:
+    """
+    급등/셋업 상태 캡션 — 메인 차트 우상단(axes fraction) 고정.
+    target_xy(마지막 봉 고가 등)가 있으면 점선으로 대상과 연결.
+    """
+    y = 0.972 - max(0, int(row)) * 0.052
+    cap_xy = (0.795, y)
+    if target_xy is not None:
+        tx = mdates.date2num(pd.Timestamp(target_xy[0]).to_pydatetime())
+        ty = float(target_xy[1])
+        ax.add_artist(
+            ConnectionPatch(
+                xyA=cap_xy,
+                coordsA=ax.transAxes,
+                xyB=(tx, ty),
+                coordsB=ax.transData,
+                axesA=ax,
+                axesB=ax,
+                color=ec,
+                lw=1.1,
+                linestyle=(0, (1.0, 2.2)),
+                alpha=0.78,
+                zorder=31,
+                clip_on=False,
+            )
+        )
+        ax.scatter(
+            [tx], [ty],
+            s=22,
+            facecolors="none",
+            edgecolors=ec,
+            linewidths=1.0,
+            zorder=31,
+            alpha=0.85,
+        )
+    ax.text(
+        cap_xy[0],
+        cap_xy[1],
+        text,
+        transform=ax.transAxes,
+        fontsize=7.8,
+        fontweight="bold",
+        color=ec,
+        ha="right",
+        va="top",
+        zorder=32,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor=fc,
+            edgecolor=ec,
+            linewidth=1.15,
+            alpha=0.94,
+        ),
+    )
+
+
 def _draw_surge_badge(ax, df: pd.DataFrame, surge: Dict[str, Any]) -> None:
-    """급등진행/과열일 때 마지막 봉 위에 배지."""
+    """급등진행/과열일 때 우상단 상태 캡션 (+대상 봉 점선)."""
     state = surge.get("state")
     if state not in ("급등진행", "급등과열"):
         return
     if df is None or df.empty:
         return
-    d = df.index[-1]
-    y = float(df["High"].astype(float).iloc[-1])
     score = int(surge.get("score") or 0)
     if state == "급등과열":
         text, fc, ec = f"급등↑과열({score})", "#fef5e7", "#e67e22"
     else:
         text, fc, ec = f"급등↑({score})", "#e8f8f5", "#16a085"
-    ax.annotate(
-        text,
-        xy=(d, y),
-        xytext=(0, 14),
-        textcoords="offset points",
-        fontsize=8.0,
-        fontweight="bold",
-        color=ec,
-        ha="center",
-        va="bottom",
-        zorder=28,
-        bbox=dict(boxstyle="round,pad=0.28", facecolor=fc, edgecolor=ec, linewidth=1.2, alpha=0.95),
-        arrowprops=dict(arrowstyle="-", color=ec, lw=0.8, alpha=0.7),
-    )
+    target = (df.index[-1], float(df["High"].astype(float).iloc[-1]))
+    _draw_surge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
 
 
 def detect_surge_setup(
@@ -1857,7 +1996,7 @@ def _draw_surge_setup_badge(
     *,
     surge_state: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """셋업A/B/점화임박 배지 (이미 급등진행·과열이면 생략)."""
+    """셋업A/B/점화임박 캡션 (이미 급등진행·과열이면 생략) — 우상단 고정."""
     if not setup or not setup.get("active"):
         return
     if surge_state and surge_state.get("state") in ("급등진행", "급등과열"):
@@ -1874,22 +2013,8 @@ def _draw_surge_setup_badge(
         text, fc, ec = f"급등셋업B({score})", "#eafaf1", "#1abc9c"
     else:
         return
-    d = df.index[-1]
-    y = float(df["High"].astype(float).iloc[-1])
-    ax.annotate(
-        text,
-        xy=(d, y),
-        xytext=(0, 14),
-        textcoords="offset points",
-        fontsize=7.8,
-        fontweight="bold",
-        color=ec,
-        ha="center",
-        va="bottom",
-        zorder=27,
-        bbox=dict(boxstyle="round,pad=0.26", facecolor=fc, edgecolor=ec, linewidth=1.15, alpha=0.95),
-        arrowprops=dict(arrowstyle="-", color=ec, lw=0.75, alpha=0.7),
-    )
+    target = (df.index[-1], float(df["High"].astype(float).iloc[-1]))
+    _draw_surge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
 
 
 def detect_plunge_state(
@@ -2069,34 +2194,85 @@ def _plunge_panel_lines(plunge: Dict[str, Any]) -> List[str]:
     return [" · ".join(bits)]
 
 
+def _draw_plunge_status_caption(
+    ax,
+    text: str,
+    *,
+    fc: str,
+    ec: str,
+    row: int = 0,
+    target_xy: Optional[Tuple[Any, float]] = None,
+) -> None:
+    """
+    급락/셋업 상태 캡션 — 메인 차트 우하단(axes fraction) 고정.
+    target_xy(마지막 봉 저가 등)가 있으면 점선으로 대상과 연결.
+    """
+    y = 0.028 + max(0, int(row)) * 0.052
+    cap_xy = (0.795, y)
+    if target_xy is not None:
+        tx = mdates.date2num(pd.Timestamp(target_xy[0]).to_pydatetime())
+        ty = float(target_xy[1])
+        ax.add_artist(
+            ConnectionPatch(
+                xyA=cap_xy,
+                coordsA=ax.transAxes,
+                xyB=(tx, ty),
+                coordsB=ax.transData,
+                axesA=ax,
+                axesB=ax,
+                color=ec,
+                lw=1.1,
+                linestyle=(0, (1.0, 2.2)),
+                alpha=0.78,
+                zorder=31,
+                clip_on=False,
+            )
+        )
+        ax.scatter(
+            [tx], [ty],
+            s=22,
+            facecolors="none",
+            edgecolors=ec,
+            linewidths=1.0,
+            zorder=31,
+            alpha=0.85,
+        )
+    ax.text(
+        cap_xy[0],
+        cap_xy[1],
+        text,
+        transform=ax.transAxes,
+        fontsize=7.8,
+        fontweight="bold",
+        color=ec,
+        ha="right",
+        va="bottom",
+        zorder=32,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor=fc,
+            edgecolor=ec,
+            linewidth=1.15,
+            alpha=0.94,
+        ),
+    )
+
+
 def _draw_plunge_badge(ax, df: pd.DataFrame, plunge: Dict[str, Any]) -> None:
-    """급락진행/과매도일 때 마지막 봉 아래 배지."""
+    """급락진행/과매도일 때 우하단 상태 캡션 (+대상 봉 점선)."""
     state = plunge.get("state")
     if state not in ("급락진행", "급락과매도"):
         return
     if df is None or df.empty:
         return
-    d = df.index[-1]
-    y = float(df["Low"].astype(float).iloc[-1])
     score = int(plunge.get("score") or 0)
     if state == "급락과매도":
         text, fc, ec = f"급락↓과매도({score})", "#fdedec", "#c0392b"
     else:
         text, fc, ec = f"급락↓({score})", "#fadbd8", "#922b21"
-    ax.annotate(
-        text,
-        xy=(d, y),
-        xytext=(0, -16),
-        textcoords="offset points",
-        fontsize=8.0,
-        fontweight="bold",
-        color=ec,
-        ha="center",
-        va="top",
-        zorder=28,
-        bbox=dict(boxstyle="round,pad=0.28", facecolor=fc, edgecolor=ec, linewidth=1.2, alpha=0.95),
-        arrowprops=dict(arrowstyle="-", color=ec, lw=0.8, alpha=0.7),
-    )
+    target = (df.index[-1], float(df["Low"].astype(float).iloc[-1]))
+    _draw_plunge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
 
 
 def detect_plunge_setup(
@@ -2323,7 +2499,7 @@ def _draw_plunge_setup_badge(
     *,
     plunge_state: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """급락 셋업A/B/붕괴임박 배지 (이미 급락진행·과매도면 생략)."""
+    """급락 셋업A/B/붕괴임박 캡션 (이미 급락진행·과매도면 생략) — 우하단 고정."""
     if not setup or not setup.get("active"):
         return
     if plunge_state and plunge_state.get("state") in ("급락진행", "급락과매도"):
@@ -2340,22 +2516,8 @@ def _draw_plunge_setup_badge(
         text, fc, ec = f"급락셋업B({score})", "#fbeee6", "#d35400"
     else:
         return
-    d = df.index[-1]
-    y = float(df["Low"].astype(float).iloc[-1])
-    ax.annotate(
-        text,
-        xy=(d, y),
-        xytext=(0, -16),
-        textcoords="offset points",
-        fontsize=7.8,
-        fontweight="bold",
-        color=ec,
-        ha="center",
-        va="top",
-        zorder=27,
-        bbox=dict(boxstyle="round,pad=0.26", facecolor=fc, edgecolor=ec, linewidth=1.15, alpha=0.95),
-        arrowprops=dict(arrowstyle="-", color=ec, lw=0.75, alpha=0.7),
-    )
+    target = (df.index[-1], float(df["Low"].astype(float).iloc[-1]))
+    _draw_plunge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
 
 
 def analyze_ticker_surge_history(
@@ -2663,12 +2825,21 @@ def _hist_surge_panel_lines(hist: Dict[str, Any]) -> List[str]:
     return lines
 
 def _draw_historical_surge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
-    """메인 차트에 과거 급등 점화일 마커 (A/B/D)."""
+    """
+    메인 차트 과거 급등 점화 마커(A/B/D).
+    ▲은 고가에 두고, 캡션은 고가 위 여백에서 Y스택·X교대로 배치해 봉·라벨과 겹침을 줄임.
+    """
     events = hist.get("events") or []
     if not events or df is None or df.empty:
         return
     colors = {"A": "#16a085", "B": "#2980b9", "D": "#8e44ad"}
     high = df["High"].astype(float)
+    y0, y1 = ax.get_ylim()
+    span = max(float(y1) - float(y0), 1e-9)
+    gap = span * 0.032
+    lift = span * 0.028
+
+    items: List[Dict[str, Any]] = []
     for e in events:
         i = int(e["idx"])
         if i < 0 or i >= len(df):
@@ -2676,29 +2847,511 @@ def _draw_historical_surge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -
         d = df.index[i]
         y = float(high.iloc[i])
         kind = e.get("kind") or "D"
-        col = colors.get(kind, "#7f8c8d")
+        pref = y + lift
+        items.append(
+            {
+                "d": d,
+                "y": y,
+                "kind": kind,
+                "col": colors.get(kind, "#7f8c8d"),
+                "pref": pref,
+                "xnum": mdates.date2num(pd.Timestamp(d).to_pydatetime()),
+            }
+        )
+    if not items:
+        return
+
+    # 캡션이 차트 상단을 넘지 않도록, 고가 위 선호값을 스택
+    stack_hi = float(y1) - span * 0.04
+    stack_lo = float(y0) + span * 0.08
+    stacked = _stack_y_positions(
+        [it["pref"] for it in items],
+        y_min=stack_lo,
+        y_max=max(stack_lo + gap, stack_hi),
+        min_gap=gap,
+    )
+
+    x_left = mdates.date2num(pd.Timestamp(df.index[0]).to_pydatetime())
+    x_right = mdates.date2num(pd.Timestamp(df.index[-1]).to_pydatetime())
+    x_span = max(x_right - x_left, 1.0)
+    x_pad = max(1.2, x_span * 0.012)
+
+    for k, (it, ly) in enumerate(zip(items, stacked)):
+        d, y, kind, col = it["d"], it["y"], it["kind"], it["col"]
         ax.scatter(
             [d], [y],
             marker="^",
-            s=42,
+            s=36,
             color=col,
             edgecolors="white",
-            linewidths=0.6,
+            linewidths=0.55,
             zorder=26,
             alpha=0.95,
         )
+        # 최근 봉 구간: 우상단 상태캡션·시나리오·저항라벨과 겹침 → ▲만 표시
+        i_near_end = it["xnum"] >= (x_right - x_pad * 6)
+        if i_near_end:
+            continue
+
+        side = 1 if (k % 2 == 0) else -1
+        if k >= 1 and abs(it["xnum"] - items[k - 1]["xnum"]) < x_pad * 3.5:
+            x_off = side * x_pad * 1.8
+        else:
+            x_off = side * x_pad * 0.85
+        tx = it["xnum"] + x_off
+        if tx < x_left + x_pad:
+            tx = it["xnum"] + abs(x_off)
+        elif tx > x_right - x_pad * 4:
+            tx = it["xnum"] - abs(x_off)
+
+        # 캡션이 고가와 너무 붙으면 한 단 더 올림
+        if ly < y + lift * 0.6:
+            ly = min(stack_hi, y + lift)
+
         ax.annotate(
             f"급등{kind}",
             xy=(d, y),
-            xytext=(0, 9),
-            textcoords="offset points",
-            fontsize=6.2,
+            xytext=(tx, ly),
+            textcoords="data",
+            fontsize=6.4,
             fontweight="bold",
             color=col,
             ha="center",
             va="bottom",
+            zorder=27,
+            alpha=0.95,
+            bbox=dict(
+                boxstyle="round,pad=0.15",
+                facecolor="white",
+                edgecolor=col,
+                linewidth=0.7,
+                alpha=0.92,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=col,
+                lw=0.65,
+                alpha=0.55,
+                shrinkA=0,
+                shrinkB=2,
+            ),
+        )
+
+
+def analyze_ticker_plunge_history(
+    df: pd.DataFrame,
+    *,
+    aux_ind: Optional[Dict[str, Any]] = None,
+    plunge_setup: Optional[Dict[str, Any]] = None,
+    min_ret5: float = 8.0,
+    min_ret10: float = 12.0,
+    min_vol: float = 1.5,
+    min_spacing: int = 10,
+    max_events: int = 8,
+) -> Dict[str, Any]:
+    """
+    종목 구간 내 과거 급락 이벤트 탐지 → 유형(A/B/D) 프로파일 → 현재 셋업 유사도.
+
+    A: ST↑→↓ 후 8~35일 횡보 압축 뒤 급락
+    B: ST↑→↓ 직후(≤10일) 급락
+    D: 이미 ST↓ 모멘텀 연속 급락
+    """
+    out: Dict[str, Any] = {
+        "events": [],
+        "n": 0,
+        "kind_counts": {"A": 0, "B": 0, "D": 0},
+        "profile": {},
+        "conditions": [],
+        "similarity": {"score": 0, "label": "해당없음", "tips": []},
+        "relaxed": False,
+        "adaptive_thr": None,
+    }
+    if df is None or len(df) < 60:
+        out["conditions"] = ["급락 이력 분석: 데이터 부족"]
+        return out
+
+    aux = aux_ind or {}
+    st_dir_s = aux.get("st_dir_series")
+    if st_dir_s is None:
+        out["conditions"] = ["급락 이력 분석: ST 시계열 없음"]
+        return out
+
+    close = df["Close"].astype(float).to_numpy()
+    high = df["High"].astype(float).to_numpy()
+    low = df["Low"].astype(float).to_numpy()
+    vol = df["Volume"].astype(float).to_numpy()
+    vol_ma = pd.Series(vol).rolling(20, min_periods=5).mean().fillna(0).to_numpy()
+    darr = st_dir_s.reindex(df.index).to_numpy()
+    idx = df.index
+    n = len(close)
+
+    def _collect(r5_min: float, r10_min: float, vol_min: float, need_break: bool) -> List[Dict[str, Any]]:
+        events_local: List[Dict[str, Any]] = []
+        last_i = -999
+        for i in range(30, n):
+            if darr[i] >= 0:
+                continue
+            c = close[i]
+            if close[i - 5] <= 0 or close[i - 10] <= 0:
+                continue
+            r5 = (c / close[i - 5] - 1.0) * 100.0
+            r10 = (c / close[i - 10] - 1.0) * 100.0
+            vm = vol[i] / vol_ma[i] if vol_ma[i] > 0 else 0.0
+            for k in range(1, 3):
+                if i - k >= 0 and vol_ma[i - k] > 0:
+                    vm = max(vm, vol[i - k] / vol_ma[i - k])
+            lo20 = float(np.nanmin(low[i - 20 : i])) if i >= 20 else c
+            breakdown = c <= lo20 * (1.005 if need_break else 1.02)
+            if not ((r5 <= -r5_min or r10 <= -r10_min) and vm >= vol_min and breakdown):
+                continue
+            if i - last_i < min_spacing:
+                continue
+            last_i = i
+
+            flip_age = None
+            flip_i = None
+            for j in range(i, max(0, i - 80), -1):
+                if j >= 1 and darr[j] < 0 and darr[j - 1] > 0:
+                    flip_age = i - j
+                    flip_i = j
+                    break
+
+            look = 15
+            a = max(0, i - look)
+            b = i - 1
+            pre_net = pre_rng = None
+            if b > a:
+                seg = close[a : b + 1]
+                if seg[0] > 0:
+                    pre_net = (seg[-1] / seg[0] - 1.0) * 100.0
+                lo_v = float(np.nanmin(low[a : b + 1]))
+                hi_v = float(np.nanmax(high[a : b + 1]))
+                if lo_v > 0:
+                    pre_rng = (hi_v / lo_v - 1.0) * 100.0
+
+            soft = (
+                pre_net is not None
+                and pre_rng is not None
+                and abs(pre_net) <= 12.0
+                and pre_rng <= 22.0
+            )
+            if flip_age is not None and 8 <= flip_age <= 35 and soft:
+                kind = "A"
+            elif flip_age is not None and flip_age <= 10:
+                kind = "B"
+            else:
+                kind = "D"
+
+            events_local.append(
+                {
+                    "idx": i,
+                    "date": str(pd.Timestamp(idx[i]).date()),
+                    "ret5": round(r5, 1),
+                    "ret10": round(r10, 1),
+                    "vol": round(vm, 2),
+                    "kind": kind,
+                    "flip_age": flip_age,
+                    "flip_i": flip_i,
+                    "pre_net": round(pre_net, 1) if pre_net is not None else None,
+                    "pre_rng": round(pre_rng, 1) if pre_rng is not None else None,
+                    "price": float(c),
+                }
+            )
+        return events_local
+
+    events = _collect(min_ret5, min_ret10, min_vol, True)
+    if not events:
+        events = _collect(5.0, 8.0, 1.3, False)
+        out["relaxed"] = bool(events)
+    if not events:
+        all_r5 = []
+        all_r10 = []
+        for i in range(30, n):
+            if close[i - 5] > 0:
+                all_r5.append((close[i] / close[i - 5] - 1.0) * 100.0)
+            if close[i - 10] > 0:
+                all_r10.append((close[i] / close[i - 10] - 1.0) * 100.0)
+        if all_r5 and all_r10:
+            # 하락 꼬리(p10): 절댓값을 임계로 사용
+            r5_thr = float(max(2.5, min(5.0, abs(np.percentile(all_r5, 10)))))
+            r10_thr = float(max(4.0, min(8.0, abs(np.percentile(all_r10, 10)))))
+            events = _collect(r5_thr, r10_thr, 1.15, False)
+            out["relaxed"] = bool(events)
+            if events:
+                out["adaptive_thr"] = {"r5": round(r5_thr, 2), "r10": round(r10_thr, 2)}
+
+    events = events[-max_events:]
+    out["events"] = events
+    out["n"] = len(events)
+    counts = {"A": 0, "B": 0, "D": 0}
+    for e in events:
+        counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+    out["kind_counts"] = counts
+
+    if not events:
+        out["conditions"] = ["급락 이력 부족 (기간 내 급락 미검출 · 저변동/횡보 가능)"]
+        return out
+
+    def _med(vals: List[Any]) -> Optional[float]:
+        v = [x for x in vals if x is not None and np.isfinite(x)]
+        return float(np.median(v)) if v else None
+
+    flip_ages = [e["flip_age"] for e in events if e.get("flip_age") is not None]
+    pre_rngs = [e["pre_rng"] for e in events]
+    pre_nets = [e["pre_net"] for e in events]
+    vols = [e["vol"] for e in events]
+    ret5s = [e["ret5"] for e in events]
+
+    med_flip = _med(flip_ages)
+    med_rng = _med(pre_rngs)
+    med_net = _med(pre_nets)
+    med_vol = _med(vols)
+    med_r5 = _med(ret5s)
+
+    dominant = max(counts.keys(), key=lambda k: (counts[k], {"A": 3, "B": 2, "D": 1}[k]))
+    if counts[dominant] == 0:
+        dominant = "D"
+
+    profile = {
+        "dominant_kind": dominant,
+        "med_flip_age": round(med_flip, 0) if med_flip is not None else None,
+        "med_pre_rng": round(med_rng, 1) if med_rng is not None else None,
+        "med_pre_net": round(med_net, 1) if med_net is not None else None,
+        "med_vol": round(med_vol, 2) if med_vol is not None else None,
+        "med_ret5": round(med_r5, 1) if med_r5 is not None else None,
+    }
+    out["profile"] = profile
+
+    kind_lab = {"A": "ST전환후횡보", "B": "ST전환직후", "D": "모멘텀연속"}
+    if out.get("relaxed") and out.get("adaptive_thr"):
+        thr = out["adaptive_thr"]
+        tag = f"종목상대(p10 -{thr['r5']:.1f}%/-{thr['r10']:.1f}%) · "
+    elif out.get("relaxed"):
+        tag = "완화기준 · "
+    else:
+        tag = ""
+    conditions = [
+        f"이 종목 급락 {len(events)}회({tag}주유형 {dominant}/{kind_lab[dominant]}) "
+        f"A{counts['A']}/B{counts['B']}/D{counts['D']}"
+    ]
+    bits = []
+    if med_flip is not None:
+        bits.append(f"플립+{med_flip:.0f}일")
+    if med_rng is not None:
+        bits.append(f"직전횡보폭~{med_rng:.0f}%")
+    if med_net is not None:
+        bits.append(f"직전순변~{med_net:+.0f}%")
+    if med_vol is not None:
+        bits.append(f"붕괴Vol×{med_vol:.1f}")
+    if med_r5 is not None:
+        bits.append(f"급락5일~{med_r5:.0f}%")
+    if bits:
+        conditions.append("전형조건: " + " · ".join(bits))
+    if dominant == "A":
+        conditions.append("유사감시: ST↓유지 + 횡보압축 + 20일저점 이탈·거래량 유입")
+    elif dominant == "B":
+        conditions.append("유사감시: ST↑→↓ 직후 저점 이탈·거래량 확인")
+    else:
+        conditions.append("유사감시: ST↓ 모멘텀 유지 중 가속·거래량 확대")
+    out["conditions"] = conditions
+
+    sim = {"score": 0, "label": "해당없음", "tips": []}
+    setup = plunge_setup or {}
+    if setup.get("active") and events:
+        score = 30.0
+        tips: List[str] = []
+        sk = setup.get("kind")
+        st_name = setup.get("state")
+        if sk == dominant or (st_name == "붕괴임박" and dominant in ("A", "B")):
+            score += 25
+            tips.append(f"유형일치({dominant})")
+        elif sk in ("A", "B") and counts.get(sk, 0) > 0:
+            score += 12
+            tips.append(f"유형부분일치({sk})")
+
+        age = setup.get("flip_age")
+        if age is not None and med_flip is not None:
+            diff = abs(float(age) - med_flip)
+            if diff <= 5:
+                score += 15
+                tips.append("플립시차≈전형")
+            elif diff <= 12:
+                score += 8
+                tips.append("플립시차근접")
+
+        rng = setup.get("consol_rng")
+        if rng is not None and med_rng is not None:
+            if abs(float(rng) - med_rng) <= 5:
+                score += 12
+                tips.append("횡보폭≈전형")
+            elif float(rng) <= med_rng + 3:
+                score += 6
+                tips.append("횡보압축양호")
+
+        dist = setup.get("dist_lo20")
+        if dist is not None and dist <= 3:
+            score += 10
+            tips.append("저점근접(붕괴권)")
+        if st_name == "붕괴임박":
+            score += 8
+            tips.append("붕괴임박")
+
+        score_i = int(round(min(100.0, max(0.0, score))))
+        if score_i >= 70:
+            label = "유사높음"
+        elif score_i >= 50:
+            label = "유사보통"
+        elif score_i >= 35:
+            label = "유사낮음"
+        else:
+            label = "유사약함"
+        sim = {"score": score_i, "label": label, "tips": tips[:4]}
+    elif events:
+        sim = {
+            "score": 0,
+            "label": "셋업대기",
+            "tips": [f"과거주유형 {dominant} 조건 감시"],
+        }
+    out["similarity"] = sim
+    return out
+
+
+def _hist_plunge_panel_lines(hist: Dict[str, Any]) -> List[str]:
+    """패널용 종목 급락 이력·유사조건."""
+    if not hist:
+        return []
+    lines: List[str] = ["[종목 급락이력]"]
+    conds = hist.get("conditions") or []
+    if hist.get("n", 0) <= 0:
+        lines.extend(conds[:2] or ["급락 이력 부족"])
+        return lines
+    for c in conds[:3]:
+        lines.append(c)
+    sim = hist.get("similarity") or {}
+    if sim.get("label") and sim.get("label") not in ("해당없음",):
+        tips = " · ".join(sim.get("tips") or [])
+        bit = f"유사도: {sim.get('label')}({sim.get('score', 0)})"
+        if tips:
+            bit += f" · {tips}"
+        lines.append(bit)
+    recent = hist.get("events") or []
+    if recent:
+        tail = recent[-3:]
+        bits = [f"{e['date'][5:]}{e['kind']}{e['ret5']:+.0f}%" for e in tail]
+        lines.append("최근: " + ", ".join(bits))
+    return lines
+
+
+def _draw_historical_plunge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
+    """
+    메인 차트 과거 급락 붕괴 마커(A/B/D).
+    ▼은 저가에 두고, 캡션은 저가 아래 여백에서 Y스택·X교대로 배치해 봉·라벨과 겹침을 줄임.
+    """
+    events = hist.get("events") or []
+    if not events or df is None or df.empty:
+        return
+    colors = {"A": "#c0392b", "B": "#d35400", "D": "#6c3483"}
+    low = df["Low"].astype(float)
+    y0, y1 = ax.get_ylim()
+    span = max(float(y1) - float(y0), 1e-9)
+    gap = span * 0.032
+    drop = span * 0.028
+
+    items: List[Dict[str, Any]] = []
+    for e in events:
+        i = int(e["idx"])
+        if i < 0 or i >= len(df):
+            continue
+        d = df.index[i]
+        y = float(low.iloc[i])
+        kind = e.get("kind") or "D"
+        pref = y - drop
+        items.append(
+            {
+                "d": d,
+                "y": y,
+                "kind": kind,
+                "col": colors.get(kind, "#7f8c8d"),
+                "pref": pref,
+                "xnum": mdates.date2num(pd.Timestamp(d).to_pydatetime()),
+            }
+        )
+    if not items:
+        return
+
+    stack_lo = float(y0) + span * 0.04
+    stack_hi = float(y1) - span * 0.08
+    # 저가 아래 선호값을 스택 (위쪽 선호부터 → 충돌 시 아래로)
+    stacked = _stack_y_positions(
+        [it["pref"] for it in items],
+        y_min=stack_lo,
+        y_max=max(stack_lo + gap, stack_hi),
+        min_gap=gap,
+    )
+
+    x_left = mdates.date2num(pd.Timestamp(df.index[0]).to_pydatetime())
+    x_right = mdates.date2num(pd.Timestamp(df.index[-1]).to_pydatetime())
+    x_span = max(x_right - x_left, 1.0)
+    x_pad = max(1.2, x_span * 0.012)
+
+    for k, (it, ly) in enumerate(zip(items, stacked)):
+        d, y, kind, col = it["d"], it["y"], it["kind"], it["col"]
+        ax.scatter(
+            [d], [y],
+            marker="v",
+            s=36,
+            color=col,
+            edgecolors="white",
+            linewidths=0.55,
             zorder=26,
-            alpha=0.9,
+            alpha=0.95,
+        )
+        # 최근 봉 구간: 우하단 상태캡션·시나리오와 겹침 → ▼만 표시
+        if it["xnum"] >= (x_right - x_pad * 6):
+            continue
+
+        side = 1 if (k % 2 == 0) else -1
+        if k >= 1 and abs(it["xnum"] - items[k - 1]["xnum"]) < x_pad * 3.5:
+            x_off = side * x_pad * 1.8
+        else:
+            x_off = side * x_pad * 0.85
+        tx = it["xnum"] + x_off
+        if tx < x_left + x_pad:
+            tx = it["xnum"] + abs(x_off)
+        elif tx > x_right - x_pad * 4:
+            tx = it["xnum"] - abs(x_off)
+
+        # 캡션이 저가와 너무 붙으면 한 단 더 내림
+        if ly > y - drop * 0.6:
+            ly = max(stack_lo, y - drop)
+
+        ax.annotate(
+            f"급락{kind}",
+            xy=(d, y),
+            xytext=(tx, ly),
+            textcoords="data",
+            fontsize=6.4,
+            fontweight="bold",
+            color=col,
+            ha="center",
+            va="top",
+            zorder=27,
+            alpha=0.95,
+            bbox=dict(
+                boxstyle="round,pad=0.15",
+                facecolor="white",
+                edgecolor=col,
+                linewidth=0.7,
+                alpha=0.92,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=col,
+                lw=0.65,
+                alpha=0.55,
+                shrinkA=0,
+                shrinkB=2,
+            ),
         )
 
 
@@ -3048,6 +3701,66 @@ def _stack_y_positions(
     return out
 
 
+def _draw_left_gutter_level_captions(
+    ax,
+    items: List[Dict[str, Any]],
+    *,
+    x_gutter: float,
+    x_line: float,
+    y_min: float,
+    y_max: float,
+) -> None:
+    """
+    지지/저항·목표가 이름 캡션을 좌측 여백에 배치 (봉과 분리).
+    x_gutter: 캡션 x, x_line: 점선이 닿는 차트 좌단(데이터 시작).
+    """
+    if not items:
+        return
+    span = max(float(y_max) - float(y_min), 1e-9)
+    gap = span * 0.030
+    prefs = [float(it["price"]) for it in items]
+    stacked = _stack_y_positions(
+        prefs,
+        y_min=float(y_min) + span * 0.02,
+        y_max=float(y_max) - span * 0.02,
+        min_gap=gap,
+    )
+    for it, ly in zip(items, stacked):
+        col = it.get("color") or "#34495e"
+        fs = float(it.get("fontsize") or 8.4)
+        label = str(it.get("label") or "")
+        py = float(it["price"])
+        ax.annotate(
+            label,
+            xy=(x_line, py),
+            xytext=(x_gutter, ly),
+            textcoords="data",
+            fontsize=fs,
+            fontweight="bold",
+            color=col,
+            ha="right",
+            va="center",
+            zorder=21,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="white",
+                edgecolor=col,
+                linewidth=0.75,
+                alpha=0.92,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=col,
+                lw=0.75,
+                linestyle=":",
+                alpha=0.55,
+                shrinkA=1,
+                shrinkB=1,
+            ),
+        )
+
+
 def _pick_active_trendline(
     trendlines: List[Dict[str, Any]],
     current: float,
@@ -3178,15 +3891,19 @@ def _draw_trendlines_with_lane(
         )
         ax.annotate(
             "현재가",
-            xy=(x_left, current),
-            xytext=(6, 5),
+            xy=(0.0, current),
+            xycoords=("axes fraction", "data"),
+            xytext=(3, 0),
             textcoords="offset points",
-            fontsize=7.2,
+            fontsize=7.0,
             fontweight="bold",
             color="#2c3e50",
+            ha="left",
+            va="center",
             zorder=20,
+            clip_on=False,
             bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="#2c3e50",
-                      linewidth=0.6, alpha=0.88),
+                      linewidth=0.6, alpha=0.90),
         )
 
         if active is not None:
@@ -3209,32 +3926,49 @@ def _draw_trendlines_with_lane(
                 alpha=0.85,
                 zorder=10,
             )
-            mid_y = (current + pn) / 2.0
-            # 라벨이 현재가에 너무 붙으면 살짝 밀어냄
-            if abs(pn - current) / y_span < 0.06:
-                mid_y = current + (y_span * 0.08 if pn >= current else -y_span * 0.08)
-            # '추세까지'는 ②추세하락과 혼동 → 활성지지/저항선으로 명시
             role = "활성저항선" if active["kind"] == "resistance" else "활성지지선"
             dist_txt = f"{role} {pct:+.1f}%"
             if fmt_price is not None:
                 dist_txt = f"{dist_txt} ({fmt_price(pn)})"
+            # 지지선 아래 / 저항선 위 + 점선 연결 (선 위 최근 구간)
+            is_support = active["kind"] != "resistance"
+            x_span = max(float(x_right) - float(x_left), 1.0)
+            x0 = float(active.get("x0") or x_left)
+            y0 = float(active.get("y0") or pn)
+            slope = float(active.get("slope") or 0.0)
+            # 선의 중후반(최근 65% 지점)에 앵커
+            x_anchor = x0 + (float(x_right) - x0) * 0.72
+            y_on_line = y0 + slope * (x_anchor - x0)
+            y_off = y_span * 0.050
+            y_cap = y_on_line - y_off if is_support else y_on_line + y_off
+            y_cap = min(max(y_cap, float(y_min) + y_span * 0.015), float(y_max) - y_span * 0.015)
             ax.annotate(
                 dist_txt,
-                xy=(x_right, mid_y),
-                xytext=(-6, 0),
-                textcoords="offset points",
+                xy=(x_anchor, y_on_line),
+                xytext=(x_anchor, y_cap),
+                textcoords="data",
                 fontsize=7.0,
                 fontweight="bold",
                 color=col,
-                ha="right",
-                va="center",
-                zorder=21,
+                ha="center",
+                va="top" if is_support else "bottom",
+                zorder=22,
+                clip_on=False,
                 bbox=dict(
                     boxstyle="round,pad=0.18",
                     facecolor="#fff8e7",
                     edgecolor=col,
                     linewidth=0.9,
                     alpha=0.95,
+                ),
+                arrowprops=dict(
+                    arrowstyle="-",
+                    color=col,
+                    lw=0.85,
+                    linestyle=":",
+                    alpha=0.72,
+                    shrinkA=1,
+                    shrinkB=2,
                 ),
             )
 
@@ -3839,6 +4573,7 @@ def _confidence_reference_lines() -> List[str]:
         "급락: 진행·과매도(배지) | 셋업A=ST↓후횡보 | B=전환직후 | 붕괴=저점근접",
         "PEG: PER÷성장% · <1저평가 · 1~1.5적정 · ≥1.5부담 | 재무≠단기매매신호",
         "급등이력: A=ST↑후횡보 · B=전환직후 · D=모멘텀 · ▲마커=과거점화 · 유사도=현재셋업비교",
+        "급락이력: A=ST↓후횡보 · B=전환직후 · D=모멘텀 · ▼마커=과거붕괴 · 유사도=현재셋업비교",
     ]
 
 
@@ -5169,47 +5904,93 @@ def _plot_pattern_span_on_main(
 
     if short:
         price = float(df["Low"].iloc[i1]) if sign > 0 else float(df["High"].iloc[i1])
-        tick = y_span * 0.025
+        tick = y_span * 0.045
         if sign > 0:
-            y0, y1, y_num, va = price - tick, price, price - tick * 1.15, "top"
+            y_num, va = price - tick * 1.25, "top"
         else:
-            y0, y1, y_num, va = price, price + tick, price + tick * 1.15, "bottom"
-        ax.plot([t1, t1], [y0, y1], color=col, linewidth=1.2, alpha=0.75, zorder=16)
-        ax.annotate(label_txt, xy=(t1, y_num), va=va, **label_kw)
+            y_num, va = price + tick * 1.25, "bottom"
+        ax.annotate(
+            label_txt,
+            xy=(t1, price),
+            xytext=(t1, y_num),
+            textcoords="data",
+            va=va,
+            arrowprops=dict(
+                arrowstyle="-",
+                color=col,
+                lw=0.65,
+                linestyle=":",
+                alpha=0.55,
+                shrinkA=0,
+                shrinkB=1,
+            ),
+            **label_kw,
+        )
         return 0
 
     ax.axvspan(start, end, color=col, alpha=0.06, zorder=2)
-
-    if long_span:
-        y_br = y_max_all + y_span * (0.04 + 0.06 * span_lane)
-        ax.plot([t0, t1], [y_br, y_br], color=col, linewidth=1.2, alpha=0.75, zorder=15)
-        for xe in (t0, t1):
-            ax.plot([xe, xe], [y_br - y_span * 0.012, y_br + y_span * 0.012],
-                    color=col, linewidth=1.2, alpha=0.75, zorder=15)
-        ax.annotate(
-            label_txt, xy=((t0 + t1) / 2.0, y_br),
-            xytext=(0, 4), textcoords="offset points", va="bottom", **label_kw,
-        )
-        return 1
-
+    t_mid = (t0 + t1) / 2.0
     seg = df.iloc[i0: i1 + 1]
     seg_hi = float(seg["High"].max())
     seg_lo = float(seg["Low"].min())
-    if sign > 0:
-        y_br = seg_lo - y_span * 0.035
-        va = "top"
-        off = -4
-    else:
-        y_br = seg_hi + y_span * 0.035
-        va = "bottom"
-        off = 4
-    ax.plot([t0, t1], [y_br, y_br], color=col, linewidth=1.1, alpha=0.75, zorder=15)
+    # 음영 구간 끝점 표시(점선 브라켓) — 봉 위에 올리지 않음
+    bracket_y = seg_hi + y_span * 0.012 if sign <= 0 else seg_lo - y_span * 0.012
+    ax.plot([t0, t1], [bracket_y, bracket_y], color=col, linewidth=0.9, alpha=0.45, zorder=14, linestyle=":")
     for xe in (t0, t1):
-        ax.plot([xe, xe], [y_br - y_span * 0.01, y_br + y_span * 0.01],
-                color=col, linewidth=1.1, alpha=0.75, zorder=15)
+        ax.plot(
+            [xe, xe],
+            [bracket_y - y_span * 0.008, bracket_y + y_span * 0.008],
+            color=col, linewidth=0.9, alpha=0.45, zorder=14,
+        )
+
+    if long_span:
+        # 상단 전용 레인: 봉·음영과 분리, 구간 중앙→캡션 점선
+        y_br = y_max_all + y_span * (0.055 + 0.065 * span_lane)
+        anchor_y = seg_hi
+        ax.annotate(
+            label_txt,
+            xy=(t_mid, anchor_y),
+            xytext=(t_mid, y_br),
+            textcoords="data",
+            va="bottom",
+            arrowprops=dict(
+                arrowstyle="-",
+                color=col,
+                lw=0.75,
+                linestyle=":",
+                alpha=0.60,
+                shrinkA=0,
+                shrinkB=2,
+            ),
+            **label_kw,
+        )
+        return 1
+
+    # 중기 구간: 봉 위/아래 여백에 callout (음영 중앙에서 연결)
+    if sign > 0:
+        y_br = seg_lo - y_span * 0.065
+        va = "top"
+        anchor_y = seg_lo
+    else:
+        y_br = seg_hi + y_span * 0.065
+        va = "bottom"
+        anchor_y = seg_hi
     ax.annotate(
-        label_txt, xy=((t0 + t1) / 2.0, y_br),
-        xytext=(0, off), textcoords="offset points", va=va, **label_kw,
+        label_txt,
+        xy=(t_mid, anchor_y),
+        xytext=(t_mid, y_br),
+        textcoords="data",
+        va=va,
+        arrowprops=dict(
+            arrowstyle="-",
+            color=col,
+            lw=0.75,
+            linestyle=":",
+            alpha=0.60,
+            shrinkA=0,
+            shrinkB=2,
+        ),
+        **label_kw,
     )
     return 0
 
@@ -5680,7 +6461,9 @@ def plot_tech_annotation_chart(
     x_left = mdates.date2num(pd.Timestamp(df.index[0]).to_pydatetime())
     x_right = mdates.date2num(pd.Timestamp(df.index[-1]).to_pydatetime())
     x_pad = (x_right - x_left) * 0.16  # 우측 여백: 시나리오 라벨(ha=left)용
-    ax_main.set_xlim(x_left - 1, x_right + x_pad)
+    x_left_pad = (x_right - x_left) * 0.08  # 좌측 여백: 지지/저항 캡션 레인
+    x_gutter = x_left - x_left_pad * 0.55
+    ax_main.set_xlim(x_left - x_left_pad, x_right + x_pad)
 
     # ---------- 기간 매물대 (우측 얇은 VP + POC) ----------
     vp_info = _compute_period_volume_profile(df)
@@ -5716,7 +6499,8 @@ def plot_tech_annotation_chart(
             annotation_clip=False,
         )
 
-    # ---------- 지지/저항 수평선 + 우측 라벨 ----------
+    # ---------- 지지/저항 수평선 + 우측 가격태그 + 좌측 여백 이름캡션 ----------
+    left_caption_items: List[Dict[str, Any]] = []
     for lv in sr_levels:
         p = lv["price"]
         kind = lv["kind"]
@@ -5724,38 +6508,30 @@ def plot_tech_annotation_chart(
             style = "-"
             lw = 1.35
             alpha = 0.85
-            fs = 9.5
+            fs = 8.6
         elif kind == "broken_support":
             style = ":"
             lw = 1.15
             alpha = 0.80
-            fs = 9.0
+            fs = 8.2
         elif kind == "resistance":
             style = "--"
             lw = 1.2
             alpha = 0.85
-            fs = 9.5
+            fs = 8.6
         elif kind in ("recent_support", "recent_resistance"):
             style = "-."
             lw = 0.95
             alpha = 0.70
-            fs = 8.2
+            fs = 7.8
         else:
             style = "-"
             lw = 1.2
             alpha = 0.85
-            fs = 9.5
+            fs = 8.4
         ax_main.axhline(p, color=lv["color"], linestyle=style, linewidth=lw, alpha=alpha, zorder=8)
-        ax_main.annotate(
-            lv["label"],
-            xy=(x_left, p),
-            xytext=(4, 4),
-            textcoords="offset points",
-            fontsize=fs,
-            fontweight="bold",
-            color=lv["color"],
-            zorder=20,
-            alpha=0.90 if kind.startswith("recent") else 1.0,
+        left_caption_items.append(
+            {"price": float(p), "label": lv["label"], "color": lv["color"], "fontsize": fs}
         )
         _right_price_tag(p, lv["color"], force=not kind.startswith("recent"))
 
@@ -5770,17 +6546,22 @@ def plot_tech_annotation_chart(
             if tp is None:
                 continue
             ax_main.axhline(tp, color=tcolor, linestyle="-.", linewidth=1.3, alpha=0.9, zorder=9)
-            ax_main.annotate(
-                tlabel,
-                xy=(x_left, tp),
-                xytext=(4, -12),
-                textcoords="offset points",
-                fontsize=9.5,
-                fontweight="bold",
-                color=tcolor,
-                zorder=20,
+            left_caption_items.append(
+                {"price": float(tp), "label": tlabel, "color": tcolor, "fontsize": 8.6}
             )
             _right_price_tag(float(tp), tcolor, force=True)
+
+    try:
+        _draw_left_gutter_level_captions(
+            ax_main,
+            left_caption_items,
+            x_gutter=x_gutter,
+            x_line=x_left,
+            y_min=float(df["Low"].min()),
+            y_max=float(df["High"].max()),
+        )
+    except Exception as e:
+        print(f"tech annotation: 좌측 레벨 캡션 표시 실패 {e}")
 
     # ---------- 추세선 (활성 강조 + 현재가 관계 A+C) ----------
     y_data_min = float(df["Low"].min())
@@ -5847,6 +6628,11 @@ def plot_tech_annotation_chart(
         df,
         aux_ind=aux_ind,
         adx_res=adx_res,
+    )
+    hist_plunge = analyze_ticker_plunge_history(
+        df,
+        aux_ind=aux_ind,
+        plunge_setup=plunge_setup,
     )
     scenario_scores = _score_scenarios(
         current=current,
@@ -6218,10 +7004,6 @@ def plot_tech_annotation_chart(
     except Exception as e:
         print(f"tech annotation: 급등셋업 배지 표시 실패 {e}")
     try:
-        _draw_historical_surge_markers(ax_main, df, hist_surge)
-    except Exception as e:
-        print(f"tech annotation: 급등이력 마커 표시 실패 {e}")
-    try:
         _draw_plunge_badge(ax_main, df, plunge_state)
     except Exception as e:
         print(f"tech annotation: 급락 배지 표시 실패 {e}")
@@ -6266,6 +7048,15 @@ def plot_tech_annotation_chart(
     need_hi = y_hi_sc + y_sp_sc * 0.06
     if need_lo < cur_lo or need_hi > cur_hi:
         ax_main.set_ylim(min(cur_lo, need_lo), max(cur_hi, need_hi))
+    # ylim 확정 후 급등/급락 이력 캡션 배치 (스케일 기준 겹침 방지)
+    try:
+        _draw_historical_surge_markers(ax_main, df, hist_surge)
+    except Exception as e:
+        print(f"tech annotation: 급등이력 마커 표시 실패 {e}")
+    try:
+        _draw_historical_plunge_markers(ax_main, df, hist_plunge)
+    except Exception as e:
+        print(f"tech annotation: 급락이력 마커 표시 실패 {e}")
     x_lane = x_right + x_pad * 0.92
     _draw_scenario_number_lane(
         ax_main,
@@ -6337,7 +7128,7 @@ def plot_tech_annotation_chart(
         span_lane += used
     if span_lane > 0:
         y_bottom, y_top_cur = ax_main.get_ylim()
-        y_need = y_max_all + y_span * (0.04 + 0.06 * span_lane + 0.04)
+        y_need = y_max_all + y_span * (0.055 + 0.065 * span_lane + 0.05)
         if y_top_cur < y_need:
             ax_main.set_ylim(y_bottom, y_need)
 
@@ -6556,11 +7347,9 @@ def plot_tech_annotation_chart(
         if stop_loss_price is not None:
             panel_lines.append(f"손절가: {_with_dist(float(stop_loss_price))}")
     panel_lines.append("")
-    if adx_res.get("adx") is not None:
-        panel_lines.append(f"현재 추세: {adx_res.get('summary')}")
-        panel_lines.append(
-            f"ADX={adx_res.get('adx')} +DI={adx_res.get('plus_di')} -DI={adx_res.get('minus_di')}"
-        )
+    _adx_lines = _adx_panel_lines(adx_res)
+    if _adx_lines:
+        panel_lines.extend(_adx_lines)
     latest_ev = (disp_res.get("latest_event") or {}) if disp_res else {}
     disp_v = latest_ev.get("disparity")
     if disp_v is not None and pd.notna(disp_v):
@@ -6589,6 +7378,10 @@ def plot_tech_annotation_chart(
     if plunge_state.get("state") not in ("급락진행", "급락과매도"):
         for _pl_setup_line in _plunge_setup_panel_lines(plunge_setup):
             panel_lines.append(_pl_setup_line)
+    _hist_pl_lines = _hist_plunge_panel_lines(hist_plunge)
+    if _hist_pl_lines:
+        panel_lines.append("")
+        panel_lines.extend(_hist_pl_lines)
     if dividend_dates:
         total_div = sum(float(d.get("amount") or 0) for d in dividend_dates)
         if total_div > 0:
@@ -6710,6 +7503,12 @@ def plot_tech_annotation_chart(
         bar_parts.append(f"급락: {plunge_state.get('state')}({int(plunge_state.get('score') or 0)})")
     elif plunge_setup.get("active"):
         bar_parts.append(f"급락셋업: {plunge_setup.get('state')}({int(plunge_setup.get('score') or 0)})")
+    sim_pl = (hist_plunge or {}).get("similarity") or {}
+    if hist_plunge.get("n", 0) > 0 and sim_pl.get("label") not in (None, "해당없음"):
+        bar_parts.append(
+            f"급락유사: {sim_pl.get('label')}({int(sim_pl.get('score') or 0)})"
+            f"/주유형{(hist_plunge.get('profile') or {}).get('dominant_kind', '-')}"
+        )
     bar_text = "  |  ".join(bar_parts)
     if strategy_bits:
         bar_text += "\n투자 전략: " + " · ".join(strategy_bits)
