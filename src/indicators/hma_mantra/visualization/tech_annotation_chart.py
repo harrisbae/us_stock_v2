@@ -13,9 +13,10 @@
 - 볼린저 이탈/돌파 이벤트 태그 (+ 옵션 --show-bb 밴드 선)
 - 현재가 기준 급등패턴 스코어·패널·메인 배지
 - 급등 직전 셋업(A: ST전환후횡보 / B: ST전환직후 / 점화임박)
+- 급등준비: ST↓ 구간에서 HMA·SMA20 동시 돌파 (셋업 이전 모니터링)
 - 현재가 기준 급락패턴·급락 직전 셋업(A/B/붕괴임박) — 급등과 대칭
 - PEG(1년·3년) 재무 평가 + 투자 전략 코멘트 (패널·하단바)
-- 종목별 과거 급등 이력(A/B/D) · 유사조건 · 메인 마커
+- 종목별 과거 급등·급락 이력(A/B/D) · 유사조건 · 하단 이력레인+세로점선
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import ConnectionPatch, FancyBboxPatch
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FixedLocator, FuncFormatter
 from mplfinance.original_flavor import candlestick_ohlc
 
 from ..adx_dmi_indicator import analyze_adx_dmi
@@ -503,11 +504,15 @@ def _select_top_patterns(
 
 BULL_PATTERN_IDS = {
     "triple_bottom_w", "bull_flag", "asc_triangle", "post_box_bull",
-    "bull_hammer", "bull_engulf",
+    "bull_hammer", "bull_engulf", "bull_double_bottom",
+    "bull_falling_wedge", "bull_pennant", "bull_inv_hs",
+    "bull_cup_handle",
 }
 BEAR_PATTERN_IDS = {
     "double_top_m", "bear_flag", "bear_diamond",
     "bear_hanging_man", "bear_engulf",
+    "bear_desc_triangle", "bear_triple_top",
+    "bear_rising_wedge", "bear_pennant", "bear_hs",
 }
 
 # 메인 차트 패턴 번호 마커 ↔ 하단 미니 차트 연동용
@@ -520,12 +525,22 @@ PATTERN_IMPLICATION: Dict[str, Tuple[str, int]] = {
     "bear_diamond": ("하락 반전형", -1),
     "bear_hanging_man": ("약세 반전형", -1),
     "bear_engulf": ("약세 반전형", -1),
+    "bear_desc_triangle": ("하락 지속형", -1),
+    "bear_triple_top": ("하락 반전형", -1),
+    "bear_rising_wedge": ("하락 반전형", -1),
+    "bear_pennant": ("하락 지속형", -1),
+    "bear_hs": ("하락 반전형", -1),
     "triple_bottom_w": ("상승 반전형", 1),
     "bull_flag": ("상승 지속형", 1),
     "asc_triangle": ("상승 지속형", 1),
     "post_box_bull": ("상승 지속형", 1),
     "bull_hammer": ("강세 반전형", 1),
     "bull_engulf": ("강세 반전형", 1),
+    "bull_double_bottom": ("상승 반전형", 1),
+    "bull_falling_wedge": ("상승 반전형", 1),
+    "bull_pennant": ("상승 지속형", 1),
+    "bull_inv_hs": ("상승 반전형", 1),
+    "bull_cup_handle": ("상승 지속형", 1),
     "range_box": ("중립·횡보", 0),
     "fvg_gap": ("갭·중립", 0),
     "doji": ("중립", 0),
@@ -547,6 +562,7 @@ def _score_scenarios(
     aux_ind: Optional[Dict[str, Any]] = None,
     surge_state: Optional[Dict[str, Any]] = None,
     surge_setup: Optional[Dict[str, Any]] = None,
+    surge_prep: Optional[Dict[str, Any]] = None,
     plunge_state: Optional[Dict[str, Any]] = None,
     plunge_setup: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Dict[str, Any]]:
@@ -753,7 +769,7 @@ def _score_scenarios(
         elif st_name == "급등약함":
             add(("sc3", "sc4"), 2, "급등약함")
 
-    # 13) 급등 직전 셋업 (A/B/점화임박)
+    # 13) 급등 직전 셋업 (A/B/점화임박) · 급등준비
     if surge_setup and surge_setup.get("active"):
         kind = surge_setup.get("kind")
         st_setup = surge_setup.get("state")
@@ -763,6 +779,8 @@ def _score_scenarios(
             add(("sc3", "sc4"), 6, "급등셋업A")
         elif kind == "B":
             add(("sc3", "sc4"), 5, "급등셋업B")
+    elif surge_prep and surge_prep.get("active"):
+        add(("sc3", "sc4", "sc5"), 4, "급등준비(HMA·SMA20)")
 
     # 14) 급락 패턴 (현재가 스냅샷)
     if plunge_state:
@@ -813,7 +831,12 @@ def _pick_scenario_top3(entries: List[Dict[str, Any]], n: int = 3) -> List[str]:
     return [str(e["key"]) for e in ranked[:n]]
 
 
-def _build_top3_scenario_panel(entries: List[Dict[str, Any]], top3_keys: List[str]) -> List[str]:
+def _build_top3_scenario_panel(
+    entries: List[Dict[str, Any]],
+    top3_keys: List[str],
+    *,
+    compact: bool = False,
+) -> List[str]:
     """시나리오 전체 목록 (인사이트 패널용 · Top3 문구 없음)."""
     if not entries:
         return []
@@ -830,6 +853,8 @@ def _build_top3_scenario_panel(entries: List[Dict[str, Any]], top3_keys: List[st
             f"  {e['num']} {e.get('title', '')} → {tgt}  "
             f"{_score_gauge(int(e['score']))} {int(e['score'])}점"
         )
+        if compact:
+            continue
         for extra in e.get("detail_lines") or []:
             lines.append(extra)
         reasons = e.get("reasons") or []
@@ -1768,6 +1793,224 @@ def _draw_surge_badge(ax, df: pd.DataFrame, surge: Dict[str, Any]) -> None:
         text, fc, ec = f"급등↑과열({score})", "#fef5e7", "#e67e22"
     else:
         text, fc, ec = f"급등↑({score})", "#e8f8f5", "#16a085"
+    target = (df.index[-1], float(df["High"].astype(float).iloc[-1]))
+    _draw_surge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
+
+
+def detect_surge_prep(
+    df: pd.DataFrame,
+    *,
+    aux_ind: Optional[Dict[str, Any]] = None,
+    adx_res: Optional[Dict[str, Any]] = None,
+    surge_setup: Optional[Dict[str, Any]] = None,
+    surge_state: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    급등준비: ST↓ 구간에서 종가가 HMA·SMA20을 동시에 상회하는 조기 모니터링.
+
+    - 셋업(A/B/점화)보다 앞 단계 — ST는 아직 ↓
+    - 이미 급등진행/과열·셋업 활성이면 비활성
+    - 신선 돌파(최근 1~5봉 내 동시상회 진입) + 유지 가점
+
+    Returns:
+      active, state(급등준비|해당없음), score, down_len, hold_days,
+      above_hma, above_sma20, fresh_break, vol_mult, reasons
+    """
+    out: Dict[str, Any] = {
+        "active": False,
+        "state": "해당없음",
+        "score": 0,
+        "down_len": None,
+        "hold_days": None,
+        "above_hma": False,
+        "above_sma20": False,
+        "fresh_break": False,
+        "break_age": None,
+        "vol_mult": None,
+        "reasons": [],
+    }
+    if df is None or len(df) < 40:
+        return out
+    if surge_state and surge_state.get("state") in ("급등진행", "급등과열"):
+        return out
+    if surge_setup and surge_setup.get("active"):
+        return out
+
+    aux = aux_ind or {}
+    st_dir_s = aux.get("st_dir_series")
+    if st_dir_s is None or len(st_dir_s) < 40:
+        return out
+
+    close_s = df["Close"].astype(float)
+    vol_s = df["Volume"].astype(float)
+    close = close_s.to_numpy(dtype=float)
+    darr = st_dir_s.reindex(df.index).to_numpy()
+    n = len(close)
+    if not np.isfinite(darr[-1]) or darr[-1] > 0:
+        return out  # ST↑ 이면 셋업 영역
+
+    # 연속 ST↓ 길이
+    down_len = 0
+    for i in range(n - 1, -1, -1):
+        if np.isfinite(darr[i]) and darr[i] < 0:
+            down_len += 1
+        else:
+            break
+    out["down_len"] = int(down_len)
+    if down_len < 5:
+        return out
+
+    try:
+        hma_s = calculate_hma(close_s)
+    except Exception:
+        return out
+    sma20_s = close_s.rolling(20, min_periods=10).mean()
+    if hma_s is None or len(hma_s) < 25:
+        return out
+
+    hma = hma_s.to_numpy(dtype=float)
+    sma20 = sma20_s.to_numpy(dtype=float)
+    c1, h1, s1 = float(close[-1]), float(hma[-1]), float(sma20[-1])
+    if not all(np.isfinite(x) for x in (c1, h1, s1)) or h1 <= 0 or s1 <= 0:
+        return out
+
+    above_hma = c1 > h1
+    above_sma20 = c1 > s1
+    out["above_hma"] = above_hma
+    out["above_sma20"] = above_sma20
+    if not (above_hma and above_sma20):
+        return out
+
+    # 동시 상회 유지 일수 · 진입 봉
+    hold = 0
+    for i in range(n - 1, max(0, n - 25) - 1, -1):
+        hi, si, ci = float(hma[i]), float(sma20[i]), float(close[i])
+        if not (np.isfinite(hi) and np.isfinite(si) and np.isfinite(ci)):
+            break
+        if ci > hi and ci > si:
+            hold += 1
+        else:
+            break
+    out["hold_days"] = int(hold)
+    break_i = n - hold  # 첫 동시상회 봉
+    break_age = hold - 1  # 0=오늘 돌파
+    out["break_age"] = int(max(0, break_age))
+    fresh = 0 <= break_age <= 5
+    out["fresh_break"] = bool(fresh)
+    if hold < 1 or hold > 12 or break_age > 5:
+        return out
+
+    vol_ma = vol_s.rolling(20, min_periods=5).mean()
+    v_last = float(vol_s.iloc[-1])
+    v_ma = float(vol_ma.iloc[-1]) if pd.notna(vol_ma.iloc[-1]) else 0.0
+    vol_mult = (v_last / v_ma) if v_ma > 0 else 0.0
+    out["vol_mult"] = round(vol_mult, 2)
+
+    reasons: List[Tuple[float, str]] = []
+    score = 0.0
+
+    def bump(w: float, reason: str) -> None:
+        nonlocal score
+        score += w
+        if w > 0:
+            reasons.append((w, reason))
+
+    bump(14, "HMA·SMA20 동시상회")
+    if down_len >= 15:
+        bump(10, f"ST↓{down_len}일")
+    elif down_len >= 8:
+        bump(7, f"ST↓{down_len}일")
+    else:
+        bump(4, f"ST↓{down_len}일")
+
+    if break_age == 0:
+        bump(12, "오늘 동시돌파")
+    elif break_age <= 2:
+        bump(9, f"돌파+{break_age}일")
+    else:
+        bump(5, f"돌파+{break_age}일")
+
+    if hold >= 2:
+        bump(6, f"유지{hold}일")
+
+    # HMA가 SMA20 위(단기 정배열 조짐)
+    if h1 > s1:
+        bump(6, "HMA>SMA20")
+
+    if vol_mult >= 1.5:
+        bump(8, f"거래량×{vol_mult:.1f}")
+    elif vol_mult >= 1.1:
+        bump(4, f"거래량×{vol_mult:.1f}")
+
+    adx_val = None
+    if adx_res and adx_res.get("adx") is not None:
+        try:
+            adx_val = float(adx_res["adx"])
+        except (TypeError, ValueError):
+            adx_val = None
+    if adx_val is not None:
+        if adx_val <= 20:
+            bump(6, f"ADX낮음({adx_val:.0f})")
+        elif adx_val <= 25:
+            bump(3, f"ADX약({adx_val:.0f})")
+        elif adx_val >= 40:
+            bump(-4, f"ADX강하락가능({adx_val:.0f})")
+
+    score_i = int(round(min(100.0, max(0.0, score))))
+    out["score"] = score_i
+    out["reasons"] = [r for _, r in sorted(reasons, key=lambda x: x[0], reverse=True)][:4]
+    if score_i < 32:
+        return out
+
+    out["active"] = True
+    out["state"] = "급등준비"
+    out["break_date"] = str(pd.Timestamp(df.index[max(0, break_i)]).date())
+    return out
+
+
+def _surge_prep_panel_lines(prep: Dict[str, Any]) -> List[str]:
+    """인사이트용 급등준비 줄."""
+    if not prep or not prep.get("active"):
+        return []
+    score = int(prep.get("score") or 0)
+    bits: List[str] = [f"급등준비: 활성({score})"]
+    dl = prep.get("down_len")
+    if dl is not None:
+        bits.append(f"ST↓{dl}일")
+    hold = prep.get("hold_days")
+    age = prep.get("break_age")
+    if age is not None:
+        bits.append("오늘돌파" if age == 0 else f"돌파+{age}일")
+    if hold is not None:
+        bits.append(f"유지{hold}일")
+    vm = prep.get("vol_mult")
+    if vm is not None:
+        bits.append(f"Vol×{vm:.1f}")
+    reasons = prep.get("reasons") or []
+    if reasons:
+        bits.append(str(reasons[0]))
+    return [" · ".join(bits)]
+
+
+def _draw_surge_prep_badge(
+    ax,
+    df: pd.DataFrame,
+    prep: Dict[str, Any],
+    *,
+    surge_state: Optional[Dict[str, Any]] = None,
+    surge_setup: Optional[Dict[str, Any]] = None,
+) -> None:
+    """급등준비 캡션 — 셋업/급등진행보다 우선순위 낮음."""
+    if not prep or not prep.get("active"):
+        return
+    if surge_state and surge_state.get("state") in ("급등진행", "급등과열"):
+        return
+    if surge_setup and surge_setup.get("active"):
+        return
+    if df is None or df.empty:
+        return
+    score = int(prep.get("score") or 0)
+    text, fc, ec = f"급등준비({score})", "#eafaf1", "#27ae60"
     target = (df.index[-1], float(df["High"].astype(float).iloc[-1]))
     _draw_surge_status_caption(ax, text, fc=fc, ec=ec, row=0, target_xy=target)
 
@@ -2824,118 +3067,856 @@ def _hist_surge_panel_lines(hist: Dict[str, Any]) -> List[str]:
         lines.append("최근: " + ", ".join(bits))
     return lines
 
-def _draw_historical_surge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
-    """
-    메인 차트 과거 급등 점화 마커(A/B/D).
-    ▲은 고가에 두고, 캡션은 고가 위 여백에서 Y스택·X교대로 배치해 봉·라벨과 겹침을 줄임.
-    """
-    events = hist.get("events") or []
-    if not events or df is None or df.empty:
-        return
-    colors = {"A": "#16a085", "B": "#2980b9", "D": "#8e44ad"}
-    high = df["High"].astype(float)
-    y0, y1 = ax.get_ylim()
-    span = max(float(y1) - float(y0), 1e-9)
-    gap = span * 0.032
-    lift = span * 0.028
 
+def _st_flip_indices(darr: np.ndarray, *, side: str) -> List[int]:
+    """ST 방향 전환 인덱스. surge=↓→↑, plunge=↑→↓."""
+    flips: List[int] = []
+    n = len(darr)
+    for i in range(1, n):
+        a, b = darr[i - 1], darr[i]
+        if not (np.isfinite(a) and np.isfinite(b)):
+            continue
+        if side == "surge" and a < 0 and b > 0:
+            flips.append(i)
+        elif side == "plunge" and a > 0 and b < 0:
+            flips.append(i)
+    return flips
+
+
+def _setup_eval_at_bar(
+    *,
+    side: str,
+    flip_i: int,
+    t: int,
+    close: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    darr: np.ndarray,
+) -> Optional[Dict[str, Any]]:
+    """
+    플립 이후 봉 t 시점의 셋업 스냅샷(이력 복원용 경량판).
+    Returns: kind(A|B), ignite(bool), age, soft
+    """
+    if t <= flip_i or t >= len(close):
+        return None
+    age = t - flip_i
+    if age < 1 or age > 40:
+        return None
+    seg = darr[flip_i : t + 1]
+    if side == "surge":
+        if float((seg > 0).mean()) < 0.75:
+            return None
+    else:
+        if float((seg < 0).mean()) < 0.75:
+            return None
+
+    c0 = float(close[flip_i])
+    c1 = float(close[t])
+    if c0 <= 0:
+        return None
+    consol_net = (c1 / c0 - 1.0) * 100.0
+    hi_seg = float(np.nanmax(high[flip_i : t + 1]))
+    lo_seg = float(np.nanmin(low[flip_i : t + 1]))
+    consol_rng = (hi_seg / lo_seg - 1.0) * 100.0 if lo_seg > 0 else 999.0
+    soft = abs(consol_net) <= 12.0 and consol_rng <= 22.0
+
+    kind: Optional[str] = None
+    if 8 <= age <= 35 and soft:
+        kind = "A"
+    elif age <= 10:
+        kind = "B"
+    else:
+        return None
+
+    ignite = False
+    if t >= 21:
+        if side == "surge":
+            hi20 = float(np.nanmax(high[t - 20 : t]))
+            if hi20 > 0:
+                dist = (c1 / hi20 - 1.0) * 100.0
+                ignite = dist >= -2.0
+        else:
+            lo20 = float(np.nanmin(low[t - 20 : t]))
+            if lo20 > 0:
+                dist = (c1 / lo20 - 1.0) * 100.0
+                ignite = dist <= 2.0
+
+    return {
+        "kind": kind,
+        "ignite": ignite,
+        "age": age,
+        "soft": soft,
+        "consol_net": consol_net,
+        "consol_rng": consol_rng,
+    }
+
+
+def _path_window_end(
+    flip_i: int,
+    n: int,
+    darr: np.ndarray,
+    *,
+    side: str,
+    max_age: int = 40,
+) -> int:
+    """셋업 유효 창 종료: max_age 또는 반대 ST 전환 직전."""
+    end = min(n - 1, flip_i + max_age)
+    for j in range(flip_i + 1, end + 1):
+        if side == "surge" and darr[j] < 0 and darr[j - 1] > 0:
+            return max(flip_i + 1, j - 1)
+        if side == "plunge" and darr[j] > 0 and darr[j - 1] < 0:
+            return max(flip_i + 1, j - 1)
+    return end
+
+
+def _detect_historical_setup_paths(
+    df: pd.DataFrame,
+    hist: Optional[Dict[str, Any]],
+    *,
+    side: str,
+    aux_ind: Optional[Dict[str, Any]] = None,
+    max_failed: int = 6,
+) -> List[Dict[str, Any]]:
+    """
+    과거 셋업 경로(성공+실패) 탐지.
+
+    - 성공: 확정 급등/급락 이벤트에 연결된 셋→(점/붕)→진
+    - 실패: ST 플립 후 A/B 셋업이 형성됐으나 창 내 확정 없음 (라벨 ×)
+    - 차트 끝에서 아직 유효한 셋업은 현재 핀에 맡기고 여기서는 제외
+    """
+    if df is None or df.empty:
+        return []
+    aux = aux_ind or {}
+    st_dir_s = aux.get("st_dir_series")
+    if st_dir_s is None:
+        return []
+
+    close = df["Close"].astype(float).to_numpy()
+    high = df["High"].astype(float).to_numpy()
+    low = df["Low"].astype(float).to_numpy()
+    darr = st_dir_s.reindex(df.index).to_numpy()
+    n = len(close)
+    if n < 40:
+        return []
+
+    # 급등준비 복원용 HMA·SMA20 (surge만)
+    hma_a = sma20_a = None
+    if side == "surge":
+        try:
+            hma_a = calculate_hma(df["Close"].astype(float)).to_numpy(dtype=float)
+            sma20_a = df["Close"].astype(float).rolling(20, min_periods=10).mean().to_numpy(dtype=float)
+        except Exception:
+            hma_a = sma20_a = None
+
+    def _find_prep_i(flip_i: int) -> Optional[int]:
+        if side != "surge" or hma_a is None or sma20_a is None:
+            return None
+        j = flip_i - 1
+        while j >= 0 and np.isfinite(darr[j]) and darr[j] < 0:
+            j -= 1
+        start = j + 1
+        if flip_i - start < 5:
+            return None
+        for t in range(start + 3, flip_i):
+            ci, hi, si = float(close[t]), float(hma_a[t]), float(sma20_a[t])
+            if not all(np.isfinite(x) for x in (ci, hi, si)):
+                continue
+            if not (ci > hi and ci > si):
+                continue
+            prev_ok = False
+            if t > 0:
+                c0, h0, s0 = float(close[t - 1]), float(hma_a[t - 1]), float(sma20_a[t - 1])
+                prev_ok = all(np.isfinite(x) for x in (c0, h0, s0)) and c0 > h0 and c0 > s0
+            if not prev_ok:
+                return t
+        return None
+
+    events = list((hist or {}).get("events") or [])
+    confirm_by_flip: Dict[int, Dict[str, Any]] = {}
+    confirm_idxs: List[int] = []
+    for e in events:
+        ci = int(e.get("idx") or -1)
+        if 0 <= ci < n:
+            confirm_idxs.append(ci)
+        fi = e.get("flip_i")
+        if fi is not None:
+            try:
+                confirm_by_flip[int(fi)] = e
+            except (TypeError, ValueError):
+                pass
+    confirm_idxs = sorted(set(confirm_idxs))
+
+    def _match_confirm(flip_i: int, win_end: int) -> Optional[Dict[str, Any]]:
+        if flip_i in confirm_by_flip:
+            return confirm_by_flip[flip_i]
+        for ci in confirm_idxs:
+            if flip_i < ci <= win_end + 5:
+                # 해당 확정의 flip이 다르면 스킵
+                e = next((x for x in events if int(x.get("idx") or -1) == ci), None)
+                if e is None:
+                    continue
+                efi = e.get("flip_i")
+                if efi is not None and int(efi) != flip_i:
+                    continue
+                return e
+        return None
+
+    paths: List[Dict[str, Any]] = []
+    flips = _st_flip_indices(darr, side=side)
+    # 차트 초반 플립은 선행 데이터 부족 → 스킵
+    flips = [f for f in flips if f >= 20]
+
+    for flip_i in flips:
+        win_end = _path_window_end(flip_i, n, darr, side=side)
+        if win_end <= flip_i:
+            continue
+
+        best: Optional[Dict[str, Any]] = None
+        best_t = None
+        ignite_t = None
+        for t in range(flip_i + 1, win_end + 1):
+            snap = _setup_eval_at_bar(
+                side=side, flip_i=flip_i, t=t,
+                close=close, high=high, low=low, darr=darr,
+            )
+            if snap is None:
+                continue
+            # A 우선, 이후 점화 갱신
+            score = (2 if snap["kind"] == "A" else 1) + (1 if snap["ignite"] else 0)
+            if best is None or score >= best.get("_score", -1):
+                best = dict(snap)
+                best["_score"] = score
+                best_t = t
+            if snap["ignite"]:
+                ignite_t = t
+
+        if best is None or best_t is None:
+            continue
+
+        confirm = _match_confirm(flip_i, win_end)
+        still_open = win_end >= n - 3 and confirm is None
+        if still_open:
+            # 진행 중 셋업 → 현재 핀이 담당
+            continue
+
+        kind = str(best["kind"])
+        # 셋업 표시봉: A=플립~최선 중간, B=플립 직후
+        if kind == "A":
+            setup_i = int(round((flip_i + best_t) / 2.0))
+        else:
+            setup_i = min(flip_i + 2, best_t)
+        setup_i = max(flip_i, min(setup_i, n - 1))
+
+        failed = confirm is None
+        confirm_i = int(confirm["idx"]) if confirm is not None else None
+        # 성공 경로: 셋업/점화는 반드시 확정봉 이전
+        if confirm_i is not None:
+            if setup_i >= confirm_i:
+                setup_i = max(flip_i, confirm_i - max(1, (confirm_i - flip_i) // 2))
+            if ignite_t is not None and ignite_t >= confirm_i:
+                ignite_t = confirm_i - 1 if confirm_i - 1 > setup_i else None
+            if ignite_t is not None and ignite_t <= setup_i:
+                ignite_t = None
+        if confirm is not None and confirm.get("kind") in ("A", "B", "D"):
+            ckind = str(confirm.get("kind") or kind)
+        else:
+            ckind = kind
+
+        # 셋업과 확정이 같은 봉이면 셋업 마커 생략(진만)
+        if confirm_i is not None and setup_i == confirm_i:
+            continue
+
+        path = {
+            "side": side,
+            "kind": kind,
+            "failed": failed,
+            "flip_i": flip_i,
+            "prep_i": _find_prep_i(flip_i),
+            "setup_i": setup_i,
+            "ignite_i": ignite_t if ignite_t is not None and ignite_t > setup_i else None,
+            "confirm_i": confirm_i,
+            "confirm_kind": ckind if confirm_i is not None else None,
+            "quality": float(best.get("_score") or 0),
+        }
+        paths.append(path)
+
+    # 급등: 플립 없이 실패한 준비(HMA·SMA20 돌파 후 재이탈)
+    if side == "surge" and hma_a is not None and sma20_a is not None:
+        used_prep = {int(p["prep_i"]) for p in paths if p.get("prep_i") is not None}
+        last_prep = -999
+        for t in range(25, n - 3):
+            if not (np.isfinite(darr[t]) and darr[t] < 0):
+                continue
+            ci, hi, si = float(close[t]), float(hma_a[t]), float(sma20_a[t])
+            if not all(np.isfinite(x) for x in (ci, hi, si)) or not (ci > hi and ci > si):
+                continue
+            c0, h0, s0 = float(close[t - 1]), float(hma_a[t - 1]), float(sma20_a[t - 1])
+            if all(np.isfinite(x) for x in (c0, h0, s0)) and c0 > h0 and c0 > s0:
+                continue  # 이미 상회 중
+            # 이후 15봉 내 ST↑ 플립 없으면 실패 후보
+            flipped = False
+            fell = False
+            for u in range(t + 1, min(n, t + 16)):
+                if np.isfinite(darr[u]) and darr[u] > 0 and np.isfinite(darr[u - 1]) and darr[u - 1] < 0:
+                    flipped = True
+                    break
+                cu, hu, su_ = float(close[u]), float(hma_a[u]), float(sma20_a[u])
+                if all(np.isfinite(x) for x in (cu, hu, su_)) and (cu < hu or cu < su_):
+                    fell = True
+                    break
+            if flipped or not fell:
+                continue
+            if t in used_prep or t - last_prep < 10:
+                continue
+            if t >= n - 3:
+                continue  # 현재 진행 중은 핀에 위임
+            paths.append({
+                "side": "surge",
+                "kind": "",
+                "failed": True,
+                "flip_i": None,
+                "prep_i": t,
+                "setup_i": t,  # 간격 필터용
+                "ignite_i": None,
+                "confirm_i": None,
+                "confirm_kind": None,
+                "quality": 1.0,
+                "prep_only": True,
+            })
+            last_prep = t
+            used_prep.add(t)
+
+    # 실패 경로 상한 (최근·품질 우선)
+    ok_paths = [p for p in paths if not p["failed"]]
+    fail_paths = [p for p in paths if p["failed"]]
+    fail_paths.sort(key=lambda p: (p["quality"], p["setup_i"]), reverse=True)
+    fail_paths = fail_paths[:max_failed]
+    # 실패 간 최소 간격
+    fail_kept: List[Dict[str, Any]] = []
+    last_si = -999
+    for p in sorted(fail_paths, key=lambda x: x["setup_i"]):
+        if p["setup_i"] - last_si < 8:
+            continue
+        fail_kept.append(p)
+        last_si = p["setup_i"]
+
+    return ok_paths + fail_kept
+
+
+def _rail_item_from_idx(
+    df: pd.DataFrame,
+    *,
+    side: str,
+    idx: int,
+    stage: str,
+    kind: str,
+    failed: bool = False,
+    ret5: Any = None,
+) -> Optional[Dict[str, Any]]:
+    if idx < 0 or idx >= len(df):
+        return None
+    if side == "surge":
+        colors = {"A": "#16a085", "B": "#2980b9", "D": "#8e44ad", "": "#7f8c8d"}
+        fail_col = "#95a5a6"
+    else:
+        colors = {"A": "#c0392b", "B": "#d35400", "D": "#6c3483", "": "#7f8c8d"}
+        fail_col = "#aab7b8"
+
+    stage_name = {
+        "준": "준비",
+        "셋": "셋업",
+        "점": "점화" if side == "surge" else "붕괴",
+        "진": "진행",
+    }.get(stage, stage)
+    if stage == "준":
+        label = "준" + ("×" if failed else "")
+        marker = "d"
+        col = fail_col if failed else "#27ae60"
+    elif stage == "셋":
+        label = f"셋{kind}" + ("×" if failed else "")
+        marker = "o"
+        col = fail_col if failed else colors.get(kind, "#7f8c8d")
+    elif stage == "점":
+        label = ("붕" if side == "plunge" else "점") + f"{kind}" + ("×" if failed else "")
+        marker = "D"
+        col = fail_col if failed else ("#6c3483" if side == "plunge" else "#8e44ad")
+    else:
+        label = f"진{kind}"
+        marker = "^" if side == "surge" else "v"
+        col = colors.get(kind, "#7f8c8d")
+        failed = False
+
+    return {
+        "d": df.index[idx],
+        "xnum": mdates.date2num(pd.Timestamp(df.index[idx]).to_pydatetime()),
+        "kind": kind,
+        "stage": stage,
+        "stage_name": stage_name,
+        "col": col,
+        "mark": label,
+        "marker": marker,
+        "side": side,
+        "ret5": ret5,
+        "label": label,
+        "is_current": False,
+        "failed": failed,
+        "idx": idx,
+    }
+
+
+def _collect_history_rail_items(
+    df: pd.DataFrame,
+    hist: Optional[Dict[str, Any]],
+    *,
+    side: str,
+    aux_ind: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    급등/급락 이력 레인 아이템.
+    Returns: (items, path_links)
+    - 확정 진행(진A/B/D)
+    - 성공 경로의 셋/점(붕)
+    - 실패 셋업(셋× / 점×)
+    """
+    empty: Tuple[List[Dict[str, Any]], List[Dict[str, Any]]] = ([], [])
+    if df is None or df.empty:
+        return empty
+
+    events = (hist or {}).get("events") or []
     items: List[Dict[str, Any]] = []
+    seen: set = set()  # (side, stage, idx)
+
+    def _add(it: Optional[Dict[str, Any]]) -> None:
+        if it is None:
+            return
+        key = (it["side"], it["stage"], int(it.get("idx", -1)))
+        if key in seen:
+            return
+        seen.add(key)
+        items.append(it)
+
+    # 1) 확정 진행
     for e in events:
         i = int(e["idx"])
-        if i < 0 or i >= len(df):
-            continue
-        d = df.index[i]
-        y = float(high.iloc[i])
-        kind = e.get("kind") or "D"
-        pref = y + lift
-        items.append(
-            {
-                "d": d,
-                "y": y,
-                "kind": kind,
-                "col": colors.get(kind, "#7f8c8d"),
-                "pref": pref,
-                "xnum": mdates.date2num(pd.Timestamp(d).to_pydatetime()),
-            }
-        )
-    if not items:
-        return
+        kind = str(e.get("kind") or "D")
+        _add(_rail_item_from_idx(df, side=side, idx=i, stage="진", kind=kind, ret5=e.get("ret5")))
 
-    # 캡션이 차트 상단을 넘지 않도록, 고가 위 선호값을 스택
-    stack_hi = float(y1) - span * 0.04
-    stack_lo = float(y0) + span * 0.08
-    stacked = _stack_y_positions(
-        [it["pref"] for it in items],
-        y_min=stack_lo,
-        y_max=max(stack_lo + gap, stack_hi),
-        min_gap=gap,
+    # 2) 셋업 경로 (성공+실패) · 급등준비
+    paths = _detect_historical_setup_paths(df, hist, side=side, aux_ind=aux_ind)
+    path_links: List[Dict[str, Any]] = []
+    for p in paths:
+        kind = str(p.get("kind") or "")
+        failed = bool(p["failed"])
+        prep_only = bool(p.get("prep_only"))
+        if p.get("prep_i") is not None:
+            _add(_rail_item_from_idx(
+                df, side=side, idx=int(p["prep_i"]), stage="준", kind="", failed=failed,
+            ))
+        if prep_only:
+            # 준비 실패만 — 셋/점 없음
+            continue
+        _add(_rail_item_from_idx(
+            df, side=side, idx=int(p["setup_i"]), stage="셋", kind=kind, failed=failed,
+        ))
+        if p.get("ignite_i") is not None:
+            _add(_rail_item_from_idx(
+                df, side=side, idx=int(p["ignite_i"]), stage="점", kind=kind, failed=failed,
+            ))
+        x0_i = int(p["prep_i"]) if p.get("prep_i") is not None else int(p["setup_i"])
+        if not failed and p.get("confirm_i") is not None:
+            path_links.append({
+                "side": side,
+                "x0": mdates.date2num(pd.Timestamp(df.index[x0_i]).to_pydatetime()),
+                "x1": mdates.date2num(pd.Timestamp(df.index[int(p["confirm_i"])]).to_pydatetime()),
+                "failed": False,
+                "kind": kind,
+            })
+        elif failed:
+            x_end_i = int(p["ignite_i"]) if p.get("ignite_i") is not None else int(p["setup_i"])
+            path_links.append({
+                "side": side,
+                "x0": mdates.date2num(pd.Timestamp(df.index[x0_i]).to_pydatetime()),
+                "x1": mdates.date2num(pd.Timestamp(df.index[x_end_i]).to_pydatetime()),
+                "failed": True,
+                "kind": kind,
+            })
+
+    return items, path_links
+
+
+def _resolve_current_rail_stage(
+    *,
+    side: str,
+    state_snap: Optional[Dict[str, Any]],
+    setup_snap: Optional[Dict[str, Any]],
+    prep_snap: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    현재 급등/급락 생명주기 단계 → 이력 레인 핀.
+    급등: 준비 → 셋업 → 점화 → 진행(진화) → 과열
+    급락: 셋업 → 붕괴(점화) → 진행 → 과매도
+    """
+    st = (state_snap or {}).get("state") or "해당없음"
+    score = int((state_snap or {}).get("score") or 0)
+    su = setup_snap or {}
+    prep = prep_snap or {}
+
+    if side == "surge":
+        if st == "급등과열":
+            return {
+                "stage": "과", "stage_name": "과열", "kind": "",
+                "col": "#e67e22", "mark": "★", "label": f"과{score}",
+                "marker": "*", "side": "surge", "score": score,
+            }
+        if st == "급등진행":
+            return {
+                "stage": "진", "stage_name": "진행", "kind": "",
+                "col": "#16a085", "mark": "▲", "label": f"진{score}",
+                "marker": "^", "side": "surge", "score": score,
+            }
+        if st == "급등약함":
+            return {
+                "stage": "진", "stage_name": "약함", "kind": "",
+                "col": "#7f8c8d", "mark": "△", "label": f"약{score}",
+                "marker": "^", "side": "surge", "score": score,
+            }
+        if su.get("active"):
+            sst = su.get("state")
+            sc = int(su.get("score") or 0)
+            kind = su.get("kind") or ""
+            if sst == "점화임박":
+                return {
+                    "stage": "점", "stage_name": "점화", "kind": str(kind or ""),
+                    "col": "#8e44ad", "mark": "◆", "label": f"점{kind or ''}{sc}",
+                    "marker": "D", "side": "surge", "score": sc,
+                }
+            if sst in ("셋업A", "셋업B"):
+                k = "A" if sst == "셋업A" else "B"
+                return {
+                    "stage": "셋", "stage_name": "셋업", "kind": k,
+                    "col": "#2980b9" if k == "A" else "#1abc9c",
+                    "mark": "○", "label": f"셋{k}{sc}",
+                    "marker": "o", "side": "surge", "score": sc,
+                }
+        if prep.get("active"):
+            sc = int(prep.get("score") or 0)
+            return {
+                "stage": "준", "stage_name": "준비", "kind": "",
+                "col": "#27ae60", "mark": "◇", "label": f"준{sc}",
+                "marker": "d", "side": "surge", "score": sc,
+            }
+        return None
+
+    # plunge
+    if st == "급락과매도":
+        return {
+            "stage": "매", "stage_name": "과매도", "kind": "",
+            "col": "#6c3483", "mark": "★", "label": f"매{score}",
+            "marker": "*", "side": "plunge", "score": score,
+        }
+    if st == "급락진행":
+        return {
+            "stage": "진", "stage_name": "진행", "kind": "",
+            "col": "#c0392b", "mark": "▼", "label": f"진{score}",
+            "marker": "v", "side": "plunge", "score": score,
+        }
+    if st == "급락약함":
+        return {
+            "stage": "진", "stage_name": "약함", "kind": "",
+            "col": "#95a5a6", "mark": "▽", "label": f"약{score}",
+            "marker": "v", "side": "plunge", "score": score,
+        }
+    if su.get("active"):
+        sst = su.get("state")
+        sc = int(su.get("score") or 0)
+        kind = su.get("kind") or ""
+        if sst == "붕괴임박":
+            return {
+                "stage": "점", "stage_name": "붕괴", "kind": str(kind or ""),
+                "col": "#6c3483", "mark": "◆", "label": f"붕{kind or ''}{sc}",
+                "marker": "D", "side": "plunge", "score": sc,
+            }
+        if sst in ("셋업A", "셋업B"):
+            k = "A" if sst == "셋업A" else "B"
+            return {
+                "stage": "셋", "stage_name": "셋업", "kind": k,
+                "col": "#e74c3c" if k == "A" else "#d35400",
+                "mark": "○", "label": f"셋{k}{sc}",
+                "marker": "o", "side": "plunge", "score": sc,
+            }
+    return None
+
+
+def _draw_history_rail_legend(ax_rail) -> None:
+    """이력 레인 상단 범례: 단계 + 유형 + 실패표기."""
+    ax_rail.text(
+        0.5, 1.28,
+        "표시 기간전체 · 과거경로=준→셋→점→진 (×=실패)   |   "
+        "단계  준=준비  셋=셋업  점=점화/붕괴  진=진행  과=과열  매=과매도   |   "
+        "유형  A=횡보압축  B=전환직후  D=모멘텀   |   ▲급등  ▼급락",
+        transform=ax_rail.transAxes,
+        fontsize=5.3,
+        color="#34495e",
+        ha="center",
+        va="bottom",
+        clip_on=False,
+        fontweight="bold",
+        bbox=dict(
+            boxstyle="round,pad=0.25",
+            facecolor="#fbfcfc",
+            edgecolor="#d5d8dc",
+            linewidth=0.6,
+            alpha=0.95,
+        ),
     )
 
+
+def _rail_label_half_width(label: str, x_span: float, *, current: bool = False) -> float:
+    """라벨 예상 반폭(데이터 x 단위) — 캡션 충돌 판정용."""
+    n = max(len(str(label or "")), 2)
+    unit = x_span * (0.013 if current else 0.011)
+    return max(x_span * 0.020, unit * (0.60 + 0.50 * n))
+
+
+def _draw_surge_plunge_history_rail(
+    ax_rail,
+    ax_main,
+    df: pd.DataFrame,
+    hist_surge: Optional[Dict[str, Any]] = None,
+    hist_plunge: Optional[Dict[str, Any]] = None,
+    surge_state: Optional[Dict[str, Any]] = None,
+    surge_setup: Optional[Dict[str, Any]] = None,
+    surge_prep: Optional[Dict[str, Any]] = None,
+    plunge_state: Optional[Dict[str, Any]] = None,
+    plunge_setup: Optional[Dict[str, Any]] = None,
+    aux_ind: Optional[Dict[str, Any]] = None,
+) -> None:
+    """이력 레인: 과거 준/셋/점/진 경로(성공+실패) + 현재 단계 핀 + 범례."""
+    if ax_rail is None or ax_main is None or df is None or df.empty:
+        return
+
+    surge_items, surge_links = _collect_history_rail_items(
+        df, hist_surge, side="surge", aux_ind=aux_ind,
+    )
+    plunge_items, plunge_links = _collect_history_rail_items(
+        df, hist_plunge, side="plunge", aux_ind=aux_ind,
+    )
+    items = surge_items + plunge_items
+    path_links = surge_links + plunge_links
+
+    ax_rail.set_ylim(0, 1)
+    ax_rail.set_yticks([])
+    ax_rail.set_ylabel("이력", fontsize=7.5, color="#7f8c8d", labelpad=2)
+    ax_rail.tick_params(axis="y", left=False, labelleft=False)
+    ax_rail.grid(False)
+    for spine in ("top", "right", "left"):
+        ax_rail.spines[spine].set_visible(False)
+    ax_rail.spines["bottom"].set_color("#d5d8dc")
+    ax_rail.spines["bottom"].set_linewidth(0.6)
+
+    ax_rail.axhline(0.50, color="#ecf0f1", linewidth=0.7, zorder=1)
+    _draw_history_rail_legend(ax_rail)
+
+    cur_pins: List[Dict[str, Any]] = []
+    for side, st, su, pr in (
+        ("surge", surge_state, surge_setup, surge_prep),
+        ("plunge", plunge_state, plunge_setup, None),
+    ):
+        pin = _resolve_current_rail_stage(
+            side=side, state_snap=st, setup_snap=su, prep_snap=pr,
+        )
+        if pin is None:
+            continue
+        d_last = df.index[-1]
+        pin = dict(pin)
+        pin.update(
+            {
+                "d": d_last,
+                "xnum": mdates.date2num(pd.Timestamp(d_last).to_pydatetime()),
+                "is_current": True,
+            }
+        )
+        cur_pins.append(pin)
+
+    if not items and not cur_pins:
+        ax_rail.text(
+            0.5, 0.5, "급등·급락 이력 없음",
+            transform=ax_rail.transAxes, ha="center", va="center",
+            fontsize=7.0, color="#bdc3c7",
+        )
+        return
+
+    _stage_pri = {"진": 0, "셋": 1, "준": 2, "점": 3}
+    items = sorted(
+        items,
+        key=lambda it: (
+            _stage_pri.get(str(it.get("stage")), 9),
+            1 if it.get("failed") else 0,
+            it["xnum"],
+        ),
+    )
     x_left = mdates.date2num(pd.Timestamp(df.index[0]).to_pydatetime())
     x_right = mdates.date2num(pd.Timestamp(df.index[-1]).to_pydatetime())
     x_span = max(x_right - x_left, 1.0)
-    x_pad = max(1.2, x_span * 0.012)
+    near_cur_days = max(4.0, x_span * 0.015)
+    cur_x_by_side = {p["side"]: float(p["xnum"]) for p in cur_pins}
 
-    for k, (it, ly) in enumerate(zip(items, stacked)):
-        d, y, kind, col = it["d"], it["y"], it["kind"], it["col"]
-        ax.scatter(
-            [d], [y],
-            marker="^",
-            s=36,
-            color=col,
-            edgecolors="white",
-            linewidths=0.55,
-            zorder=26,
-            alpha=0.95,
+    surge_slots = (0.84, 0.70, 0.58)
+    plunge_slots = (0.42, 0.28, 0.14)
+    marker_y = {"surge": 0.68, "plunge": 0.32}
+    occupied: Dict[float, List[Tuple[float, float]]] = {
+        y: [] for y in (*surge_slots, *plunge_slots)
+    }
+
+    def _reserve_label(
+        side: str, x: float, half_w: float, *, prefer_mid: bool = False,
+    ) -> Optional[float]:
+        slots = surge_slots if side == "surge" else plunge_slots
+        if prefer_mid:
+            slots = (slots[1], slots[0], slots[2])
+        lo, hi = x - half_w, x + half_w
+        for y in slots:
+            if any(not (hi < a or lo > b) for a, b in occupied[y]):
+                continue
+            occupied[y].append((lo, hi))
+            return y
+        return None
+
+    def _near_current(side: str, x: float) -> bool:
+        cx = cur_x_by_side.get(side)
+        return cx is not None and abs(x - cx) < near_cur_days
+
+    for lk in path_links:
+        y = marker_y.get(lk["side"], 0.5)
+        col = "#bdc3c7" if lk.get("failed") else (
+            "#16a085" if lk["side"] == "surge" else "#c0392b"
         )
-        # 최근 봉 구간: 우상단 상태캡션·시나리오·저항라벨과 겹침 → ▲만 표시
-        i_near_end = it["xnum"] >= (x_right - x_pad * 6)
-        if i_near_end:
-            continue
+        ax_rail.plot(
+            [lk["x0"], lk["x1"]], [y, y],
+            color=col, linewidth=0.9 if not lk.get("failed") else 0.7,
+            alpha=0.35 if not lk.get("failed") else 0.22,
+            linestyle="-" if not lk.get("failed") else (0, (2.0, 1.5)),
+            zorder=2, solid_capstyle="round",
+        )
 
-        side = 1 if (k % 2 == 0) else -1
-        if k >= 1 and abs(it["xnum"] - items[k - 1]["xnum"]) < x_pad * 3.5:
-            x_off = side * x_pad * 1.8
+    def _draw_marker_and_vline(it: Dict[str, Any], *, current: bool, draw_marker: bool = True) -> None:
+        d, col, side = it["d"], it["col"], it["side"]
+        y_m = marker_y[side]
+        failed = bool(it.get("failed"))
+        stage = str(it.get("stage") or "")
+        if current:
+            ax_main.axvline(
+                d, ymin=0.0, ymax=0.38, color=col,
+                linestyle=(0, (2.0, 1.6)), linewidth=1.35, alpha=0.70, zorder=6,
+            )
+            ax_rail.axvline(d, color=col, linestyle="-", linewidth=1.0, alpha=0.45, zorder=3)
+            if draw_marker:
+                ax_rail.scatter(
+                    [d], [y_m],
+                    s=48, color=col, zorder=8, alpha=0.98,
+                    marker=it.get("marker") or "o",
+                    edgecolors="#2c3e50", linewidths=0.7,
+                )
+            return
+
+        ymax = 0.32 if stage == "진" else 0.18
+        ax_main.axvline(
+            d, ymin=0.0, ymax=ymax, color=col,
+            linestyle=(0, (1.2, 2.2)), linewidth=1.0 if stage == "진" else 0.7,
+            alpha=0.50 if stage == "진" else 0.28, zorder=5,
+        )
+        ax_rail.axvline(
+            d, color=col, linestyle=(0, (1.0, 2.5)),
+            linewidth=0.75, alpha=0.28 if failed else 0.35, zorder=2,
+        )
+        if not draw_marker:
+            return
+        mk = it.get("marker")
+        if not mk:
+            if stage == "준":
+                mk = "d"
+            elif stage == "셋":
+                mk = "o"
+            elif stage == "점":
+                mk = "D"
+            else:
+                mk = "^" if side == "surge" else "v"
+        if failed:
+            ax_rail.scatter(
+                [d], [y_m], s=22, facecolors="none", edgecolors=col,
+                linewidths=0.9, zorder=5, alpha=0.85, marker=mk,
+            )
         else:
-            x_off = side * x_pad * 0.85
-        tx = it["xnum"] + x_off
-        if tx < x_left + x_pad:
-            tx = it["xnum"] + abs(x_off)
-        elif tx > x_right - x_pad * 4:
-            tx = it["xnum"] - abs(x_off)
+            ax_rail.scatter(
+                [d], [y_m], s=20 if stage == "진" else 16, color=col,
+                zorder=5, alpha=0.95, marker=mk,
+                edgecolors="white", linewidths=0.35,
+            )
 
-        # 캡션이 고가와 너무 붙으면 한 단 더 올림
-        if ly < y + lift * 0.6:
-            ly = min(stack_hi, y + lift)
-
-        ax.annotate(
-            f"급등{kind}",
-            xy=(d, y),
-            xytext=(tx, ly),
-            textcoords="data",
-            fontsize=6.4,
+    def _draw_label(it: Dict[str, Any], y_lab: float, *, current: bool) -> None:
+        d, col, side = it["d"], it["col"], it["side"]
+        y_m = marker_y[side]
+        x_txt = float(it["xnum"])
+        ha = "center"
+        if current:
+            x_txt = x_txt + x_span * 0.006
+            ha = "left"
+        if abs(y_lab - y_m) > 0.04:
+            ax_rail.plot(
+                [d, d], [y_m, y_lab],
+                color=col, linewidth=0.55, alpha=0.40, zorder=4, solid_capstyle="round",
+            )
+        ax_rail.text(
+            x_txt, y_lab, it["label"],
+            fontsize=5.8 if current else 5.0,
             fontweight="bold",
             color=col,
-            ha="center",
-            va="bottom",
-            zorder=27,
-            alpha=0.95,
+            ha=ha,
+            va="center",
+            zorder=9 if current else 6,
+            clip_on=True,
             bbox=dict(
-                boxstyle="round,pad=0.15",
+                boxstyle="round,pad=0.08",
                 facecolor="white",
-                edgecolor=col,
-                linewidth=0.7,
-                alpha=0.92,
-            ),
-            arrowprops=dict(
-                arrowstyle="-",
-                color=col,
-                lw=0.65,
-                alpha=0.55,
-                shrinkA=0,
-                shrinkB=2,
+                edgecolor=col if (current or it.get("failed")) else "#ecf0f1",
+                linewidth=0.65 if current else 0.35,
+                alpha=0.94,
             ),
         )
+
+    for it in items:
+        skip_m = _near_current(it["side"], float(it["xnum"]))
+        _draw_marker_and_vline(it, current=False, draw_marker=not skip_m)
+    for pin in cur_pins:
+        _draw_marker_and_vline(pin, current=True)
+
+    for pin in cur_pins:
+        hw = _rail_label_half_width(pin["label"], x_span, current=True)
+        y_lab = _reserve_label(
+            pin["side"], float(pin["xnum"]) + x_span * 0.006, hw, prefer_mid=True,
+        )
+        if y_lab is not None:
+            _draw_label(pin, y_lab, current=True)
+
+    for it in items:
+        if _near_current(it["side"], float(it["xnum"])):
+            continue
+        if it.get("failed") and it.get("stage") == "점":
+            continue
+        hw = _rail_label_half_width(it["label"], x_span, current=False)
+        y_lab = _reserve_label(it["side"], float(it["xnum"]), hw)
+        if y_lab is not None:
+            _draw_label(it, y_lab, current=False)
+
+
+def _draw_historical_surge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
+    """호환용: 가격 캡션 방식은 이력 레인으로 대체됨 (no-op)."""
+    return
+
+
+def _draw_historical_plunge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
+    """호환용: 가격 캡션 방식은 이력 레인으로 대체됨 (no-op)."""
+    return
 
 
 def analyze_ticker_plunge_history(
@@ -3242,119 +4223,6 @@ def _hist_plunge_panel_lines(hist: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def _draw_historical_plunge_markers(ax, df: pd.DataFrame, hist: Dict[str, Any]) -> None:
-    """
-    메인 차트 과거 급락 붕괴 마커(A/B/D).
-    ▼은 저가에 두고, 캡션은 저가 아래 여백에서 Y스택·X교대로 배치해 봉·라벨과 겹침을 줄임.
-    """
-    events = hist.get("events") or []
-    if not events or df is None or df.empty:
-        return
-    colors = {"A": "#c0392b", "B": "#d35400", "D": "#6c3483"}
-    low = df["Low"].astype(float)
-    y0, y1 = ax.get_ylim()
-    span = max(float(y1) - float(y0), 1e-9)
-    gap = span * 0.032
-    drop = span * 0.028
-
-    items: List[Dict[str, Any]] = []
-    for e in events:
-        i = int(e["idx"])
-        if i < 0 or i >= len(df):
-            continue
-        d = df.index[i]
-        y = float(low.iloc[i])
-        kind = e.get("kind") or "D"
-        pref = y - drop
-        items.append(
-            {
-                "d": d,
-                "y": y,
-                "kind": kind,
-                "col": colors.get(kind, "#7f8c8d"),
-                "pref": pref,
-                "xnum": mdates.date2num(pd.Timestamp(d).to_pydatetime()),
-            }
-        )
-    if not items:
-        return
-
-    stack_lo = float(y0) + span * 0.04
-    stack_hi = float(y1) - span * 0.08
-    # 저가 아래 선호값을 스택 (위쪽 선호부터 → 충돌 시 아래로)
-    stacked = _stack_y_positions(
-        [it["pref"] for it in items],
-        y_min=stack_lo,
-        y_max=max(stack_lo + gap, stack_hi),
-        min_gap=gap,
-    )
-
-    x_left = mdates.date2num(pd.Timestamp(df.index[0]).to_pydatetime())
-    x_right = mdates.date2num(pd.Timestamp(df.index[-1]).to_pydatetime())
-    x_span = max(x_right - x_left, 1.0)
-    x_pad = max(1.2, x_span * 0.012)
-
-    for k, (it, ly) in enumerate(zip(items, stacked)):
-        d, y, kind, col = it["d"], it["y"], it["kind"], it["col"]
-        ax.scatter(
-            [d], [y],
-            marker="v",
-            s=36,
-            color=col,
-            edgecolors="white",
-            linewidths=0.55,
-            zorder=26,
-            alpha=0.95,
-        )
-        # 최근 봉 구간: 우하단 상태캡션·시나리오와 겹침 → ▼만 표시
-        if it["xnum"] >= (x_right - x_pad * 6):
-            continue
-
-        side = 1 if (k % 2 == 0) else -1
-        if k >= 1 and abs(it["xnum"] - items[k - 1]["xnum"]) < x_pad * 3.5:
-            x_off = side * x_pad * 1.8
-        else:
-            x_off = side * x_pad * 0.85
-        tx = it["xnum"] + x_off
-        if tx < x_left + x_pad:
-            tx = it["xnum"] + abs(x_off)
-        elif tx > x_right - x_pad * 4:
-            tx = it["xnum"] - abs(x_off)
-
-        # 캡션이 저가와 너무 붙으면 한 단 더 내림
-        if ly > y - drop * 0.6:
-            ly = max(stack_lo, y - drop)
-
-        ax.annotate(
-            f"급락{kind}",
-            xy=(d, y),
-            xytext=(tx, ly),
-            textcoords="data",
-            fontsize=6.4,
-            fontweight="bold",
-            color=col,
-            ha="center",
-            va="top",
-            zorder=27,
-            alpha=0.95,
-            bbox=dict(
-                boxstyle="round,pad=0.15",
-                facecolor="white",
-                edgecolor=col,
-                linewidth=0.7,
-                alpha=0.92,
-            ),
-            arrowprops=dict(
-                arrowstyle="-",
-                color=col,
-                lw=0.65,
-                alpha=0.55,
-                shrinkA=0,
-                shrinkB=2,
-            ),
-        )
-
-
 def _close_slope_per_day(df: pd.DataFrame, lookback: int = 30) -> Optional[float]:
     """종가 회귀 기울기 (가격 / date2num일)."""
     tail = df.tail(lookback)
@@ -3528,11 +4396,13 @@ def _build_sr_case_eval_lines(
     current: float,
     fmt_price,
     lv_by_label: Dict[str, Any],
+    compact: bool = False,
 ) -> List[str]:
     """
     현재가 기준 핵심 케이스 2개 평가:
       ▼ 하락(지지 이탈) ①
       ▲ 상승(저항 돌파) ③
+    compact=True 이면 점수·목표만 (패널 잘림 방지).
     """
     by_key = {str(e["key"]): e for e in entries}
     sc1 = by_key.get("sc1")
@@ -3563,22 +4433,23 @@ def _build_sr_case_eval_lines(
             f"▼① 하락·지지이탈  {_score_gauge(int(sc1['score']))} {int(sc1['score'])}점 [{st}]"
         )
         lines.append(f"  목표 {sc1.get('target_txt') or '-'}")
-        if trig is not None:
-            lines.append(f"  트리거: {fmt_price(trig)} 종가 하향이탈")
-        path_bits = ["현재"]
-        if recent_sup and near_sup and recent_sup["price"] > near_sup["price"]:
-            path_bits.append("최근지지")
-        if near_sup:
-            path_bits.append("현재지지")
-        if strong_sup and (not near_sup or strong_sup["price"] < near_sup["price"]):
-            path_bits.append("강력지지")
-        lines.append("  경로: " + " → ".join(path_bits))
-        inv = near_res["price"] if near_res else (broken_sup["price"] if broken_sup else None)
-        if inv is not None:
-            lines.append(f"  무효: {fmt_price(inv)} 상향 회복")
-        reasons = sc1.get("reasons") or []
-        if reasons:
-            lines.append("  근거: " + " · ".join(reasons[:2]))
+        if not compact:
+            if trig is not None:
+                lines.append(f"  트리거: {fmt_price(trig)} 종가 하향이탈")
+            path_bits = ["현재"]
+            if recent_sup and near_sup and recent_sup["price"] > near_sup["price"]:
+                path_bits.append("최근지지")
+            if near_sup:
+                path_bits.append("현재지지")
+            if strong_sup and (not near_sup or strong_sup["price"] < near_sup["price"]):
+                path_bits.append("강력지지")
+            lines.append("  경로: " + " → ".join(path_bits))
+            inv = near_res["price"] if near_res else (broken_sup["price"] if broken_sup else None)
+            if inv is not None:
+                lines.append(f"  무효: {fmt_price(inv)} 상향 회복")
+            reasons = sc1.get("reasons") or []
+            if reasons:
+                lines.append("  근거: " + " · ".join(reasons[:2]))
 
     if sc3 is not None:
         wlabels = sc3.get("waypoint_labels") or []
@@ -3596,25 +4467,26 @@ def _build_sr_case_eval_lines(
             f"▲③ 상승·저항돌파  {_score_gauge(int(sc3['score']))} {int(sc3['score'])}점 [{st}]"
         )
         lines.append(f"  목표 {sc3.get('target_txt') or '-'}")
-        if trig is not None:
-            lines.append(f"  트리거: {fmt_price(trig)} 종가 상향돌파")
-        if wlabels:
-            lines.append("  경로: " + " → ".join(wlabels))
-        else:
-            path_bits = ["현재"]
-            if recent_res and (near_res is None or recent_res["price"] < near_res["price"]):
-                path_bits.append("최근저항")
-            if near_res and near_res["price"] > current:
-                path_bits.append("단기저항")
-            if high_res and high_res["price"] > current:
-                path_bits.append("전고점")
-            lines.append("  경로: " + " → ".join(path_bits))
-        inv = near_sup["price"] if near_sup else None
-        if inv is not None:
-            lines.append(f"  무효: {fmt_price(inv)} 하향 재이탈")
-        reasons = sc3.get("reasons") or []
-        if reasons:
-            lines.append("  근거: " + " · ".join(reasons[:2]))
+        if not compact:
+            if trig is not None:
+                lines.append(f"  트리거: {fmt_price(trig)} 종가 상향돌파")
+            if wlabels:
+                lines.append("  경로: " + " → ".join(wlabels))
+            else:
+                path_bits = ["현재"]
+                if recent_res and (near_res is None or recent_res["price"] < near_res["price"]):
+                    path_bits.append("최근저항")
+                if near_res and near_res["price"] > current:
+                    path_bits.append("단기저항")
+                if high_res and high_res["price"] > current:
+                    path_bits.append("전고점")
+                lines.append("  경로: " + " → ".join(path_bits))
+            inv = near_sup["price"] if near_sup else None
+            if inv is not None:
+                lines.append(f"  무효: {fmt_price(inv)} 하향 재이탈")
+            reasons = sc3.get("reasons") or []
+            if reasons:
+                lines.append("  근거: " + " · ".join(reasons[:2]))
 
     if sc1 is not None and sc3 is not None:
         s1, s3 = int(sc1["score"]), int(sc3["score"])
@@ -4066,6 +4938,60 @@ def _scenario_strength_style(
     }
 
 
+def _annotate_data_arrow(
+    ax,
+    *,
+    xy: Tuple[float, float],
+    xytext: Tuple[float, float],
+    arrowprops: Optional[Dict[str, Any]] = None,
+    min_frac: float = 0.012,
+    **kwargs: Any,
+) -> Any:
+    """
+    데이터 좌표 화살표(annotate "").
+    끝점이 축 대비 너무 가까우면 생략 — matplotlib FancyArrowPatch
+    connectionstyle clip 중 StopIteration 방지.
+    """
+    try:
+        x0, y0 = float(xytext[0]), float(xytext[1])
+        x1, y1 = float(xy[0]), float(xy[1])
+    except Exception:
+        return None
+    if not all(np.isfinite(v) for v in (x0, y0, x1, y1)):
+        return None
+    x_span = max(abs(float(ax.get_xlim()[1] - ax.get_xlim()[0])), 1e-9)
+    y_span = max(abs(float(ax.get_ylim()[1] - ax.get_ylim()[0])), 1e-9)
+    dx = (x1 - x0) / x_span
+    dy = (y1 - y0) / y_span
+    if dx * dx + dy * dy < min_frac * min_frac:
+        return None
+    props = dict(arrowprops or {})
+    props.setdefault("shrinkA", 0)
+    props.setdefault("shrinkB", 0)
+    return ax.annotate("", xy=(x1, y1), xytext=(x0, y0), arrowprops=props, **kwargs)
+
+
+def _safe_fig_draw(fig) -> None:
+    """annotate 화살표 StopIteration 시 해당 화살표만 제거하고 재시도."""
+    from matplotlib.text import Annotation
+
+    orig = Annotation.draw
+
+    def _draw(self, renderer):
+        try:
+            return orig(self, renderer)
+        except StopIteration:
+            self.arrowprops = None
+            self.arrow_patch = None
+            return orig(self, renderer)
+
+    Annotation.draw = _draw  # type: ignore[method-assign]
+    try:
+        fig.canvas.draw()
+    finally:
+        Annotation.draw = orig  # type: ignore[method-assign]
+
+
 def _draw_scenario_on_main(
     ax,
     *,
@@ -4103,16 +5029,16 @@ def _draw_scenario_on_main(
     if path_x is not None and path_y is not None and len(path_x) >= 2:
         ax.plot(path_x, path_y, color=color, linestyle=linestyle,
                 linewidth=lw, alpha=alpha, zorder=z - 1)
-        ax.annotate(
-            "",
+        _annotate_data_arrow(
+            ax,
             xy=(path_x[-1], path_y[-1]),
             xytext=(path_x[-2], path_y[-2]),
             arrowprops=dict(arrowstyle="-|>", color=color, lw=lw, linestyle=linestyle, alpha=alpha),
             zorder=z - 1,
         )
     elif arrow_from is not None:
-        ax.annotate(
-            "",
+        _annotate_data_arrow(
+            ax,
             xy=(x_end, y_end),
             xytext=arrow_from,
             arrowprops=dict(arrowstyle="-|>", color=color, lw=lw, linestyle=linestyle, alpha=alpha),
@@ -4569,11 +5495,11 @@ def _confidence_reference_lines() -> List[str]:
         "추세: ADX=<20횡보 · 20~25약 · 25~40보통 · ≥40강 | +DI↑매수 · -DI↑매도",
         "지표: ST↑지지/ST↓저항 · SMA200 장기기준(③상단) · BB하단과매도/상단과매수",
         "시나리오: ①지지이탈 ②추세↓ ③저항돌파 ④추세↑ · ⑤V반등 ⑥Λ조정",
-        "급등: 진행·과열(배지) | 셋업A=ST↑후횡보 | B=전환직후 | 점화=고점근접",
+        "급등: 준비(HMA·SMA20) → 셋업A/B → 점화 → 진행/과열",
         "급락: 진행·과매도(배지) | 셋업A=ST↓후횡보 | B=전환직후 | 붕괴=저점근접",
         "PEG: PER÷성장% · <1저평가 · 1~1.5적정 · ≥1.5부담 | 재무≠단기매매신호",
-        "급등이력: A=ST↑후횡보 · B=전환직후 · D=모멘텀 · ▲마커=과거점화 · 유사도=현재셋업비교",
-        "급락이력: A=ST↓후횡보 · B=전환직후 · D=모멘텀 · ▼마커=과거붕괴 · 유사도=현재셋업비교",
+        "급등이력: 레인=준→셋→점→진 · ×=실패 · 현재핀 · 유사=기간전체",
+        "급락이력: 레인=셋→붕→진 경로 · ×=실패셋업 · 현재핀 · 유사=기간전체",
     ]
 
 
@@ -4599,6 +5525,128 @@ def _join_caption_parts(parts: List[str], sep: str = " · ", max_len: int = 52) 
     if cur:
         lines.append(cur)
     return "\n".join(lines)
+
+
+def _wrap_cell_text(text: str, width: int, max_lines: int = 2) -> str:
+    """표 셀용: 폭 기준 줄바꿈 (말줄임보다 전체 표시 우선)."""
+    s = str(text or "").replace("\n", " ").strip()
+    if not s:
+        return "—"
+    if width < 4:
+        return s
+    lines: List[str] = []
+    rest = s
+    while rest and len(lines) < max_lines:
+        if len(rest) <= width:
+            lines.append(rest)
+            rest = ""
+            break
+        cut = width
+        for sep in (" ", "·", "/", "→", "·"):
+            idx = rest.rfind(sep, 0, width + 1)
+            if idx >= max(4, width // 3):
+                cut = idx if sep == " " else idx + 1
+                break
+        piece = rest[:cut].rstrip(" ·/")
+        lines.append(piece if piece else rest[:width])
+        rest = rest[cut:].lstrip(" ·/")
+    if rest:
+        # 남은 내용이 있으면 마지막 줄에 최대한 붙이거나 …
+        if len(lines) < max_lines:
+            lines.append(rest if len(rest) <= width else rest[: width - 1] + "…")
+        else:
+            base = lines[-1]
+            merged = f"{base} {rest}".strip()
+            lines[-1] = merged if len(merged) <= width + 4 else (base[: max(1, width - 1)] + "…")
+    return "\n".join(lines)
+
+
+def _compress_panel_lines_for_fit(lines: List[str]) -> List[str]:
+    """패널 높이 부족 시: 빈줄·세부(경로/트리거/근거)부터 제거."""
+    # 1) 연속 빈줄 축소
+    out: List[str] = []
+    prev_blank = False
+    for ln in lines:
+        blank = not str(ln).strip()
+        if blank and prev_blank:
+            continue
+        out.append(ln)
+        prev_blank = blank
+    if len(out) < len(lines):
+        return out
+
+    # 2) 들여쓴 세부 줄 제거
+    detail_prefixes = ("경로:", "트리거:", "무효:", "근거:")
+    filtered: List[str] = []
+    removed = False
+    for ln in out:
+        stripped = str(ln).lstrip()
+        indent = len(str(ln)) - len(stripped)
+        if indent >= 2 and any(stripped.startswith(k) for k in detail_prefixes):
+            removed = True
+            continue
+        filtered.append(ln)
+    if removed:
+        return filtered
+
+    # 3) 시나리오 번호 줄만 남기고 바로 아래 들여쓴 상세 제거
+    keep: List[str] = []
+    skip_following_indent = False
+    changed = False
+    marks = tuple("①②③④⑤⑥")
+    for ln in out:
+        stripped = str(ln).lstrip()
+        indent = len(str(ln)) - len(stripped)
+        if any(stripped.startswith(m) for m in marks):
+            keep.append(ln)
+            skip_following_indent = True
+            continue
+        if skip_following_indent and indent >= 2:
+            changed = True
+            continue
+        skip_following_indent = False
+        keep.append(ln)
+    if changed:
+        return keep
+    return out
+
+
+def _fit_and_draw_insight_panel(ax, fig, panel_lines: List[str]) -> None:
+    """우측 인사이트 패널: 폰트 축소 → 내용 압축으로 잘림 없이 맞춤."""
+    lines = list(panel_lines)
+    panel_h_in = float(ax.get_position().height * fig.get_size_inches()[1])
+    usable = panel_h_in * 0.88  # bbox pad 여유
+
+    def _needed(n: int, fs: float, ls: float) -> float:
+        return n * fs * ls / 72.0
+
+    fs, ls = 8.4, 1.32
+    for _ in range(8):
+        if _needed(len(lines), fs, ls) <= usable:
+            break
+        ls = 1.15
+        fs = max(4.8, usable * 72.0 / max(1, len(lines) * ls))
+        if _needed(len(lines), fs, ls) <= usable:
+            break
+        compressed = _compress_panel_lines_for_fit(lines)
+        if compressed == lines:
+            max_lines = max(8, int(usable * 72.0 / (fs * ls)))
+            if len(lines) > max_lines:
+                lines = lines[: max_lines - 1] + ["  …(이하 하단 표·차트 참고)"]
+            break
+        lines = compressed
+
+    ax.text(
+        0.02, 0.99,
+        "\n".join(lines),
+        transform=ax.transAxes,
+        fontsize=fs,
+        va="top",
+        ha="left",
+        linespacing=ls,
+        clip_on=True,
+        bbox=dict(boxstyle="round,pad=0.40", facecolor="#f8f9fa", edgecolor="#34495e", linewidth=1.4, alpha=0.95),
+    )
 
 
 def _annotate_level_price(
@@ -4776,69 +5824,187 @@ def _apply_vol_yaxis(ax, *, labelsize: float = 9.0) -> None:
 
 def _style_shared_date_axis(ax, *, x_last: float, labelsize: float = 9.5) -> None:
     """
-    메인·거래량·이격도 공유 X축 일자 표기.
-    - 월 단위: YYYY-MM
-    - 현재시점(마지막 봉): YYYY-MM-DD
-    - 라벨은 축 안쪽(하단)에 그려 미니차트에 가려지지 않게 함
-    - 데이터 마지막일 이후(우측 시나리오 패딩) 라벨은 숨김
+    메인·거래량·이격도 공유 X축 일자 표기 (년·월·일 중복 없이 분리).
+    - 월 틱: M (1~12) — 연도/일 미포함
+    - 연도: 연 구간마다 1회, 월 라벨 아래 별도 행
+    - 현재일: D (당월 월틱이 있으면) 또는 M/D (당월 월틱이 생략된 경우)
+    - 과밀 시 월 간격 thinning, 가장자리 ha 정렬
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter as _FF
 
+    # 이전 연도 annotate 제거(재호출 시 중복 방지)
+    for child in list(ax.texts):
+        if getattr(child, "_hma_year_label", False):
+            child.remove()
+
     x_last = float(x_last)
-    x0, _x1 = [float(v) for v in ax.get_xlim()]
-    # mdates.num2date → tz-aware(UTC); 비교용으로 naive로 통일
+    x0, x1 = [float(v) for v in ax.get_xlim()]
+    if not np.isfinite(x0) or not np.isfinite(x1) or x1 <= x0:
+        return
+    x_span = max(x1 - x0, 1.0)
+
     d0 = pd.Timestamp(mdates.num2date(x0)).tz_localize(None).normalize()
     d_last = pd.Timestamp(mdates.num2date(x_last)).tz_localize(None).normalize()
 
-    # 월초 틱 (현재일과 5일 이상 떨어진 것만)
-    month_ticks: List[float] = []
+    # 월초 후보 (현재일과 너무 가까운 월초는 제외 → 현재일 틱과 역할 분리)
+    month_cands: List[Tuple[float, int, int]] = []  # (xnum, year, month)
     cur = pd.Timestamp(year=d0.year, month=d0.month, day=1)
     while cur <= d_last + pd.Timedelta(days=1):
         xn = float(mdates.date2num(cur.to_pydatetime()))
-        if xn >= x0 - 1.0 and abs((cur - d_last).days) >= 5:
-            month_ticks.append(xn)
+        if xn >= x0 - 1.0 and abs((cur - d_last).days) >= 8:
+            month_cands.append((xn, int(cur.year), int(cur.month)))
         if cur.month == 12:
             cur = pd.Timestamp(year=cur.year + 1, month=1, day=1)
         else:
             cur = pd.Timestamp(year=cur.year, month=cur.month + 1, day=1)
 
-    ticks = sorted(set(month_ticks + [x_last]))
+    # 짧은 라벨(M, D) 기준 최소 간격
+    min_sep = max(x_span * 0.045, 14.0)
+    last_half = max(x_span * 0.028, 8.0)
+
+    kept_months: List[Tuple[float, int, int]] = []
+    for xn, yy, mm in reversed(month_cands):
+        ok = True
+        if abs(xn - x_last) < last_half + x_span * 0.02:
+            ok = False
+        else:
+            for kx, _, _ in kept_months:
+                if abs(xn - kx) < min_sep:
+                    ok = False
+                    break
+        if ok:
+            kept_months.append((xn, yy, mm))
+    # 좌측 첫 월 보강
+    if month_cands:
+        xn0, yy0, mm0 = month_cands[0]
+        if all(abs(xn0 - kx) >= min_sep for kx, _, _ in kept_months) and abs(xn0 - x_last) >= last_half:
+            if not any(abs(xn0 - kx) < 0.5 for kx, _, _ in kept_months):
+                kept_months.append((xn0, yy0, mm0))
+    kept_months = sorted(kept_months, key=lambda t: t[0])
+
+    month_by_x = {xn: (yy, mm) for xn, yy, mm in kept_months}
+    has_last_month = any(yy == d_last.year and mm == d_last.month for _, yy, mm in kept_months)
+    ticks = sorted(set([xn for xn, _, _ in kept_months] + [x_last]))
 
     def _fmt(x, _pos=None):
         xf = float(x)
         if xf > x_last + 0.6:
             return ""
         if abs(xf - x_last) < 0.8:
-            return mdates.num2date(xf).strftime("%Y-%m-%d")
-        return mdates.num2date(xf).strftime("%Y-%m")
+            # 일만 (당월 월틱이 없으면 월/일)
+            return f"{d_last.month}/{d_last.day}" if not has_last_month else str(d_last.day)
+        info = month_by_x.get(xf)
+        if info is None:
+            # FixedLocator 부동소수 매칭 보정
+            for xn, yy, mm in kept_months:
+                if abs(xn - xf) < 0.5:
+                    return str(mm)
+            return ""
+        return str(info[1])
 
     ax.xaxis.set_major_locator(FixedLocator(ticks))
     ax.xaxis.set_minor_locator(mdates.WeekdayLocator(byweekday=mdates.MO, interval=2))
     ax.xaxis.set_major_formatter(_FF(_fmt))
-    # 라벨은 축 아래 — 미니차트와 간격(레이아웃)으로 가림 방지
     ax.tick_params(
         axis="x", which="major", labelsize=labelsize,
-        pad=3, length=4, direction="out", labelbottom=True, labelcolor="#1a252f",
+        pad=2.0, length=3.5, direction="out", labelbottom=True, labelcolor="#1a252f",
     )
-    ax.tick_params(axis="x", which="minor", length=2, color="#bdc3c7", direction="out")
+    ax.tick_params(axis="x", which="minor", length=1.5, color="#d5d8dc", direction="out", labelbottom=False)
+
     for lbl in ax.get_xticklabels():
         lbl.set_verticalalignment("top")
         lbl.set_clip_on(False)
         lbl.set_zorder(20)
-    _kill_axis_offsets(ax)
+        try:
+            xv = float(lbl.get_position()[0])
+        except Exception:
+            continue
+        if abs(xv - x_last) < 0.8:
+            lbl.set_horizontalalignment("right")
+            lbl.set_fontweight("bold")
+            lbl.set_color("#1a5276")
+        elif xv <= x0 + x_span * 0.04:
+            lbl.set_horizontalalignment("left")
+        else:
+            lbl.set_horizontalalignment("center")
 
-    # 현재시점 강조 가이드선 (라벨은 틱으로 표시)
+    # 연도 행: 연 구간마다 1회 (월 라벨 아래, 중복 없음)
+    year_groups: Dict[int, List[float]] = {}
+    for xn, yy, _mm in kept_months:
+        year_groups.setdefault(yy, []).append(xn)
+    # 현재일만 있고 해당 연 월틱이 없으면 현재일 x로 연도 표시
+    if d_last.year not in year_groups:
+        year_groups[d_last.year] = [x_last]
+    year_ys = sorted(year_groups.keys())
+    for yi, yy in enumerate(year_ys):
+        xs = year_groups[yy]
+        x_lo, x_hi = min(xs), max(xs)
+        # 연 구간의 시각적 중심 (다음 연 시작 전까지 확장)
+        if yi + 1 < len(year_ys):
+            next_xs = year_groups[year_ys[yi + 1]]
+            x_hi_vis = min(next_xs) - 1.0
+        else:
+            x_hi_vis = max(x_hi, x_last)
+        x_mid = 0.5 * (x_lo + max(x_hi, x_hi_vis))
+        if x_mid < x0:
+            x_mid = x_lo
+        if x_mid > x_last + 0.5:
+            x_mid = 0.5 * (x_lo + x_last)
+        t = ax.annotate(
+            str(yy),
+            xy=(x_mid, 0.0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, -labelsize - 5.5),
+            textcoords="offset points",
+            ha="center",
+            va="top",
+            fontsize=max(labelsize - 0.8, 7.0),
+            color="#5d6d7e",
+            fontweight="medium",
+            clip_on=False,
+            zorder=21,
+        )
+        t._hma_year_label = True  # type: ignore[attr-defined]
+
+    _kill_axis_offsets(ax)
     ax.axvline(x_last, color="#1a5276", linewidth=0.9, alpha=0.40, linestyle=":", zorder=3)
+
+
+def _style_mini_date_xaxis(
+    ax,
+    *,
+    labelsize: float = 5.0,
+    n_ticks: int = 3,
+    pad: float = 1.0,
+    length: float = 2.0,
+    clip_on: bool = True,
+) -> None:
+    """
+    미니차트 X 날짜축.
+    AutoDateLocator(minticks/maxticks)는 짧은 구간에서 interval 선택 실패 → UserWarning.
+    FixedLocator로 균등 틱을 고정해 경고를 제거한다.
+    """
+    x0, x1 = [float(v) for v in ax.get_xlim()]
+    if not np.isfinite(x0) or not np.isfinite(x1) or x1 <= x0:
+        return
+    n = max(2, min(int(n_ticks), 4))
+    span = x1 - x0
+    edge = span * 0.02
+    lo, hi = x0 + edge, x1 - edge
+    if hi <= lo:
+        lo, hi = x0, x1
+    ticks = [float(v) for v in np.linspace(lo, hi, n)]
+    ax.xaxis.set_major_locator(FixedLocator(ticks))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
+    ax.tick_params(axis="x", labelsize=labelsize, pad=pad, length=length, labelbottom=True)
+    for lbl in ax.get_xticklabels():
+        lbl.set_clip_on(clip_on)
 
 
 def _style_mini_vol_xaxis(ax_vol) -> None:
     """거래량축: X=날짜만, Y=M/K (과학적 표기 1e7/1e8 제거)."""
-    ax_vol.tick_params(axis="x", labelsize=5.0, pad=1.5, length=2.5, labelbottom=True)
-    ax_vol.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-    ax_vol.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=2, maxticks=3))
+    _style_mini_date_xaxis(ax_vol, labelsize=5.0, pad=1.5, length=2.5, clip_on=False)
     _apply_vol_yaxis(ax_vol, labelsize=5.0)
-    for lbl in ax_vol.get_xticklabels():
-        lbl.set_clip_on(False)
 
 
 def _draw_mini_caption_card(
@@ -4900,6 +6066,178 @@ def _draw_mini_caption_card(
             linespacing=1.0,
             zorder=1,
         )
+
+
+def _insight_row_from_target_pe(
+    *,
+    num: str,
+    name: str,
+    pid: str,
+    pe: Dict[str, Any],
+    guide: Optional[Dict[str, Any]],
+    score: Optional[int],
+    fmt_price,
+    direction: str = "up",
+) -> Dict[str, str]:
+    """하단 통합 인사이트 테이블 1행 — 정보량 축소(방안2): 상태·가이드·근거 중심."""
+    g = guide or {}
+    status = str(g.get("status") or "—")
+    # 1줄 개념: [상태] · 신뢰 · R:R
+    bits: List[str] = [f"[{status}]"]
+    if status == "진행" and pe.get("progress_pct") is not None and float(pe["progress_pct"]) >= 0:
+        bits.append(f"{float(pe['progress_pct']):.0f}%")
+    if score is not None:
+        bits.append(_fmt_confidence_score(score, short=True))
+    if pe.get("risk_reward") is not None:
+        bits.append(_fmt_risk_reward(pe["risk_reward"], short=True))
+    status_cell = _wrap_cell_text(_join_caption_parts(bits, max_len=40), width=18, max_lines=2)
+
+    tgt = pe.get("target")
+    inv = pe.get("invalid")
+    tgt_s = fmt_price(float(tgt)) if tgt is not None else "—"
+    inv_s = fmt_price(float(inv)) if inv is not None else "—"
+    # 목표/무효 한 칸으로 압축
+    levels_cell = _wrap_cell_text(f"목{tgt_s} / 무{inv_s}", width=16, max_lines=2)
+
+    # 2줄 개념: 가이드 액션 + 핵심 가격만
+    action = g.get("action") or "유지"
+    weak_tag = "(약)" if g.get("weak") and action == "유지" else ""
+    guide_bits = [f"{action}{weak_tag}"]
+    buy_px = g.get("buy_px")
+    sell_px = g.get("sell_px")
+    stop_px = g.get("stop_px")
+    if buy_px is not None:
+        guide_bits.append(f"▲{_fmt_px_plain(buy_px)}")
+    if sell_px is not None:
+        guide_bits.append(f"▼{_fmt_px_plain(sell_px)}")
+    if stop_px is not None:
+        guide_bits.append(f"손{_fmt_px_plain(stop_px)}")
+    guide_cell = _wrap_cell_text(_join_caption_parts(guide_bits, sep=" ", max_len=40), width=16, max_lines=2)
+
+    # 3줄 개념: 근거 (잘림 대신 2줄 래핑)
+    reason = (g.get("action_why") or "").strip()
+    if reason.startswith("근거:"):
+        reason = reason[3:].strip()
+    if not reason:
+        pos = g.get("positives") or []
+        neg = g.get("negatives") or []
+        if status == "무효화":
+            reason = str(neg[0]) if neg else "무효선 이탈"
+        else:
+            reason = str(pos[0]) if pos else "—"
+    reason_cell = _wrap_cell_text(reason, width=22, max_lines=2)
+
+    return {
+        "num": num,
+        "pattern": f"{name}({pid})",
+        "status": status_cell,
+        "levels": levels_cell,
+        "guide": guide_cell,
+        "reason": reason_cell,
+        "action": str(action),
+    }
+
+
+def _insight_row_from_generic(
+    *,
+    num: str,
+    ev: Dict[str, Any],
+) -> Dict[str, str]:
+    """하단 통합 인사이트 테이블 1행 (일반 패턴 · 측정목표 없음)."""
+    pid = str(ev.get("pattern_id") or "")
+    crit = CHART_PATTERN_CRITERIA[ID_TO_ROW[pid]] if pid in ID_TO_ROW else {}
+    name = str(crit.get("label") or pid)
+    conf = float(ev.get("confidence") or 0.0)
+    impl_txt, _sign = PATTERN_IMPLICATION.get(pid, ("", 0))
+    return {
+        "num": num,
+        "pattern": f"{name}({pid})",
+        "status": f"[일반] {_fmt_confidence_score(conf, short=True)}",
+        "levels": "—",
+        "guide": "유지",
+        "reason": _wrap_cell_text(impl_txt or "—", width=22, max_lines=2),
+        "action": "유지",
+    }
+
+
+def _draw_pattern_insight_table(ax, rows: List[Dict[str, str]]) -> None:
+    """패턴 미니차트 아래 전폭 인사이트 표 (열·문구 축소)."""
+    ax.axis("off")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    # 제목을 축 안쪽에 두어 미니 거래량/날짜와 겹치지 않게 함
+    ax.text(
+        0.0, 0.985, "패턴 인사이트",
+        transform=ax.transAxes, fontsize=9.0, fontweight="bold",
+        color="#2c3e50", ha="left", va="top", clip_on=True,
+    )
+    if not rows:
+        ax.text(0.5, 0.45, "표시할 패턴 인사이트 없음", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color="#95a5a6")
+        return
+
+    headers = ["#", "패턴", "상태", "목표/무효", "가이드", "근거"]
+    cell_text = [
+        [
+            r.get("num", ""),
+            r.get("pattern", ""),
+            r.get("status", ""),
+            r.get("levels", r.get("target", "—")),
+            r.get("guide", ""),
+            r.get("reason", ""),
+        ]
+        for r in rows
+    ]
+    # 근거 열을 넓혀 잘림 완화
+    col_widths = [0.04, 0.20, 0.15, 0.15, 0.16, 0.30]
+    n_rows = max(len(rows), 1)
+    # 2줄 셀을 고려해 행 높이 확보
+    max_lines = 1
+    for row in cell_text:
+        for cell in row:
+            max_lines = max(max_lines, str(cell).count("\n") + 1)
+    row_h = min(0.17, 0.82 / (n_rows + 1.2) * (1.0 + 0.18 * (max_lines - 1)))
+    table = ax.table(
+        cellText=cell_text,
+        colLabels=headers,
+        loc="upper center",
+        cellLoc="left",
+        colLoc="left",
+        bbox=[0.0, 0.00, 1.0, 0.88],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(7.0)
+    table.scale(1.0, 1.0)
+
+    action_edge = {"매수": "#27ae60", "매도": "#c0392b", "유지": "#95a5a6"}
+    for (r, c), cell in table.get_celld().items():
+        cell.set_edgecolor("#d5d8dc")
+        cell.set_linewidth(0.6)
+        cell.set_height(row_h if r > 0 else row_h * 0.90)
+        if r == 0:
+            cell.set_facecolor("#34495e")
+            cell.set_text_props(color="white", fontweight="bold", fontsize=6.8)
+        else:
+            row_data = rows[r - 1]
+            act = row_data.get("action") or "유지"
+            if c == 2:
+                cell.set_facecolor(
+                    {"매수": "#eafaf1", "매도": "#fdedec", "유지": "#f4f6f7"}.get(act, "#f8f9fa")
+                )
+            else:
+                cell.set_facecolor("#ffffff" if r % 2 else "#f8f9fa")
+            if c == 0:
+                cell.set_edgecolor(action_edge.get(act, "#bdc3c7"))
+                cell.set_linewidth(1.5)
+            cell.set_text_props(color="#1a1a1a", fontsize=6.6)
+        if c < len(col_widths):
+            cell.set_width(col_widths[c])
+        # 줄바꿈 텍스트 가독성
+        txt = cell.get_text()
+        txt.set_wrap(True)
+        txt.set_linespacing(1.15)
+        txt.set_va("center")
+        txt.set_ha("left" if c > 0 else "center")
 
 
 def _evaluate_triple_bottom_w(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -5141,6 +6479,92 @@ def _evaluate_double_top_m(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dic
     }
 
 
+def _evaluate_bull_double_bottom(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """쌍바닥 상세 평가: 두 저점·넥라인(중간 고점), 상방 돌파, 측정 목표(상승)."""
+    tr_ds = ev.get("trough_dates")
+    tr_ps = ev.get("trough_prices")
+    p_d = ev.get("peak_date")
+    p_p = ev.get("peak_price")
+    if not tr_ds or not tr_ps or p_d is None or p_p is None or len(tr_ds) != 2:
+        return None
+
+    tr_ds = [pd.Timestamp(t) for t in tr_ds]
+    tr_ps = [float(p) for p in tr_ps]
+    p_d = pd.Timestamp(p_d)
+    p_p = float(p_p)
+
+    idx = df.index
+    pos = [int(idx.get_indexer([t], method="pad")[0]) for t in tr_ds]
+    if any(p < 0 for p in pos):
+        return None
+    i, k = pos
+    n = len(df)
+    close = df["Close"].astype(float)
+    vol = df["Volume"].astype(float)
+    current = float(close.iloc[-1])
+
+    neck = p_p
+    breakout = current > neck
+    breakout_pct = (current / neck - 1.0) * 100.0 if neck else 0.0
+
+    breakout_pos = None
+    for t in range(k + 1, n):
+        if float(close.iloc[t]) > neck:
+            breakout_pos = t
+            break
+
+    w = max(3, (k - i) // 4)
+    seg_p1 = vol.iloc[max(0, i - w): i + w + 1]
+    seg_p2 = vol.iloc[max(0, k - w): k + w + 1]
+    checks: List[Tuple[str, str]] = []
+    ok_a = len(seg_p1) > 0 and len(seg_p2) > 0 and seg_p2.mean() < seg_p1.mean()
+    checks.append(("제2바닥 감소", "○" if ok_a else "×"))
+    if breakout_pos is not None:
+        vol_ma20 = vol.rolling(20).mean()
+        ma_at = vol_ma20.iloc[breakout_pos]
+        ok_b = pd.notna(ma_at) and float(vol.iloc[breakout_pos]) >= 1.5 * float(ma_at)
+        checks.append(("돌파 증량", "○" if ok_b else "×"))
+    else:
+        checks.append(("돌파 증량", "대기"))
+    vol_ok_n = sum(1 for _, v in checks if v == "○")
+    vol_total = sum(1 for _, v in checks if v in ("○", "×"))
+
+    height = max(neck - float(np.mean(tr_ps)), 0.0)
+    target = neck + height
+    target_pct = (target / current - 1.0) * 100.0 if current else 0.0
+    invalid = min(tr_ps)
+    invalid_pct = (invalid / current - 1.0) * 100.0 if current else 0.0
+    risk = current - invalid
+    risk_reward = (target - current) / risk if risk > 0 and target > current else None
+    progress_pct = ((current - neck) / height * 100.0) if (breakout and height > 0) else None
+    formation_days = (tr_ds[1] - tr_ds[0]).days
+
+    return {
+        "invalidated": current < invalid,
+        "target": float(target),
+        "target_pct": target_pct,
+        "invalid": float(invalid),
+        "invalid_pct": invalid_pct,
+        "risk_reward": risk_reward,
+        "progress_pct": progress_pct,
+        "formation_days": formation_days,
+        "height": float(height),
+        "pivot_dates": [tr_ds[0], p_d, tr_ds[1]],
+        "pivot_prices": [tr_ps[0], p_p, tr_ps[1]],
+        "labels": ["제1바닥", "넥라인 고점", "제2바닥"],
+        "neck_dates": [p_d, tr_ds[1]],
+        "neck_prices": [neck, neck],
+        "neck_now": float(neck),
+        "breakout": breakout,
+        "breakout_pct": breakout_pct,
+        "breakout_date": pd.Timestamp(idx[breakout_pos]) if breakout_pos is not None else None,
+        "vol_checks": checks,
+        "vol_ok_n": vol_ok_n,
+        "vol_total": vol_total,
+        "end_str": tr_ds[1].strftime("%m/%d"),
+    }
+
+
 def _evaluate_asc_triangle(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
     상승삼각 상세 평가: 수평 저항선·상승 지지선 추정, 돌파 상태, 거래량 채점, 측정 목표(상승).
@@ -5229,6 +6653,214 @@ def _evaluate_asc_triangle(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dic
         "vol_ok_n": vol_ok_n,
         "vol_total": vol_total,
         "end_str": end.strftime("%m/%d"),
+    }
+
+
+def _evaluate_bear_desc_triangle(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """하락삼각: 수평 지지·하락 저항, 하방 이탈, 측정 목표(하락)."""
+    start = pd.Timestamp(ev.get("start"))
+    end = pd.Timestamp(ev.get("end") or ev.get("start"))
+    idx = df.index
+    i0 = int(idx.get_indexer([start], method="pad")[0])
+    i1 = int(idx.get_indexer([end], method="pad")[0])
+    if i0 < 0 or i1 - i0 < 8:
+        return None
+
+    n = len(df)
+    close = df["Close"].astype(float)
+    vol = df["Volume"].astype(float)
+    current = float(close.iloc[-1])
+    hi_w = df["High"].iloc[i0:i1 + 1].astype(float).values
+    lo_w = df["Low"].iloc[i0:i1 + 1].astype(float).values
+
+    support = float(np.mean(np.sort(lo_w)[:5]))
+    x = np.arange(len(hi_w), dtype=float)
+    res_slope, res_icpt = np.polyfit(x, hi_w, 1)
+    res_first = float(res_icpt)
+    res_last = float(res_icpt + res_slope * x[-1])
+
+    breakout = current < support
+    breakout_pct = (current / support - 1.0) * 100.0 if support else 0.0
+    breakout_pos = None
+    for t in range(i1 + 1, n):
+        if float(close.iloc[t]) < support:
+            breakout_pos = t
+            break
+
+    half = (i1 - i0) // 2
+    seg_a = vol.iloc[i0: i0 + half + 1]
+    seg_b = vol.iloc[i0 + half: i1 + 1]
+    checks: List[Tuple[str, str]] = []
+    ok_a = len(seg_a) > 0 and len(seg_b) > 0 and seg_b.mean() < seg_a.mean()
+    checks.append(("형성 후반 감소", "○" if ok_a else "×"))
+    if breakout_pos is not None:
+        vol_ma20 = vol.rolling(20).mean()
+        ma_at = vol_ma20.iloc[breakout_pos]
+        ok_b = pd.notna(ma_at) and float(vol.iloc[breakout_pos]) >= 1.5 * float(ma_at)
+        checks.append(("이탈 증량", "○" if ok_b else "×"))
+    else:
+        checks.append(("이탈 증량", "대기"))
+    vol_ok_n = sum(1 for _, v in checks if v == "○")
+    vol_total = sum(1 for _, v in checks if v in ("○", "×"))
+
+    height = max(res_first - support, 0.0)
+    target = support - height
+    target_pct = (target / current - 1.0) * 100.0 if current else 0.0
+    invalid = res_last
+    invalid_pct = (invalid / current - 1.0) * 100.0 if current else 0.0
+    risk = invalid - current
+    risk_reward = (current - target) / risk if risk > 0 and target < current else None
+    progress_pct = ((support - current) / height * 100.0) if (breakout and height > 0) else None
+    formation_days = (end - start).days
+
+    return {
+        "invalidated": current > invalid,
+        "target": float(target),
+        "target_pct": target_pct,
+        "invalid": float(invalid),
+        "invalid_pct": invalid_pct,
+        "risk_reward": risk_reward,
+        "progress_pct": progress_pct,
+        "formation_days": formation_days,
+        "height": float(height),
+        "pivot_dates": [],
+        "pivot_prices": [],
+        "labels": [],
+        "neck_dates": [idx[i0], idx[i1]],
+        "neck_prices": [support, support],
+        "neck_now": float(support),
+        "aux_line": ([idx[i0], idx[i1]], [res_first, res_last]),
+        "breakout": breakout,
+        "breakout_pct": breakout_pct,
+        "breakout_date": pd.Timestamp(idx[breakout_pos]) if breakout_pos is not None else None,
+        "vol_checks": checks,
+        "vol_ok_n": vol_ok_n,
+        "vol_total": vol_total,
+        "end_str": end.strftime("%m/%d"),
+    }
+
+
+def _evaluate_bear_triple_top(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """삼중탑: 세 고점·목선 저점, 하방 이탈, 측정 목표(하락). 삼중바닥의 대칭."""
+    pds = ev.get("pivot_dates")
+    pps = ev.get("pivot_prices")
+    nds = ev.get("neckline_dates")
+    nps = ev.get("neckline_prices")
+    if not pds or not pps or not nds or not nps or len(pds) != 3 or len(nds) != 2:
+        return None
+
+    pds = [pd.Timestamp(t) for t in pds]
+    nds = [pd.Timestamp(t) for t in nds]
+    pps = [float(p) for p in pps]
+    nps = [float(p) for p in nps]
+
+    idx = df.index
+    pos = [int(idx.get_indexer([t], method="pad")[0]) for t in pds]
+    if any(p < 0 for p in pos):
+        return None
+    i, j, k = pos
+    n = len(df)
+    close = df["Close"].astype(float)
+    vol = df["Volume"].astype(float)
+    current = float(close.iloc[-1])
+
+    mid_is_head = pps[1] >= max(pps[0], pps[2])
+    labels = ["좌어깨", "머리" if mid_is_head else "중앙 고점", "우어깨"]
+
+    slope_pct = (nps[1] / nps[0] - 1.0) * 100.0 if nps[0] else 0.0
+    if slope_pct < -1.0:
+        slope_cls, slope_comment = "우하향", "신뢰 보강"
+    elif slope_pct > 1.0:
+        slope_cls, slope_comment = "우상향", "신뢰 낮음"
+    else:
+        slope_cls, slope_comment = "평형", ""
+
+    x1 = mdates.date2num(nds[0].to_pydatetime())
+    x2 = mdates.date2num(nds[1].to_pydatetime())
+    slope = (nps[1] - nps[0]) / max(x2 - x1, 1e-9)
+    x_last = mdates.date2num(pd.Timestamp(idx[-1]).to_pydatetime())
+    neck_now = nps[1] + slope * (x_last - x2)
+    breakout = current < neck_now
+    breakout_pct = (current / neck_now - 1.0) * 100.0 if neck_now else 0.0
+
+    breakout_pos = None
+    for t in range(k + 1, n):
+        x_t = mdates.date2num(pd.Timestamp(idx[t]).to_pydatetime())
+        if float(close.iloc[t]) < nps[1] + slope * (x_t - x2):
+            breakout_pos = t
+            break
+
+    m_lh = (i + j) // 2
+    m_hr = (j + k) // 2
+    seg_l = vol.iloc[max(0, i - 2): m_lh + 1]
+    seg_h = vol.iloc[m_lh: m_hr + 1]
+    seg_r = vol.iloc[m_hr: min(k + 3, n)]
+    checks: List[Tuple[str, str]] = []
+    ok_a = len(seg_r) > 0 and len(seg_h) > 0 and seg_r.mean() < seg_h.mean()
+    checks.append(("우어깨 감소", "○" if ok_a else "×"))
+    m = min(8, n - 1 - k)
+    if m >= 2:
+        rebound = vol.iloc[k + 1: k + 1 + m].mean()
+        before = vol.iloc[max(j, k - m): k + 1].mean()
+        ok_b = rebound > before
+        checks.append(("조정 증량", "○" if ok_b else "×"))
+    else:
+        checks.append(("조정 증량", "판단 불가"))
+    if breakout_pos is not None:
+        vol_ma20 = vol.rolling(20).mean()
+        ma_at = vol_ma20.iloc[breakout_pos]
+        ok_c = pd.notna(ma_at) and float(vol.iloc[breakout_pos]) >= 1.5 * float(ma_at)
+        checks.append(("이탈 증량", "○" if ok_c else "×"))
+    else:
+        checks.append(("이탈 증량", "대기"))
+    vol_ok_n = sum(1 for _, v in checks if v == "○")
+    vol_total = sum(1 for _, v in checks if v in ("○", "×"))
+
+    head_i = int(np.argmax(pps))
+    head_price = pps[head_i]
+    x_head = mdates.date2num(pds[head_i].to_pydatetime())
+    neck_at_head = nps[0] + slope * (x_head - x1)
+    height = max(head_price - neck_at_head, 0.0)
+    if breakout_pos is not None:
+        x_bo = mdates.date2num(pd.Timestamp(idx[breakout_pos]).to_pydatetime())
+        neck_ref = nps[1] + slope * (x_bo - x2)
+    else:
+        neck_ref = neck_now
+    target = neck_ref - height
+    target_pct = (target / current - 1.0) * 100.0 if current else 0.0
+    invalid = max(pps)
+    invalid_pct = (invalid / current - 1.0) * 100.0 if current else 0.0
+    risk = invalid - current
+    risk_reward = (current - target) / risk if risk > 0 and target < current else None
+    progress_pct = ((neck_now - current) / height * 100.0) if (breakout and height > 0) else None
+    formation_days = (pds[2] - pds[0]).days
+
+    return {
+        "invalidated": current > invalid,
+        "target": float(target),
+        "target_pct": target_pct,
+        "invalid": float(invalid),
+        "invalid_pct": invalid_pct,
+        "risk_reward": risk_reward,
+        "progress_pct": progress_pct,
+        "formation_days": formation_days,
+        "height": float(height),
+        "pivot_dates": pds,
+        "pivot_prices": pps,
+        "labels": labels,
+        "neck_dates": nds,
+        "neck_prices": nps,
+        "neck_now": float(neck_now),
+        "slope_cls": slope_cls,
+        "slope_comment": slope_comment,
+        "slope_pct": slope_pct,
+        "breakout": breakout,
+        "breakout_pct": breakout_pct,
+        "breakout_date": pd.Timestamp(idx[breakout_pos]) if breakout_pos is not None else None,
+        "vol_checks": checks,
+        "vol_ok_n": vol_ok_n,
+        "vol_total": vol_total,
+        "end_str": pds[2].strftime("%m/%d"),
     }
 
 
@@ -5424,6 +7056,105 @@ def _evaluate_flag(ev: Dict[str, Any], df: pd.DataFrame, *, bullish: bool) -> Op
     }
 
 
+def _evaluate_bull_cup_handle(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """컵앤핸들: 림 상방 돌파, 목표 = 림 + 컵 깊이."""
+    rim = ev.get("rim")
+    bottom = ev.get("bottom")
+    handle_end = ev.get("handle_end") or ev.get("end")
+    left_d = ev.get("left_rim_date")
+    right_d = ev.get("right_rim_date")
+    bot_d = ev.get("bottom_date")
+    if rim is None or bottom is None or handle_end is None:
+        return None
+    rim = float(rim)
+    bottom = float(bottom)
+    depth = rim - bottom
+    if depth <= 0:
+        return None
+
+    idx = df.index
+    end = pd.Timestamp(handle_end)
+    i1 = int(idx.get_indexer([end], method="pad")[0])
+    if i1 < 0:
+        return None
+    n = len(df)
+    close = df["Close"].astype(float)
+    vol = df["Volume"].astype(float)
+    current = float(close.iloc[-1])
+
+    breakout = current > rim
+    breakout_pct = (current / rim - 1.0) * 100.0 if rim else 0.0
+    breakout_pos = None
+    for t in range(i1 + 1, n):
+        if float(close.iloc[t]) > rim:
+            breakout_pos = t
+            break
+
+    checks: List[Tuple[str, str]] = []
+    if breakout_pos is not None:
+        vol_ma20 = vol.rolling(20).mean()
+        ma_at = vol_ma20.iloc[breakout_pos]
+        ok = pd.notna(ma_at) and float(vol.iloc[breakout_pos]) >= 1.5 * float(ma_at)
+        checks.append(("돌파 증량", "○" if ok else "×"))
+    else:
+        checks.append(("돌파 증량", "대기"))
+    vol_ok_n = sum(1 for _, v in checks if v == "○")
+    vol_total = sum(1 for _, v in checks if v in ("○", "×"))
+
+    target = rim + depth
+    target_pct = (target / current - 1.0) * 100.0 if current else 0.0
+    invalid = float(ev.get("handle_low") or bottom)
+    invalid_pct = (invalid / current - 1.0) * 100.0 if current else 0.0
+    risk = current - invalid
+    risk_reward = (target - current) / risk if risk > 0 and target > current else None
+    progress_pct = ((current - rim) / depth * 100.0) if (breakout and depth > 0) else None
+
+    pivot_dates = []
+    pivot_prices = []
+    labels = []
+    for d, p, lb in (
+        (left_d, ev.get("left_rim"), "좌림"),
+        (bot_d, bottom, "컵바닥"),
+        (right_d, ev.get("right_rim"), "우림"),
+    ):
+        if d is not None and p is not None:
+            pivot_dates.append(pd.Timestamp(d))
+            pivot_prices.append(float(p))
+            labels.append(lb)
+
+    start = pd.Timestamp(ev.get("start") or left_d or end)
+    formation_days = (end - start).days
+
+    # 림은 수평 기준선 — 미니차트 연장을 위해 좌·우 2점
+    neck_left = pd.Timestamp(left_d) if left_d is not None else start
+    neck_right = pd.Timestamp(right_d) if right_d is not None else end
+
+    return {
+        "invalidated": current < invalid,
+        "target": float(target),
+        "target_pct": target_pct,
+        "invalid": float(invalid),
+        "invalid_pct": invalid_pct,
+        "risk_reward": risk_reward,
+        "progress_pct": progress_pct,
+        "formation_days": formation_days,
+        "height": float(depth),
+        "pivot_dates": pivot_dates,
+        "pivot_prices": pivot_prices,
+        "labels": labels,
+        "neck_dates": [neck_left, neck_right],
+        "neck_prices": [rim, rim],
+        "neck_now": float(rim),
+        "breakout": breakout,
+        "breakout_pct": breakout_pct,
+        "breakout_date": pd.Timestamp(idx[breakout_pos]) if breakout_pos is not None else None,
+        "vol_checks": checks,
+        "vol_ok_n": vol_ok_n,
+        "vol_total": vol_total,
+        "end_str": end.strftime("%m/%d"),
+    }
+
+
 def _plot_double_top_detail(ax, dt: Dict[str, Any], last_ts, fmt_price) -> None:
     """쌍봉(M) 전용 렌더: 고점/저점 마커 + 수평 목선(연장) + 상태 라벨."""
     col = "#c0392b"
@@ -5586,10 +7317,22 @@ def _plot_pattern_target_mini(
                     fontsize=6.2, fontweight="bold", color=col, ha="center", zorder=12)
 
     # 넥라인(기준선) + 연장
-    nds, nps = tb["neck_dates"], tb["neck_prices"]
-    ax.plot(nds, nps, color=neck_col, linestyle="--", linewidth=1.4, alpha=0.95, zorder=9)
-    ax.plot([nds[1], seg.index[-1]], [nps[1], tb["neck_now"]], color=neck_col,
-            linestyle=":", linewidth=1.1, alpha=0.7, zorder=8)
+    nds, nps = list(tb.get("neck_dates") or []), list(tb.get("neck_prices") or [])
+    if nds and nps:
+        # 길이가 다르면 짧은 쪽에 맞춤
+        n_pts = min(len(nds), len(nps))
+        nds, nps = nds[:n_pts], nps[:n_pts]
+        ax.plot(nds, nps, color=neck_col, linestyle="--", linewidth=1.4, alpha=0.95, zorder=9)
+        # 단점(수평 림 등)도 현재 넥라인 값까지 점선 연장
+        ax.plot(
+            [nds[-1], seg.index[-1]],
+            [nps[-1], tb["neck_now"]],
+            color=neck_col,
+            linestyle=":",
+            linewidth=1.1,
+            alpha=0.7,
+            zorder=8,
+        )
 
     # 보조선 (예: 상승삼각의 상승 지지선)
     aux = tb.get("aux_line")
@@ -5607,8 +7350,8 @@ def _plot_pattern_target_mini(
     ax.plot([x_last, x_proj], [invalid, invalid], color="#e74c3c", linestyle=":",
             linewidth=1.2, alpha=0.85, zorder=10)
     if not expired:
-        ax.annotate(
-            "",
+        _annotate_data_arrow(
+            ax,
             xy=((x_last + x_proj) / 2.0, target),
             xytext=(x_last, current),
             arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2, linestyle=":"),
@@ -5670,23 +7413,15 @@ def _plot_pattern_target_mini(
         ax, x_proj, invalid, f"무효 {fmt_price(invalid)}", "#e74c3c", dy=inv_dy,
     )
 
-    # 제목: 상태 + 액션 배지
-    title = title_base
+    # 제목은 축 위 전용 밴드에 배치 (이격도 날짜는 미니 있을 때 숨김)
     status = g.get("status")
-    if status == "무효화":
-        title += " · 무효화"
-    elif status == "달성":
-        title += " · 목표 달성"
-    elif tb["breakout"] and tb.get("progress_pct") is not None:
-        if tb["progress_pct"] >= 0:
-            title += f" · 달성률 {tb['progress_pct']:.0f}%"
-        else:
-            title += " · 돌파 후 되돌림" if direction == "up" else " · 이탈 후 되돌림"
     action = g.get("action")
     action_colors = {"매수": "#27ae60", "매도": "#c0392b", "유지": "#7f8c8d"}
-    if action:
-        title += f"  [{action}]"
-    ax.set_title(title, fontsize=8.0, fontweight="bold", color=action_colors.get(action, col), pad=3)
+    ax.set_title(
+        title_base, fontsize=7.5, fontweight="bold",
+        color=action_colors.get(action, col), pad=3,
+    )
+    ax.title.set_clip_on(False)
 
     ax.grid(True, alpha=0.2, linestyle=":")
     ax.tick_params(axis="y", labelsize=6.5)
@@ -5747,16 +7482,10 @@ def _plot_pattern_target_mini(
         ax_vol.set_ylabel("Vol(M)", fontsize=5.5, color="#7f8c8d", labelpad=1)
         ax_vol.yaxis.set_major_formatter(FuncFormatter(lambda v, _p=None: f"{v:.0f}"))
         _kill_axis_offsets(ax_vol)
-        ax_vol.tick_params(axis="x", labelsize=5.0, pad=1.5, length=2.5, labelbottom=True)
-        ax_vol.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-        ax_vol.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=2, maxticks=3))
-        for lbl in ax_vol.get_xticklabels():
-            lbl.set_clip_on(False)
+        _style_mini_date_xaxis(ax_vol, labelsize=5.0, pad=1.0, length=2.0, clip_on=True)
         ax_vol.grid(True, alpha=0.15, linestyle=":")
     else:
-        ax.tick_params(axis="x", labelbottom=True, labelsize=5.5, pad=1.5)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=2, maxticks=3))
+        _style_mini_date_xaxis(ax, labelsize=5.5, pad=1.5, length=2.0, clip_on=True)
 
     # ---------- 캡션(제안 A): 슬림 헤더·조건1줄·가이드 + 텍스트 범례 ----------
     legend_line = _mini_legend_text(
@@ -5827,12 +7556,7 @@ def _plot_pattern_target_mini(
             legend_line=legend_line or None,
             reason=line4 or None,
         )
-    else:
-        ax.text(
-            0.5, -0.18, "\n".join(x for x in (legend_line, line1, line2, line3, line4) if x),
-            transform=ax.transAxes, fontsize=5.8, fontweight="bold",
-            color="#34495e", ha="center", va="top", linespacing=1.1, clip_on=False,
-        )
+    # ax_cap=None → 전폭 인사이트 표에서 표시 (미니 하단 텍스트 생략)
 
 
 def _plot_pattern_span_on_main(
@@ -6025,8 +7749,9 @@ def _plot_generic_pattern_mini(
 
     conf = float(ev.get("confidence", 0))
     impl_txt, sign = PATTERN_IMPLICATION.get(pid, ("", 0))
-    ax.set_title(f"{num} {crit['label']} · {end.strftime('%m/%d')}",
-                 fontsize=8.0, fontweight="bold", color=col, pad=3)
+    ax.set_title(f"{num} {crit['label']}",
+                 fontsize=7.5, fontweight="bold", color=col, pad=3)
+    ax.title.set_clip_on(False)
     ax.grid(True, alpha=0.2, linestyle=":")
     ax.tick_params(axis="y", labelsize=6.5)
     ax.tick_params(axis="x", labelbottom=False, length=0)
@@ -6057,16 +7782,10 @@ def _plot_generic_pattern_mini(
         ax_vol.set_ylabel("Vol(M)", fontsize=5.5, color="#7f8c8d", labelpad=1)
         ax_vol.yaxis.set_major_formatter(FuncFormatter(lambda v, _p=None: f"{v:.0f}"))
         _kill_axis_offsets(ax_vol)
-        ax_vol.tick_params(axis="x", labelsize=5.0, pad=1.5, length=2.5, labelbottom=True)
-        ax_vol.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-        ax_vol.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=2, maxticks=3))
-        for lbl in ax_vol.get_xticklabels():
-            lbl.set_clip_on(False)
+        _style_mini_date_xaxis(ax_vol, labelsize=5.0, pad=1.5, length=2.5, clip_on=True)
         ax_vol.grid(True, alpha=0.15, linestyle=":")
     else:
-        ax.tick_params(axis="x", labelbottom=True, labelsize=5.5, pad=1.5)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=2, maxticks=3))
+        _style_mini_date_xaxis(ax, labelsize=5.5, pad=1.5, length=2.0, clip_on=True)
 
     legend_line = _mini_legend_text(pattern_span=True, has_surge=bool(ax_vol is not None and surge))
     if ax_vol is not None and not surge:
@@ -6088,8 +7807,7 @@ def _plot_generic_pattern_mini(
         _draw_mini_caption_card(
             ax_cap, line1, line2, line3, action="유지", legend_line=legend_line or None,
         )
-    else:
-        ax.set_xlabel(f"{line1}\n{line2}\n{line3}", fontsize=6.0, fontweight="bold", color="#34495e")
+    # ax_cap=None → 전폭 인사이트 표에서 표시
 
 
 def _evaluate_fvg_gap(ev: Dict[str, Any], df: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -6230,36 +7948,66 @@ def _pattern_expired(pe: Optional[Dict[str, Any]]) -> bool:
 
 # 패턴별 측정 목표 분석 사양: 시나리오 번호·방향·기준선 라벨·미니 차트 색·평가 함수
 PATTERN_TARGET_SPECS: Dict[str, Dict[str, Any]] = {
-    "triple_bottom_w": dict(num="⑤", name="역삼중창(W)", bullish=True, break_label="넥라인",
+    "triple_bottom_w": dict(num="⑤", name="상승반·삼중바닥", bullish=True, break_label="넥라인",
                             col="#16a085", neck_col="#c0392b", base=40.0,
                             evaluate=_evaluate_triple_bottom_w),
-    "double_top_m": dict(num="⑥", name="쌍봉(M)", bullish=False, break_label="목선",
+    "bear_triple_top": dict(num="⑮", name="하락반·삼중탑", bullish=False, break_label="목선",
+                            col="#c0392b", neck_col="#16a085", base=40.0,
+                            evaluate=_evaluate_bear_triple_top),
+    "double_top_m": dict(num="⑥", name="하락반·쌍봉", bullish=False, break_label="목선",
                          col="#c0392b", neck_col="#d35400", base=40.0,
                          evaluate=_evaluate_double_top_m),
-    "asc_triangle": dict(num="⑦", name="상승삼각", bullish=True, break_label="저항선",
+    "bull_double_bottom": dict(num="⑯", name="상승반·쌍바닥", bullish=True, break_label="넥라인",
+                               col="#1abc9c", neck_col="#16a085", base=40.0,
+                               evaluate=_evaluate_bull_double_bottom),
+    "asc_triangle": dict(num="⑦", name="상승지·상승삼각", bullish=True, break_label="저항선",
                          col="#2980b9", neck_col="#d35400", base=40.0,
                          evaluate=_evaluate_asc_triangle),
-    "bull_engulf": dict(num="⑧", name="강세엥걸핑", bullish=True, break_label="장악봉 고가",
+    "bear_desc_triangle": dict(num="⑰", name="하락지·하락삼각", bullish=False, break_label="지지선",
+                               col="#e67e22", neck_col="#c0392b", base=40.0,
+                               evaluate=_evaluate_bear_desc_triangle),
+    "bull_engulf": dict(num="⑧", name="상승반·엥걸핑", bullish=True, break_label="장악봉 고가",
                         col="#27ae60", neck_col="#2ecc71", base=35.0,
                         evaluate=lambda ev, df: _evaluate_candle_range(ev, df, bullish=True, label="장악봉")),
-    "bear_engulf": dict(num="⑨", name="약세엥걸핑", bullish=False, break_label="장악봉 저가",
+    "bear_engulf": dict(num="⑨", name="하락반·엥걸핑", bullish=False, break_label="장악봉 저가",
                         col="#c0392b", neck_col="#e74c3c", base=35.0,
                         evaluate=lambda ev, df: _evaluate_candle_range(ev, df, bullish=False, label="장악봉")),
-    "bull_flag": dict(num="⑩", name="상승깃발", bullish=True, break_label="깃발 상단",
+    "bull_flag": dict(num="⑩", name="상승지·깃발", bullish=True, break_label="깃발 상단",
                       col="#27ae60", neck_col="#16a085", base=40.0,
                       evaluate=lambda ev, df: _evaluate_flag(ev, df, bullish=True)),
-    "bear_flag": dict(num="⑪", name="하락깃발", bullish=False, break_label="깃발 하단",
+    "bear_flag": dict(num="⑪", name="하락지·깃발", bullish=False, break_label="깃발 하단",
                       col="#c0392b", neck_col="#e67e22", base=40.0,
                       evaluate=lambda ev, df: _evaluate_flag(ev, df, bullish=False)),
-    "bull_hammer": dict(num="⑫", name="망치형", bullish=True, break_label="망치봉 고가",
+    "bull_hammer": dict(num="⑫", name="상승반·해머", bullish=True, break_label="망치봉 고가",
                         col="#27ae60", neck_col="#2ecc71", base=33.0,
                         evaluate=lambda ev, df: _evaluate_candle_range(ev, df, bullish=True, label="망치봉")),
-    "bear_hanging_man": dict(num="⑬", name="행잉맨", bullish=False, break_label="행잉맨 저가",
+    "bear_hanging_man": dict(num="⑬", name="하락반·행잉맨", bullish=False, break_label="행잉맨 저가",
                              col="#c0392b", neck_col="#e74c3c", base=33.0,
                              evaluate=lambda ev, df: _evaluate_candle_range(ev, df, bullish=False, label="행잉맨")),
-    "fvg_gap": dict(num="⑭", name="FVG(갭)", bullish=True, break_label="갭",
+    "fvg_gap": dict(num="⑭", name="중립·FVG", bullish=True, break_label="갭",
                     col="#8e44ad", neck_col="#9b59b6", base=36.0,
                     evaluate=_evaluate_fvg_gap),
+    "bull_falling_wedge": dict(num="⑱", name="상승반·하락쐐기", bullish=True, break_label="상단선",
+                               col="#27ae60", neck_col="#16a085", base=38.0,
+                               evaluate=_evaluate_asc_triangle),
+    "bear_rising_wedge": dict(num="⑲", name="하락반·상승쐐기", bullish=False, break_label="하단선",
+                              col="#e74c3c", neck_col="#c0392b", base=38.0,
+                              evaluate=_evaluate_bear_desc_triangle),
+    "bull_pennant": dict(num="⑳", name="상승지·펜넌트", bullish=True, break_label="펜넌트 상단",
+                         col="#2ecc71", neck_col="#16a085", base=38.0,
+                         evaluate=lambda ev, df: _evaluate_flag(ev, df, bullish=True)),
+    "bear_pennant": dict(num="㉑", name="하락지·펜넌트", bullish=False, break_label="펜넌트 하단",
+                         col="#e74c3c", neck_col="#e67e22", base=38.0,
+                         evaluate=lambda ev, df: _evaluate_flag(ev, df, bullish=False)),
+    "bull_inv_hs": dict(num="㉒", name="상승반·역헤드앤숄더", bullish=True, break_label="넥라인",
+                        col="#1abc9c", neck_col="#c0392b", base=42.0,
+                        evaluate=_evaluate_triple_bottom_w),
+    "bear_hs": dict(num="㉓", name="하락반·헤드앤숄더", bullish=False, break_label="목선",
+                    col="#c0392b", neck_col="#16a085", base=42.0,
+                    evaluate=_evaluate_bear_triple_top),
+    "bull_cup_handle": dict(num="㉔", name="상승지·컵핸들", bullish=True, break_label="림",
+                            col="#2980b9", neck_col="#16a085", base=40.0,
+                            evaluate=_evaluate_bull_cup_handle),
 }
 
 
@@ -6313,6 +8061,20 @@ def plot_tech_annotation_chart(
     else:
         fmt_price = lambda p: f"\\${p:.2f}"
         currency = "$"
+
+    # 틱커 + 기업명 (제목·인사이트 헤더)
+    ticker_label = str(ticker)
+    try:
+        from .volume_profile_overlay_chart import get_stock_info
+        company_name, _, _ = get_stock_info(ticker)
+        company_name = (company_name or "").strip()
+        if company_name and company_name.upper() != str(ticker).upper():
+            # 제목 길이 제한 (법인격 접미사 등은 유지하되 과도한 장문만 축약)
+            if len(company_name) > 42:
+                company_name = company_name[:41].rstrip() + "…"
+            ticker_label = f"{ticker} ({company_name})"
+    except Exception as e:
+        print(f"tech annotation: 기업명 조회 실패 {e}")
 
     # ---------- 분석 ----------
     sr_levels = compute_support_resistance_levels(df, pivot_span=sr_pivot_span)
@@ -6388,39 +8150,46 @@ def plot_tech_annotation_chart(
         peg_view = build_peg_investment_view(None)
 
     # ---------- 레이아웃 ----------
-    # 패턴 감지 시 하단에 패턴별 미니 차트 행(최대 4개)을 추가하고 그림 높이를 확장
+    # 패턴 감지 시: 하단 미니차트(가격+거래량만) + 전폭 인사이트 표
+    # 이격도 아래: 급등·급락 이력 레인 (세로 점선 가이드)
     mini_patterns = top_patterns[:4]
-    # 각 원소: (ax_price, ax_vol_strip, ax_caption) — 겹침 방지용 3단 분리
-    mini_axes: List[Tuple[Any, Any, Any]] = []
+    # 각 원소: (ax_price, ax_vol_strip)
+    mini_axes: List[Tuple[Any, Any]] = []
+    ax_insight = None
+    ax_hist = None
     if mini_patterns:
-        fig = plt.figure(figsize=(20, 14.5))
-        # 이격도(하단) ↔ 미니차트 사이 일자 라벨 공간 확보
-        ax_main = fig.add_axes([0.045, 0.535, 0.665, 0.385])
-        ax_vol = fig.add_axes([0.045, 0.460, 0.665, 0.060], sharex=ax_main)
-        ax_disp = fig.add_axes([0.045, 0.385, 0.665, 0.060], sharex=ax_main)
-        ax_panel = fig.add_axes([0.775, 0.385, 0.215, 0.535])
+        fig = plt.figure(figsize=(20, 17.8))
+        ax_main = fig.add_axes([0.045, 0.625, 0.665, 0.295])
+        ax_vol = fig.add_axes([0.045, 0.570, 0.665, 0.040], sharex=ax_main)
+        ax_disp = fig.add_axes([0.045, 0.515, 0.665, 0.040], sharex=ax_main)
+        # 이력레인 + 하단 년/월/일 2행 여유 (미니 제목과 간격)
+        ax_hist = fig.add_axes([0.045, 0.462, 0.665, 0.040], sharex=ax_main)
+        ax_panel = fig.add_axes([0.775, 0.462, 0.215, 0.458])
         mini_w = 0.215
         mini_gap = (0.945 - 4 * mini_w) / 3.0
         for m in range(len(mini_patterns)):
             x = 0.045 + m * (mini_w + mini_gap)
-            # 캡션 글씨 +30%에 맞춰 캡션 영역 소폭 확대
-            ax_mp = fig.add_axes([x, 0.225, mini_w, 0.100])   # 가격 (top≈0.325 → 이격도와 ~0.06 간격)
-            ax_mv = fig.add_axes([x, 0.180, mini_w, 0.036], sharex=ax_mp)  # 거래량(날짜)
-            ax_mc = fig.add_axes([x, 0.052, mini_w, 0.110])   # 캡션(글씨 확대)
-            mini_axes.append((ax_mp, ax_mv, ax_mc))
-        ax_bar = fig.add_axes([0.045, 0.008, 0.945, 0.040])
+            # 년·월·일 라벨 공간 확보: 미니를 소폭 하향
+            ax_mp = fig.add_axes([x, 0.268, mini_w, 0.112])
+            ax_mv = fig.add_axes([x, 0.215, mini_w, 0.038], sharex=ax_mp)
+            mini_axes.append((ax_mp, ax_mv))
+        ax_insight = fig.add_axes([0.045, 0.045, 0.945, 0.160])
+        ax_bar = fig.add_axes([0.045, 0.005, 0.945, 0.032])
     else:
-        fig = plt.figure(figsize=(20, 11))
-        ax_main = fig.add_axes([0.045, 0.345, 0.665, 0.555])
-        ax_vol = fig.add_axes([0.045, 0.235, 0.665, 0.10], sharex=ax_main)
-        ax_disp = fig.add_axes([0.045, 0.125, 0.665, 0.10], sharex=ax_main)
-        ax_panel = fig.add_axes([0.775, 0.125, 0.215, 0.775])
+        fig = plt.figure(figsize=(20, 11.5))
+        ax_main = fig.add_axes([0.045, 0.380, 0.665, 0.520])
+        ax_vol = fig.add_axes([0.045, 0.285, 0.665, 0.080], sharex=ax_main)
+        ax_disp = fig.add_axes([0.045, 0.190, 0.665, 0.080], sharex=ax_main)
+        ax_hist = fig.add_axes([0.045, 0.130, 0.665, 0.045], sharex=ax_main)
+        ax_panel = fig.add_axes([0.775, 0.130, 0.215, 0.770])
         ax_bar = fig.add_axes([0.045, 0.025, 0.945, 0.07])
     for ax in (ax_panel, ax_bar):
         ax.axis("off")
+    if ax_insight is not None:
+        ax_insight.axis("off")
 
     fig.suptitle(
-        f"{ticker} 기술적 분석 요약  |  현재가 {fmt_price(current)}",
+        f"{ticker_label} 기술적 분석 요약  |  현재가 {fmt_price(current)}",
         fontsize=16,
         fontweight="bold",
         y=0.965,
@@ -6611,6 +8380,13 @@ def plot_tech_annotation_chart(
         aux_ind=aux_ind,
         adx_res=adx_res,
     )
+    surge_prep = detect_surge_prep(
+        df,
+        aux_ind=aux_ind,
+        adx_res=adx_res,
+        surge_setup=surge_setup,
+        surge_state=surge_state,
+    )
     hist_surge = analyze_ticker_surge_history(
         df,
         aux_ind=aux_ind,
@@ -6648,6 +8424,7 @@ def plot_tech_annotation_chart(
         aux_ind=aux_ind,
         surge_state=surge_state,
         surge_setup=surge_setup,
+        surge_prep=surge_prep,
         plunge_state=plunge_state,
         plunge_setup=plunge_setup,
     )
@@ -6951,12 +8728,15 @@ def plot_tech_annotation_chart(
     # 패턴은 시나리오 번호에 넣지 않음. 지지/저항·반전 시나리오 ①~⑥ Top3.
     top3_keys = _pick_scenario_top3(scenario_entries, 3)
     top3_set = set(top3_keys)
-    scenario_panel_lines = _build_top3_scenario_panel(scenario_entries, top3_keys)
+    scenario_panel_lines = _build_top3_scenario_panel(
+        scenario_entries, top3_keys, compact=bool(mini_patterns),
+    )
     case_eval_lines = _build_sr_case_eval_lines(
         scenario_entries,
         current=current,
         fmt_price=fmt_price,
         lv_by_label=lv_by_label,
+        compact=bool(mini_patterns),
     )
 
     # 메인: 현재가→시나리오 경로선 (선 세기=점수 상대, Top3는 ★만)
@@ -7004,6 +8784,12 @@ def plot_tech_annotation_chart(
     except Exception as e:
         print(f"tech annotation: 급등셋업 배지 표시 실패 {e}")
     try:
+        _draw_surge_prep_badge(
+            ax_main, df, surge_prep, surge_state=surge_state, surge_setup=surge_setup,
+        )
+    except Exception as e:
+        print(f"tech annotation: 급등준비 배지 표시 실패 {e}")
+    try:
         _draw_plunge_badge(ax_main, df, plunge_state)
     except Exception as e:
         print(f"tech annotation: 급락 배지 표시 실패 {e}")
@@ -7048,15 +8834,24 @@ def plot_tech_annotation_chart(
     need_hi = y_hi_sc + y_sp_sc * 0.06
     if need_lo < cur_lo or need_hi > cur_hi:
         ax_main.set_ylim(min(cur_lo, need_lo), max(cur_hi, need_hi))
-    # ylim 확정 후 급등/급락 이력 캡션 배치 (스케일 기준 겹침 방지)
+    # ylim 확정 후 급등/급락 이력: 하단 레인 + 메인 짧은 세로 점선
     try:
-        _draw_historical_surge_markers(ax_main, df, hist_surge)
+        _draw_surge_plunge_history_rail(
+            ax_hist, ax_main, df,
+            hist_surge=hist_surge,
+            hist_plunge=hist_plunge,
+            surge_state=surge_state,
+            surge_setup=surge_setup,
+            surge_prep=surge_prep,
+            plunge_state=plunge_state,
+            plunge_setup=plunge_setup,
+            aux_ind=aux_ind,
+        )
     except Exception as e:
-        print(f"tech annotation: 급등이력 마커 표시 실패 {e}")
-    try:
-        _draw_historical_plunge_markers(ax_main, df, hist_plunge)
-    except Exception as e:
-        print(f"tech annotation: 급락이력 마커 표시 실패 {e}")
+        print(f"tech annotation: 급등·급락 이력 레인 표시 실패 {e}")
+    if ax_hist is not None:
+        # 일자 라벨은 하단 _style_shared_date_axis에서 일괄 적용
+        _kill_axis_offsets(ax_hist)
     x_lane = x_right + x_pad * 0.92
     _draw_scenario_number_lane(
         ax_main,
@@ -7068,9 +8863,10 @@ def plot_tech_annotation_chart(
         current=current,
     )
 
-    # ---------- 하단 패턴 미니 차트 행 ----------
+    # ---------- 하단 패턴 미니 차트 + 전폭 인사이트 표 ----------
+    insight_rows: List[Dict[str, str]] = []
     for m, ev in enumerate(mini_patterns):
-        ax_mp, ax_mv, ax_mc = mini_axes[m]
+        ax_mp, ax_mv = mini_axes[m]
         num = PATTERN_NUM_MARKS[m]
         pid = ev.get("pattern_id")
         slot = _pattern_slot_key(ev)
@@ -7086,14 +8882,30 @@ def plot_tech_annotation_chart(
                 ax_mp, df, pe, current, fmt_price, pattern_scores.get(slot),
                 col=pe.get("col", spec["col"]),
                 neck_col=pe.get("neck_col", spec["neck_col"]),
-                title_base=f"{num} {name} 목표 {spec['num']}",
+                title_base=f"{num} {name}",
                 direction=direction,
                 guide=pattern_guides.get(slot),
                 ax_vol=ax_mv,
-                ax_cap=ax_mc,
+                ax_cap=None,
+            )
+            insight_rows.append(
+                _insight_row_from_target_pe(
+                    num=num,
+                    name=name,
+                    pid=str(pid),
+                    pe=pe,
+                    guide=pattern_guides.get(slot),
+                    score=pattern_scores.get(slot),
+                    fmt_price=fmt_price,
+                    direction=direction,
+                )
             )
         else:
-            _plot_generic_pattern_mini(ax_mp, df, ev, num, ax_vol=ax_mv, ax_cap=ax_mc)
+            _plot_generic_pattern_mini(ax_mp, df, ev, num, ax_vol=ax_mv, ax_cap=None)
+            insight_rows.append(_insight_row_from_generic(num=num, ev=ev))
+
+    if ax_insight is not None:
+        _draw_pattern_insight_table(ax_insight, insight_rows)
 
     # ---------- 패턴 구간 식별 (시나리오 번호 없음 · 상세는 하단 미니) ----------
     y_min_all = float(df["Low"].min())
@@ -7282,14 +9094,22 @@ def plot_tech_annotation_chart(
     else:
         ax_disp.text(0.5, 0.5, "이격도 데이터 없음", transform=ax_disp.transAxes,
                      ha="center", va="center", fontsize=9, color="#7f8c8d")
-    # 공유 X축 일자: 월(YYYY-MM) + 현재일(YYYY-MM-DD) 틱 (축 안쪽 배치)
-    _style_shared_date_axis(ax_disp, x_last=x_right, labelsize=9.0)
+    # 공유 X축 일자: 월(YYYY-MM) + 현재일(YYYY-MM-DD), 라벨 겹침 방지
+    # 최하단 축(이력레인 우선)에 표시 — 미니차트와도 레이아웃 간격으로 분리
+    if ax_hist is not None:
+        ax_disp.tick_params(axis="x", labelbottom=False, length=0)
+        plt.setp(ax_disp.get_xticklabels(), visible=False)
+        _style_shared_date_axis(ax_hist, x_last=x_right, labelsize=8.5 if mini_patterns else 9.0)
+    else:
+        _style_shared_date_axis(ax_disp, x_last=x_right, labelsize=9.0)
     # sharex 잔여 오프셋/상위축 일자 라벨 정리
     for _ax in (ax_main, ax_vol):
         _ax.tick_params(axis="x", labelbottom=False, length=0)
         plt.setp(_ax.get_xticklabels(), visible=False)
         _kill_axis_offsets(_ax)
     _kill_axis_offsets(ax_disp)
+    if ax_hist is not None:
+        _kill_axis_offsets(ax_hist)
 
     # ---------- 우측 인사이트 패널 ----------
     def _with_dist(price: float) -> str:
@@ -7297,7 +9117,7 @@ def plot_tech_annotation_chart(
         pct = (price / current - 1.0) * 100.0
         return f"{fmt_price(price)} ({pct:+.1f}%)"
 
-    panel_lines: List[str] = [f"[{ticker} 인사이트]", ""]
+    panel_lines: List[str] = [f"[{ticker_label} 인사이트]", ""]
     if "강력 지지" in lv_by_label:
         panel_lines.append(f"핵심 지지: {_with_dist(lv_by_label['강력 지지']['price'])} 강력")
     if "현재 지지" in lv_by_label:
@@ -7365,10 +9185,13 @@ def plot_tech_annotation_chart(
         panel_lines.extend(_peg_lines)
     for _surge_line in _surge_panel_lines(surge_state):
         panel_lines.append(_surge_line)
-    # 이미 급등 중이면 셋업 줄은 생략 (중복·혼동 방지)
+    # 이미 급등 중이면 셋업·준비 줄은 생략 (중복·혼동 방지)
     if surge_state.get("state") not in ("급등진행", "급등과열"):
         for _setup_line in _surge_setup_panel_lines(surge_setup):
             panel_lines.append(_setup_line)
+        if not (surge_setup and surge_setup.get("active")):
+            for _prep_line in _surge_prep_panel_lines(surge_prep):
+                panel_lines.append(_prep_line)
     _hist_lines = _hist_surge_panel_lines(hist_surge)
     if _hist_lines:
         panel_lines.append("")
@@ -7415,7 +9238,7 @@ def plot_tech_annotation_chart(
             agg = f"약세 우위 {bear_n}:{bull_n}"
         else:
             agg = "혼조"
-        panel_lines.append(f"패턴 참고 (식별·{agg}) — 상세: 하단 미니")
+        panel_lines.append(f"패턴 참고 (식별·{agg}) — 상세: 하단 표")
         for m, ev in enumerate(mini_patterns):
             pid = ev["pattern_id"]
             slot = _pattern_slot_key(ev)
@@ -7434,30 +9257,14 @@ def plot_tech_annotation_chart(
             if pe is not None and pe.get("target") is not None:
                 tgt = f" → {fmt_price(pe['target'])}"
             panel_lines.append(f"  {PATTERN_NUM_MARKS[m]} {name} {st_txt}{tgt}")
-        panel_lines.append("")
-        panel_lines.extend(_confidence_reference_lines())
+        # 긴 [참고] 범례는 하단 인사이트 표와 겹치므로 생략 (패널 넘침 방지)
     if note_text:
         panel_lines.append("")
         panel_lines.append("[종목 메모]")
         panel_lines.extend(note_text.splitlines()[:6])
 
-    # 패널 높이 대비 줄 수에 맞춰 폰트 자동 조정 (기본 대비 약 10% 축소)
-    panel_fs, panel_ls = 8.55, 1.40
-    panel_h_in = ax_panel.get_position().height * fig.get_size_inches()[1]
-    needed_in = len(panel_lines) * panel_fs * panel_ls / 72.0
-    if needed_in > panel_h_in * 0.96:
-        panel_ls = 1.22
-        panel_fs = max(5.5, (panel_h_in * 0.96 * 72.0) / (len(panel_lines) * panel_ls))
-    ax_panel.text(
-        0.02, 0.99,
-        "\n".join(panel_lines),
-        transform=ax_panel.transAxes,
-        fontsize=panel_fs,
-        va="top",
-        ha="left",
-        linespacing=panel_ls,
-        bbox=dict(boxstyle="round,pad=0.6", facecolor="#f8f9fa", edgecolor="#34495e", linewidth=1.4, alpha=0.95),
-    )
+    # 패널 높이 대비 줄 수에 맞춰 폰트·내용 자동 맞춤 (하단 잘림 방지)
+    _fit_and_draw_insight_panel(ax_panel, fig, panel_lines)
 
     # ---------- 하단 요약 바 ----------
     strong = lv_by_label.get("강력 지지") or lv_by_label.get("현재 지지")
@@ -7493,6 +9300,8 @@ def plot_tech_annotation_chart(
         bar_parts.append(f"급등: {surge_state.get('state')}({int(surge_state.get('score') or 0)})")
     elif surge_setup.get("active"):
         bar_parts.append(f"급등셋업: {surge_setup.get('state')}({int(surge_setup.get('score') or 0)})")
+    elif surge_prep.get("active"):
+        bar_parts.append(f"급등준비: ({int(surge_prep.get('score') or 0)})")
     sim = (hist_surge or {}).get("similarity") or {}
     if hist_surge.get("n", 0) > 0 and sim.get("label") not in (None, "해당없음"):
         bar_parts.append(
@@ -7528,7 +9337,7 @@ def plot_tech_annotation_chart(
     fig.text(0.5, 0.005, "주의: 본 분석은 참고용이며, 투자 결과의 책임은 본인에게 있습니다.", fontsize=8, color="#7f8c8d", ha="center")
 
     # draw 후 오프셋 잔여(1e8 등) 재제거 — savefig 직전 필수
-    fig.canvas.draw()
+    _safe_fig_draw(fig)
     for _ax in fig.axes:
         _kill_axis_offsets(_ax)
 

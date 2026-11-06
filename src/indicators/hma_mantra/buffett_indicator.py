@@ -41,20 +41,37 @@ def _quarter_label(ts: pd.Timestamp) -> str:
     return f"{ts.year}-Q{q}"
 
 
-def fetch_us_gdp_trillions() -> Tuple[Optional[float], Optional[str], Optional[str]]:
+def _nominal_gdp_yoy(levels: pd.Series) -> Optional[float]:
+    """명목 GDP 전년 동기 대비 성장률(%). 분기 시계열 4칸 전을 비교합니다."""
+    values = pd.to_numeric(levels, errors="coerce").dropna()
+    if len(values) < 5:
+        return None
+    prev = float(values.iloc[-5])
+    last = float(values.iloc[-1])
+    if not np.isfinite(prev) or prev == 0 or not np.isfinite(last):
+        return None
+    return (last / prev - 1.0) * 100.0
+
+
+def fetch_us_gdp_trillions() -> Tuple[Optional[float], Optional[str], Optional[str], Optional[float]]:
     """
   Returns:
-      (gdp_trillions, gdp_date_label, source_tag)
+      (gdp_trillions, gdp_date_label, source_tag, nominal_yoy_percent)
     """
     # 1) pandas_datareader / FRED
     try:
         import pandas_datareader.data as web
 
-        gdp = web.DataReader("GDP", "fred", datetime(2020, 1, 1), datetime.now())
+        gdp = web.DataReader("GDP", "fred", datetime(2019, 1, 1), datetime.now())
         if gdp is not None and not gdp.empty:
             last_billions = float(gdp["GDP"].iloc[-1])
             last_ts = gdp.index[-1]
-            return last_billions / 1000.0, _quarter_label(last_ts), "FRED:GDP"
+            return (
+                last_billions / 1000.0,
+                _quarter_label(last_ts),
+                "FRED:GDP",
+                _nominal_gdp_yoy(gdp["GDP"]),
+            )
     except Exception as e:
         print(f"⚠️ FRED GDP(pandas_datareader) 실패: {e}")
 
@@ -66,15 +83,20 @@ def fetch_us_gdp_trillions() -> Tuple[Optional[float], Optional[str], Optional[s
         api_key = os.environ.get("FRED_API_KEY")
         if api_key:
             fred = Fred(api_key=api_key)
-            series = fred.get_series("GDP", observation_start="2020-01-01")
+            series = fred.get_series("GDP", observation_start="2019-01-01")
             if series is not None and len(series) > 0:
                 last_billions = float(series.iloc[-1])
                 last_ts = series.index[-1]
-                return last_billions / 1000.0, _quarter_label(last_ts), "FRED:GDP(fredapi)"
+                return (
+                    last_billions / 1000.0,
+                    _quarter_label(last_ts),
+                    "FRED:GDP(fredapi)",
+                    _nominal_gdp_yoy(series),
+                )
     except Exception as e:
         print(f"⚠️ FRED GDP(fredapi) 실패: {e}")
 
-    return None, None, None
+    return None, None, None, None
 
 
 def fetch_wilshire_market_cap_trillions() -> Tuple[Optional[float], Optional[str], Optional[float], Optional[str]]:
@@ -107,7 +129,7 @@ def fetch_wilshire_market_cap_trillions() -> Tuple[Optional[float], Optional[str
 
 def calculate_buffett_indicator() -> Optional[Dict[str, Any]]:
     """버핏 지수를 계산합니다."""
-    gdp_t, gdp_date, gdp_src = fetch_us_gdp_trillions()
+    gdp_t, gdp_date, gdp_src, gdp_yoy = fetch_us_gdp_trillions()
     cap_t, wilshire_date, index_level, cap_src = fetch_wilshire_market_cap_trillions()
 
     used_fallback = False
@@ -116,6 +138,7 @@ def calculate_buffett_indicator() -> Optional[Dict[str, Any]]:
     if gdp_t is None:
         gdp_t = GDP_FALLBACK_TRILLIONS
         gdp_date = GDP_FALLBACK_DATE
+        gdp_yoy = None
         used_fallback = True
         sources.append("GDP:fallback")
     else:
@@ -139,6 +162,7 @@ def calculate_buffett_indicator() -> Optional[Dict[str, Any]]:
         "wilshire_index": round(index_level, 1) if index_level is not None else None,
         "us_gdp": round(gdp_t, 2),
         "gdp_date": gdp_date,
+        "us_gdp_yoy": round(gdp_yoy, 1) if gdp_yoy is not None and np.isfinite(gdp_yoy) else None,
         "data_sources": ", ".join(sources),
         "used_fallback": used_fallback,
     }
@@ -147,7 +171,8 @@ def calculate_buffett_indicator() -> Optional[Dict[str, Any]]:
     if index_level is not None:
         print(f"  - Wilshire 지수({WILSHIRE_TICKER}): {index_level:.0f}")
     print(f"  - Wilshire 5000 시가총액: {result['wilshire_market_cap']}조 달러 ({result['wilshire_date']})")
-    print(f"  - US GDP: {result['us_gdp']}조 달러 ({result['gdp_date']})")
+    yoy_txt = f", 전년비 {result['us_gdp_yoy']:+.1f}%" if result.get("us_gdp_yoy") is not None else ""
+    print(f"  - US GDP: {result['us_gdp']}조 달러 ({result['gdp_date']}{yoy_txt})")
     print(f"  - 버핏 지수: {result['value']}%")
     print(f"  - 데이터: {result['data_sources']}")
     if used_fallback:

@@ -148,6 +148,75 @@ output/
         └── {종목코드}_data.csv
 ```
 
+### 3.5 hma.sh 실행 (HMA Mantra 분석)
+`hma.sh`는 `.venv`를 활성화한 뒤 종목별 분석 스크립트를 호출합니다. 결과는 `output/hma_mantra/{종목코드}/`에 저장됩니다.
+`-s` 또는 `--file` 중 하나는 필수이며, 인자 없이 실행하면 전체 옵션 도움말이 출력됩니다.
+
+```bash
+# 기본 기술적 분석 (기본 기간 120d)
+./hma.sh -s NVDA
+
+# 여러 종목 / 종목 파일 (한 줄에 하나의 종목코드)
+./hma.sh -s AAPL,MSFT -p 6mo
+./hma.sh --file stocks/us_Harris_Wish.txt -p 1y
+
+# 기간 지정
+./hma.sh -s TSLA -d 90
+./hma.sh -s TSLA --from 2025-01-01 --to 2025-08-01
+./hma.sh -s TSLA --to 2025-08-01 -p 6mo      # 종료일 기준 6개월 전까지
+
+# Volume Profile 오버레이 + 박스권 + 차트 패턴
+./hma.sh -s NVDA --from 2025-04-01 -v overlay --num-boxes 7 --show-pattern-strip
+./hma.sh -s NVDA -p 1y -v overlay --pattern-main bull_rev,bear_cont --pattern-main-min-confidence 0.5
+
+# 보조 분석
+./hma.sh -s NVDA -v overlay --show-disparity-strategy --disparity-conf-preset growth
+./hma.sh -s NVDA -v overlay --show-adx-dmi
+./hma.sh -s NVDA --tech-chart --show-bb       # 기술 분석 주석 차트 추가 생성
+./hma.sh -s NVDA -e                           # 엘리엇 파동 분석
+./hma.sh -s NVDA -a all                       # technical/macro/sector/news/chart/financial/strategy 전체
+```
+
+주요 옵션
+
+| 옵션 | 설명 (기본값) |
+|------|---------------|
+| `-s SYMBOL[,..]` / `--file FILE` | 분석 종목 / 종목 목록 파일 |
+| `-p PERIOD` / `-d DAYS` / `--from` `--to` | 기간 (`120d`) |
+| `-i INTERVAL`, `-t PREPOST` | 봉 간격 (`1d`), 장전/장후 포함 (`false`) |
+| `-a TYPE` | 분석 유형 `technical/macro/sector/news/chart/financial/strategy/all` (`technical`) |
+| `-v TYPE` | Volume Profile `none/separate/overlay/compare` (`none`) |
+| `--no-box-ranges`, `--box-period`, `--num-boxes`, `--box-overlap`, `--box-style` | 박스권 설정 (20일, 2개, 5일, `default`) |
+| `--show-pattern-strip`, `--pattern-main LIST` | 차트 패턴 타임라인 / 메인 차트 패턴 오버레이 (`-v overlay` 전용, `all` 또는 그룹·패턴 ID) |
+| `--show-disparity-strategy`, `--disparity-*` | 이격도(95/105) 전략 |
+| `--show-adx-dmi`, `--adx-*` | ADX·DMI 서브플롯 |
+| `--tech-chart`, `--tech-chart-only`, `--show-bb` | 기술 분석 주석 차트 |
+| `-e`, `--elliott-min-wave`, `--elliott-zigzag` | 엘리엇 파동 |
+
+패턴 그룹: `bull_rev` / `bull_cont` / `bear_rev` / `bear_cont` / `neutral` / `setup`
+(개별 패턴 ID는 `./hma.sh` 도움말 또는 `chart_patterns.py`의 `CHART_PATTERN_CRITERIA` 참고)
+
+### 3.6 급등 셋업 종목 필터
+종목 목록에서 급등준비/셋업/급등진행 후보만 걸러냅니다 (전체 분석은 생략). 결과는 `output/analysis/`에 저장됩니다.
+
+```bash
+./hma.sh --filter-surge-setup -s GM,DAL,LRCX -p 6mo
+./hma.sh --filter-surge-setup -f stocks/us_snp500_stocks_list.txt -p 6mo --filter-surge-min-score 45
+
+# 직접 실행
+python filter_surge_setup.py -f stocks/us_Harris_Wish.txt -p 6mo
+python filter_surge_setup.py -f stocks/us_nasdaq100_stocks_list.txt --kinds A,B --include-active
+python filter_surge_setup.py -s GM,DAL --no-save
+```
+
+| hma.sh 옵션 | filter_surge_setup.py 옵션 | 설명 (기본값) |
+|-------------|---------------------------|---------------|
+| `--filter-surge-min-score N` | `--min-score N` | 최소 점수 (40) |
+| `--filter-surge-include-active` | `--include-active` | 이미 급등진행/과열 종목 포함 |
+| `--filter-surge-kinds A,B` | `--kinds A,B` | 셋업 종류만 (지정 시 급등준비 제외) |
+| `--filter-surge-out-dir DIR` | `--out-dir DIR` | 저장 경로 (`output/analysis`) |
+| – | `--out-prefix`, `--no-save` | 파일 prefix / 저장 생략 |
+
 ## 4. 특징
 
 ### 4.1 시각화

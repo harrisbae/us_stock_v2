@@ -1,0 +1,526 @@
+현재 화면의 [Finviz ETF Map](https://finviz.com/map?t=etf)에 표시된 주요 ETF 목록을 동일한 형식(**# 대분류 / 세부분야 / 상품명**, 다음 줄에 **티커**)으로 정리한 `.md` 형식 코드 블록입니다.
+
+```markdown
+# US INDEX / BROAD MARKET / SPDR S&P 500 ETF Trust
+SPY
+
+# US INDEX / BROAD MARKET / Vanguard S&P 500 ETF
+VOO
+
+# US INDEX / BROAD MARKET / iShares Core S&P 500 ETF
+IVV
+
+# US INDEX / BROAD MARKET / Invesco QQQ Trust
+QQQ
+
+# US INDEX / BROAD MARKET / SPDR Dow Jones Industrial Average ETF Trust
+DIA
+
+# US INDEX / BROAD MARKET / Invesco S&P 500 Equal Weight ETF
+RSP
+
+# US INDEX / BROAD MARKET / iShares Core S&P Total U.S. Stock Market ETF
+ITOT
+
+# US INDEX / BROAD MARKET / Schwab U.S. Broad Market ETF
+SCHB
+
+# US INDEX / BROAD MARKET / iShares Russell 1000 ETF
+IWB
+
+# US INDEX / INVERSE / ProShares UltraPro Short QQQ
+SQQQ
+
+# US INDEX / INVERSE / ProShares Short S&P500
+SH
+
+# US INDEX / INVERSE / ProShares UltraShort S&P500
+SDS
+
+# US INDEX / INVERSE / ProShares Short QQQ
+PSQ
+
+# US INDEX / INVERSE / ProShares UltraShort QQQ
+QID
+
+# US INDEX / INVERSE / ProShares UltraPro Short S&P500
+SPXS
+
+# US INDEX / INVERSE / ProShares Short S&P 500 (1x/Leveraged Inverse)
+SPXU
+
+# US INDEX / LEVERAGE / ProShares UltraPro S&P500
+UPRO
+
+# US INDEX / LEVERAGE / ProShares UltraPro QQQ
+TQQQ
+
+# US INDEX / LEVERAGE / ProShares Ultra QQQ
+QLD
+
+# US INDEX / LEVERAGE / ProShares Ultra S&P500
+SSO
+
+# US INDEX / LEVERAGE / ProShares UltraPro Dow30
+UDOW
+
+# US INDEX / LEVERAGE / Direxion Daily S&P 500 Bull 3X Shares
+SPXL
+
+# US INDEX / DIVIDEND / Schwab U.S. Dividend Equity ETF
+SCHD
+
+# US INDEX / DIVIDEND / Vanguard Dividend Appreciation ETF
+VIG
+
+# US INDEX / DIVIDEND / iShares Core High Dividend ETF
+HDV
+
+#----
+
+# US SECTOR / TECHNOLOGY / Vanguard Information Technology ETF
+VGT
+
+# US SECTOR / TECHNOLOGY / Technology Select Sector SPDR Fund
+XLK
+
+# US SECTOR / TECHNOLOGY / Direxion Daily Semiconductor Bull 3X Shares
+SOXL
+
+# US SECTOR / TECHNOLOGY / Direxion Daily Semiconductor Bear 3X Shares
+SOXS
+
+# US SECTOR / TECHNOLOGY / VanEck Semiconductor ETF
+SMH
+
+# US SECTOR / TECHNOLOGY / iShares Semiconductor ETF
+SOXX
+
+# US SECTOR / TECHNOLOGY / Direxion Daily Technology Bull 3X Shares
+TECL
+
+# US SECTOR / TECHNOLOGY / iShares U.S. Technology ETF
+IYW
+
+# US SECTOR / TECHNOLOGY / First Trust Dow Jones Internet Index Fund
+FDN
+
+# US SECTOR / HEALTH CARE / SPDR S&P Biotech ETF
+XBI
+
+# US SECTOR / HEALTH CARE / Health Care Select Sector SPDR Fund
+XLV
+
+# US SECTOR / HEALTH CARE / iShares Biotechnology ETF
+IBB
+
+# US SECTOR / HEALTH CARE / iShares U.S. Medical Devices ETF
+IHI
+
+# US SECTOR / HEALTH CARE / Vanguard Health Care ETF
+VHT
+
+# US SECTOR / FINANCIALS / SPDR S&P Regional Banking ETF
+KRE
+
+# US SECTOR / FINANCIALS / Financial Select Sector SPDR Fund
+XLF
+
+# US SECTOR / FINANCIALS / SPDR S&P Bank ETF
+KBE
+
+# US SECTOR / FINANCIALS / Vanguard Financials ETF
+VFH
+
+# US SECTOR / FINANCIALS / Direxion Daily Financial Bull 3X Shares
+FAS
+
+# US SECTOR / FINANCIALS / SPDR S&P Insurance ETF
+KIE
+
+# US SECTOR / CONSUMER CYCLICAL / Consumer Discretionary Select Sector SPDR Fund
+XLY
+
+# US SECTOR / CONSUMER CYCLICAL / SPDR S&P Retail ETF
+XRT
+
+# US SECTOR / CONSUMER CYCLICAL / SPDR S&P Homebuilders ETF
+XHB
+
+# US SECTOR / CONSUMER CYCLICAL / iShares U.S. Home Construction ETF
+ITB
+
+# US SECTOR / REAL ESTATE / iShares U.S. Real Estate ETF
+IYR
+
+# US SECTOR / REAL ESTATE / Vanguard Real Estate ETF
+VNQ
+
+# US SECTOR / INDUSTRIAL / Industrial Select Sector SPDR Fund
+XLI
+
+# US SECTOR / INDUSTRIAL / iShares U.S. Aerospace & Defense ETF
+ITA
+
+# US SECTOR / INDUSTRIAL / iShares U.S. Industrials ETF
+IYZ
+
+# US SECTOR / CONSUMER NON-CYCLICAL / Consumer Staples Select Sector SPDR Fund
+XLP
+
+# US SECTOR / ENERGY / Energy Select Sector SPDR Fund
+XLE
+
+# US SECTOR / ENERGY / SPDR S&P Oil & Gas Exploration & Production ETF
+XOP
+
+# US SECTOR / ENERGY / Vanguard Energy ETF
+VDE
+
+# US SECTOR / ENERGY / iShares U.S. Energy ETF
+IYE
+
+# US SECTOR / ENERGY / Alerian MLP ETF
+AMLP
+
+# US SECTOR / BASIC MATERIALS / Materials Select Sector SPDR Fund
+XLB
+
+# US SECTOR / BASIC MATERIALS / SPDR S&P Metals & Mining ETF
+XME
+
+# US SECTOR / TELECOM / Communication Services Select Sector SPDR Fund
+XLC
+
+# US SECTOR / UTILITIES / Utilities Select Sector SPDR Fund
+XLU
+
+#----
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares 20+ Year Treasury Bond ETF
+TLT
+
+# FIXED INCOME / U.S. GOVERNMENT / SPDR Bloomberg 1-3 Month T-Bill ETF
+BIL
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares 7-10 Year Treasury Bond ETF
+IEF
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares 1-3 Year Treasury Bond ETF
+SHY
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares Short Treasury Bond ETF
+SHV
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares TIPS Bond ETF
+TIP
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares U.S. Treasury Bond ETF
+GOVT
+
+# FIXED INCOME / U.S. GOVERNMENT / Vanguard Intermediate-Term Treasury ETF
+VGIT
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares 3-7 Year Treasury Bond ETF
+IEI
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares MBS ETF
+MBB
+
+# FIXED INCOME / U.S. GOVERNMENT / Vanguard Short-Term Treasury ETF
+VGSH
+
+# FIXED INCOME / U.S. GOVERNMENT / iShares 10-20 Year Treasury Bond ETF
+TLH
+
+# FIXED INCOME / U.S. GOVERNMENT / Vanguard Short-Term Inflation-Protected Securities ETF
+STIP
+
+# FIXED INCOME / CORPORATE / iShares iBoxx $ High Yield Corporate Bond ETF
+HYG
+
+# FIXED INCOME / CORPORATE / iShares iBoxx $ Investment Grade Corporate Bond ETF
+LQD
+
+# FIXED INCOME / CORPORATE / Vanguard Intermediate-Term Corporate Bond ETF
+VCIT
+
+# FIXED INCOME / CORPORATE / Vanguard Short-Term Corporate Bond ETF
+VCSH
+
+# FIXED INCOME / CORPORATE / Vanguard Long-Term Corporate Bond ETF
+VCLT
+
+# FIXED INCOME / CORPORATE / SPDR Bloomberg High Yield Bond ETF
+JNK
+
+# FIXED INCOME / CORPORATE / SPDR Bloomberg Convertible Securities ETF
+CWB
+
+# FIXED INCOME / BROAD MARKET / iShares Core U.S. Aggregate Bond ETF
+AGG
+
+# FIXED INCOME / BROAD MARKET / Vanguard Total Bond Market ETF
+BND
+
+# FIXED INCOME / BROAD MARKET / PIMCO Enhanced Short Maturity Active ETF
+MINT
+
+# FIXED INCOME / BROAD MARKET / iShares Floating Rate Bond ETF
+FLOT
+
+# FIXED INCOME / SOVEREIGN / iShares J.P. Morgan USD Emerging Markets Bond ETF
+EMB
+
+# FIXED INCOME / MUNICIPAL / iShares National Muni Bond ETF
+MUB
+
+# FIXED INCOME / MUNICIPAL / Vanguard Short-Term Bond ETF
+BSV
+
+# FIXED INCOME / MUNICIPAL / Vanguard Intermediate-Term Bond ETF
+BIV
+
+#----
+
+# INTERNATIONAL / DEVELOPED MARKET / iShares MSCI EAFE ETF
+EFA
+
+# INTERNATIONAL / DEVELOPED MARKET / iShares Core MSCI EAFE ETF
+IEFA
+
+# INTERNATIONAL / DEVELOPED MARKET / Vanguard FTSE Developed Markets ETF
+VEA
+
+# INTERNATIONAL / DEVELOPED MARKET / Schwab International Equity ETF
+SCHF
+
+# INTERNATIONAL / DEVELOPED MARKET / iShares MSCI EAFE Value ETF
+EFV
+
+# INTERNATIONAL / DEVELOPED MARKET / iShares MSCI EAFE Growth ETF
+EFG
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares MSCI Taiwan ETF
+EWT
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares MSCI South Korea ETF
+EWY
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares MSCI Japan ETF
+EWJ
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares MSCI India ETF
+INDA
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares MSCI All Country Asia ex Japan ETF
+AAXJ
+
+# INTERNATIONAL / ASIA-PACIFIC / iShares Asia 50 ETF
+AIA
+
+# INTERNATIONAL / CHINA / iShares China Large-Cap ETF
+FXI
+
+# INTERNATIONAL / CHINA / iShares MSCI China ETF
+MCHI
+
+# INTERNATIONAL / EMERGING MARKETS / iShares MSCI Emerging Markets ETF
+EEM
+
+# INTERNATIONAL / EMERGING MARKETS / Vanguard FTSE Emerging Markets ETF
+VWO
+
+# INTERNATIONAL / EMERGING MARKETS / iShares Core MSCI Emerging Markets ETF
+IEMG
+
+# INTERNATIONAL / EUROPE / Vanguard FTSE Europe ETF
+VGK
+
+# INTERNATIONAL / EUROPE / SPDR EURO STOXX 50 ETF
+FEZ
+
+# INTERNATIONAL / LATIN AMERICA / iShares MSCI Brazil ETF
+EWZ
+
+# INTERNATIONAL / LATIN AMERICA / iShares Latin America 40 ETF
+ILF
+
+# INTERNATIONAL / GLOBAL EX-US / Vanguard Total International Stock ETF
+VXUS
+
+# INTERNATIONAL / GLOBAL EX-US / Vanguard FTSE All-World ex-US ETF
+VEU
+
+# INTERNATIONAL / GLOBAL EX-US / iShares Core MSCI Total International Stock ETF
+IXUS
+
+# INTERNATIONAL / GLOBAL EX-US / iShares MSCI ACWI ex US ETF
+ACWX
+
+#----
+
+# US LARGE CAP / GROWTH / iShares Russell 1000 Growth ETF
+IWF
+
+# US LARGE CAP / GROWTH / Vanguard Growth ETF
+VUG
+
+# US LARGE CAP / GROWTH / Schwab U.S. Large-Cap Growth ETF
+SCHG
+
+# US LARGE CAP / GROWTH / SPDR Portfolio S&P 500 Growth ETF
+SPYG
+
+# US LARGE CAP / GROWTH / iShares Russell Top 200 Growth ETF
+IWW
+
+# US LARGE CAP / GROWTH / Vanguard Mega Cap Growth ETF
+MGK
+
+# US LARGE CAP / GROWTH / Vanguard Russell 1000 Growth ETF
+VONG
+
+# US LARGE CAP / VALUE / iShares Russell 1000 Value ETF
+IWD
+
+# US LARGE CAP / VALUE / Vanguard Value ETF
+VTV
+
+# US LARGE CAP / VALUE / iShares S&P 500 Value ETF
+IVE
+
+# US LARGE CAP / BLEND / iShares Russell 2000 ETF
+IWM
+
+# US LARGE CAP / BLEND / Schwab U.S. Large-Cap ETF
+SCHX
+
+# US LARGE CAP / BLEND / SPDR Portfolio S&P 500 Value ETF
+SPYV
+
+# US LARGE CAP / BLEND / Vanguard Mega Cap ETF
+MGC
+
+#----
+
+# US MID CAP / BLEND / iShares Core S&P Mid-Cap ETF
+IJH
+
+# US MID CAP / BLEND / Vanguard Mid-Cap ETF
+VO
+
+# US MID CAP / BLEND / SPDR S&P MidCap 400 ETF Trust
+MDY
+
+# US MID CAP / BLEND / iShares Russell Mid-Cap ETF
+IWR
+
+#----
+
+# US SMALL CAP / BLEND / iShares Core S&P Small-Cap ETF
+IJR
+
+# US SMALL CAP / BLEND / Vanguard Russell 2000 ETF
+VTWO
+
+# US SMALL CAP / BLEND / Vanguard Small-Cap ETF
+VB
+
+# US SMALL CAP / LEVERAGE / Direxion Daily Small Cap Bull 3X Shares
+TNA
+
+# US SMALL CAP / INVERSE / Direxion Daily Small Cap Bear 3X Shares
+TZA
+
+# US SMALL CAP / INVERSE / ProShares Short Russell2000
+RWM
+
+# US SMALL CAP / GROWTH / iShares Russell 2000 Growth ETF
+IWO
+
+# US SMALL CAP / VALUE / iShares Russell 2000 Value ETF
+IWN
+
+#----
+
+# COMMODITY / GOLD / SPDR Gold Shares
+GLD
+
+# COMMODITY / GOLD / iShares Gold Trust
+IAU
+
+# COMMODITY / GOLD / Aberdeen Standard Physical Gold Shares ETF
+SGOL
+
+# COMMODITY / PRECIOUS METALS / iShares Silver Trust
+SLV
+
+# COMMODITY / CRUDE OIL / United States Oil Fund
+USO
+
+# COMMODITY / INVERSE OIL / ProShares UltraShort Bloomberg Crude Oil
+SCO
+
+# COMMODITY / LEVERAGED PRECIOUS / ProShares Ultra Silver
+AGQ
+
+# COMMODITY / LEVERAGED CRUDE OIL / ProShares Ultra Bloomberg Crude Oil
+UCO
+
+# COMMODITY / GOLD MINERS / VanEck Gold Miners ETF
+GDX
+
+# COMMODITY / GOLD MINERS / VanEck Junior Gold Miners ETF
+GDXJ
+
+# COMMODITY / SILVER MINERS / Global X Silver Miners ETF
+SIL
+
+# COMMODITY / URANIUM / Global X Uranium ETF
+URA
+
+# COMMODITY / OIL SERVICES / VanEck Oil Services ETF
+OIH
+
+#----
+
+# GLOBAL & STRATEGY / GLOBAL / Vanguard Total World Stock ETF
+VT
+
+# GLOBAL & STRATEGY / GLOBAL / iShares MSCI ACWI ETF
+ACWI
+
+# GLOBAL & STRATEGY / GLOBAL / Vanguard Total Stock Market ETF
+VTI
+
+# GLOBAL & STRATEGY / GLOBAL / iShares MSCI USA Min Vol Factor ETF
+USMV
+
+# GLOBAL & STRATEGY / GLOBAL / iShares MSCI USA Momentum Factor ETF
+MTUM
+
+# GLOBAL & STRATEGY / GLOBAL / Invesco S&P 500 Low Volatility ETF
+SPLV
+
+# GLOBAL & STRATEGY / GLOBAL / iShares MSCI USA Quality Factor ETF
+QUAL
+
+##-----
+
+# CRYPTO & VOLATILITY / BITCOIN / iShares Bitcoin Trust
+IBIT
+
+# CRYPTO & VOLATILITY / BITCOIN / Grayscale Bitcoin Trust
+GBTC
+
+# CRYPTO & VOLATILITY / BITCOIN / Fidelity Wise Origin Bitcoin Fund
+FBTC
+
+# CRYPTO & VOLATILITY / BITCOIN / Bitwise Bitcoin ETF
+BITB
+
+# CRYPTO & VOLATILITY / VOLATILITY / iPath Series B S&P 500 VIX Short-Term Futures ETN
+VXX
+
+```

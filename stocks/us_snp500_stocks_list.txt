@@ -1,0 +1,697 @@
+### 2026-08-15 : 12:13
+
+## TECHNOLOGY
+
+# SEMICONDUCTORS / Nvidia, 시총:$5.45T, 주가:$131.88, 등락(%):-0.06%
+NVDA
+
+# SEMICONDUCTORS / Broadcom, 시총:$1.87T, 주가:$158.42, 등락(%):-5.94%
+AVGO
+
+# SEMICONDUCTORS / Advanced Micro Devices, 시총:$840.5B, 주가:$146.70, 등락(%):+6.50%
+AMD
+
+# SEMICONDUCTORS / Micron Technology, 시총:$1.10T, 주가:$106.25, 등락(%):+2.30%
+MU
+
+# SEMICONDUCTORS / Intel, 시총:$519.8B, 주가:$20.65, 등락(%):-1.97%
+INTC
+
+# SEMICONDUCTORS / Qualcomm, 시총:$174.0B, 주가:$166.50, 등락(%):-0.45%
+QCOM
+
+# SEMICONDUCTORS / Texas Instruments, 시총:$255.6B, 주가:$205.10, 등락(%):+0.25%
+TXN
+
+# SEMICONDUCTORS / Analog Devices, 시총:$190.1B, 주가:$226.80, 등락(%):+0.40%
+ADI
+
+# SEMICONDUCTORS / Marvell Technology, 시총:$199.1B, 주가:$70.85, 등락(%):+1.12%
+MRVL
+
+# SEMICONDUCTORS / ON Semiconductor, 시총:$29.8B, 주가:$69.40, 등락(%):+0.85%
+ON
+
+# SEMICONDUCTOR EQUIPMENT / Applied Materials, 시총:$402.5B, 주가:$188.30, 등락(%):-5.12%
+AMAT
+
+# SEMICONDUCTOR EQUIPMENT / Lam Research, 시총:$415.4B, 주가:$74.20, 등락(%):-1.38%
+LRCX
+
+# SEMICONDUCTOR EQUIPMENT / KLA Corporation, 시총:$266.2B, 주가:$682.40, 등락(%):-2.70%
+KLAC
+
+# SEMICONDUCTOR EQUIPMENT / Teradyne, 시총:$19.8B, 주가:$123.50, 등락(%):-0.95%
+TER
+
+# SOFTWARE - INFRASTRUCTURE / Microsoft, 시총:$3.68T, 주가:$418.50, 등락(%):-0.30%
+MSFT
+
+# SOFTWARE - INFRASTRUCTURE / Oracle, 시총:$434.0B, 주가:$136.20, 등락(%):-3.65%
+ORCL
+
+# SOFTWARE - INFRASTRUCTURE / Palantir Technologies, 시총:$418.1B, 주가:$32.15, 등락(%):-2.78%
+PLTR
+
+# SOFTWARE - INFRASTRUCTURE / Palo Alto Networks, 시총:$313.7B, 주가:$344.20, 등락(%):-2.96%
+PANW
+
+# SOFTWARE - INFRASTRUCTURE / CrowdStrike, 시총:$221.4B, 주가:$271.80, 등락(%):+0.15%
+CRWD
+
+# SOFTWARE - INFRASTRUCTURE / Fortinet, 시총:$46.8B, 주가:$61.30, 등락(%):-0.65%
+FTNT
+
+# CONSUMER ELECTRONICS / Apple, 시총:$4.46T, 주가:$224.23, 등락(%):+0.22%
+AAPL
+
+# SOFTWARE - APPLICATION / Salesforce, 시총:$160.5B, 주가:$256.40, 등락(%):-0.10%
+CRM
+
+# SOFTWARE - APPLICATION / ServiceNow, 시총:$127.9B, 주가:$838.90, 등락(%):+0.25%
+NOW
+
+# SOFTWARE - APPLICATION / Adobe, 시총:$245.8B, 주가:$552.10, 등락(%):-0.45%
+ADBE
+
+# SOFTWARE - APPLICATION / Cadence Design Systems, 시총:$73.2B, 주가:$270.50, 등락(%):+0.18%
+CDNS
+
+# SOFTWARE - APPLICATION / Intuit, 시총:$182.4B, 주가:$649.80, 등락(%):+0.52%
+INTU
+
+# SOFTWARE - APPLICATION / Uber Technologies, 시총:$155.3B, 주가:$73.40, 등락(%):+0.09%
+UBER
+
+# SOFTWARE - APPLICATION / Automatic Data Processing, 시총:$110.5B, 주가:$269.80, 등락(%):+0.35%
+ADP
+
+# COMPUTER HARDWARE / Dell Technologies, 시총:$318.0B, 주가:$116.50, 등락(%):-0.75%
+DELL
+
+# COMPUTER HARDWARE / Arista Networks, 시총:$250.7B, 주가:$352.60, 등락(%):+1.05%
+ANET
+
+# COMPUTER HARDWARE / Seagate Technology, 시총:$221.1B, 주가:$102.30, 등락(%):+1.85%
+STX
+
+# COMPUTER HARDWARE / Western Digital, 시총:$175.5B, 주가:$66.70, 등락(%):+1.40%
+WDC
+
+# COMMUNICATION EQUIPMENT / Cisco Systems, 시총:$439.7B, 주가:$50.30, 등락(%):-1.58%
+CSCO
+
+# COMMUNICATION EQUIPMENT / Motorola Solutions, 시총:$73.8B, 주가:$441.20, 등락(%):+0.65%
+MSI
+
+# COMMUNICATION EQUIPMENT / Hewlett Packard Enterprise, 시총:$24.1B, 주가:$18.50, 등락(%):-0.40%
+HPE
+
+# INFORMATION TECHNOLOGY SERVICES / Accenture, 시총:$214.6B, 주가:$342.10, 등락(%):+0.12%
+ACN
+
+# INFORMATION TECHNOLOGY SERVICES / IBM, 시총:$220.6B, 주가:$195.40, 등락(%):-1.19%
+IBM
+
+# ELECTRONIC COMPONENTS / Amphenol, 시총:$206.2B, 주가:$63.80, 등락(%):+0.95%
+APH
+
+# ELECTRONIC COMPONENTS / Corning, 시총:$142.9B, 주가:$43.90, 등락(%):+0.75%
+GLW
+
+# ELECTRONIC COMPONENTS / TE Connectivity, 시총:$46.1B, 주가:$149.20, 등락(%):+0.30%
+TEL
+
+# SCIENTIFIC & TECHNICAL INSTRUMENTS / Keysight Technologies, 시총:$25.4B, 주가:$145.60, 등락(%):-0.20%
+KEYS
+
+---
+
+## COMMUNICATION SERVICES
+
+# INTERNET CONTENT & INFORMATION / Alphabet (Google), 시총:$2.19T, 주가:$166.40, 등락(%):-0.13%
+GOOGL
+
+# INTERNET CONTENT & INFORMATION / Meta Platforms, 시총:$1.50T, 주가:$528.20, 등락(%):-0.86%
+META
+
+# ENTERTAINMENT / Netflix, 시총:$326.2B, 주가:$672.50, 등락(%):+0.45%
+NFLX
+
+# ENTERTAINMENT / Walt Disney, 시총:$184.4B, 주가:$92.30, 등락(%):+0.30%
+DIS
+
+# ENTERTAINMENT / Warner Bros. Discovery, 시총:$18.4B, 주가:$7.55, 등락(%):-0.65%
+WBD
+
+# ENTERTAINMENT / Live Nation Entertainment, 시총:$22.1B, 주가:$95.80, 등락(%):+0.55%
+LYV
+
+# ENTERTAINMENT / TKO Group Holdings, 시총:$18.9B, 주가:$115.40, 등락(%):+0.40%
+TKO
+
+# TELECOM SERVICES / Verizon Communications, 시총:$201.4B, 주가:$41.50, 등락(%):+0.25%
+VZ
+
+# TELECOM SERVICES / T-Mobile US, 시총:$195.9B, 주가:$197.80, 등락(%):+0.80%
+TMUS
+
+# TELECOM SERVICES / AT&T, 시총:$170.5B, 주가:$19.65, 등락(%):+0.35%
+T
+
+---
+
+## CONSUMER CYCLICAL
+
+# INTERNET RETAIL / Amazon, 시총:$2.84T, 주가:$186.20, 등락(%):-0.94%
+AMZN
+
+# AUTO MANUFACTURERS / Tesla, 시총:$1.35T, 주가:$211.50, 등락(%):+0.68%
+TSLA
+
+# AUTO MANUFACTURERS / General Motors, 시총:$52.4B, 주가:$46.80, 등락(%):+0.45%
+GM
+
+# AUTO MANUFACTURERS / Ford Motor, 시총:$41.8B, 주가:$10.50, 등락(%):-0.30%
+F
+
+# HOME IMPROVEMENT RETAIL / Home Depot, 시총:$337.6B, 주가:$371.40, 등락(%):+0.55%
+HD
+
+# RESTAURANTS / McDonald's, 시총:$193.1B, 주가:$290.10, 등락(%):+0.40%
+MCD
+
+# RESTAURANTS / Starbucks, 시총:$123.1B, 주가:$95.20, 등락(%):-0.20%
+SBUX
+
+# RESTAURANTS / Chipotle Mexican Grill, 시총:$76.8B, 주가:$56.30, 등락(%):+0.60%
+CMG
+
+# RESTAURANTS / Yum! Brands, 시총:$38.4B, 주가:$136.50, 등락(%):+0.15%
+YUM
+
+# TRAVEL SERVICES / Booking Holdings, 시총:$159.8B, 주가:$3920.00, 등락(%):-0.45%
+BKNG
+
+# TRAVEL SERVICES / Royal Caribbean Cruises, 시총:$42.6B, 주가:$165.80, 등락(%):-0.80%
+RCL
+
+# TRAVEL SERVICES / Airbnb, 시총:$74.2B, 주가:$117.30, 등락(%):+0.35%
+ABNB
+
+# LODGING / Marriott International, 시총:$68.4B, 주가:$242.60, 등락(%):+0.25%
+MAR
+
+# LODGING / Hilton Worldwide, 시총:$54.2B, 주가:$218.40, 등락(%):+0.40%
+HLT
+
+# AUTO PARTS / AutoZone, 시총:$51.8B, 주가:$3015.00, 등락(%):+0.15%
+AZO
+
+# APPAREL RETAIL / TJX Companies, 시총:$168.4B, 주가:$116.80, 등락(%):+0.75%
+TJX
+
+# APPAREL MANUFACTURING / Ralph Lauren, 시총:$11.2B, 주가:$175.40, 등락(%):+0.30%
+RL
+
+# SOFTWARE - APPLICATION / AppLovin, 시총:$31.5B, 주가:$94.20, 등락(%):+1.25%
+APP
+
+---
+
+## FINANCIAL
+
+# BANKS - DIVERSIFIED / JPMorgan Chase, 시총:$963.3B, 주가:$216.50, 등락(%):-0.07%
+JPM
+
+# BANKS - DIVERSIFIED / Bank of America, 시총:$450.6B, 주가:$39.40, 등락(%):+0.62%
+BAC
+
+# BANKS - DIVERSIFIED / Wells Fargo, 시총:$268.1B, 주가:$56.80, 등락(%):+0.81%
+WFC
+
+# BANKS - DIVERSIFIED / Citigroup, 시총:$233.4B, 주가:$61.20, 등락(%):+0.55%
+C
+
+# CREDIT SERVICES / Visa, 시총:$679.8B, 주가:$272.50, 등락(%):-0.36%
+V
+
+# CREDIT SERVICES / Mastercard, 시총:$496.5B, 주가:$471.20, 등락(%):-0.25%
+MA
+
+# CREDIT SERVICES / American Express, 시총:$231.5B, 주가:$260.50, 등락(%):+0.45%
+AXP
+
+# CREDIT SERVICES / Capital One Financial, 시총:$139.7B, 주가:$149.20, 등락(%):+0.60%
+COF
+
+# CREDIT SERVICES / Synchrony Financial, 시총:$19.4B, 주가:$48.60, 등락(%):+0.35%
+SYF
+
+# INSURANCE - DIVERSIFIED / Berkshire Hathaway, 시총:$1.08T, 주가:$452.10, 등락(%):-0.57%
+BRK-B
+
+# ASSET MANAGEMENT / BlackRock, 시총:$181.6B, 주가:$895.40, 등락(%):-0.77%
+BLK
+
+# ASSET MANAGEMENT / KKR & Co., 시총:$112.5B, 주가:$126.80, 등락(%):-0.45%
+KKR
+
+# ASSET MANAGEMENT / Apollo Global Management, 시총:$64.2B, 주가:$112.50, 등락(%):+0.20%
+APO
+
+# ASSET MANAGEMENT / Blackstone, 시총:$174.5B, 주가:$143.20, 등락(%):-3.61%
+BX
+
+# ASSET MANAGEMENT / State Street, 시총:$26.4B, 주가:$86.50, 등락(%):+0.15%
+STT
+
+# ASSET MANAGEMENT / Ameriprise Financial, 시총:$44.8B, 주가:$445.20, 등락(%):+0.40%
+AMP
+
+# FINANCIAL DATA & STOCK EXCHANGES / S&P Global, 시총:$123.8B, 주가:$508.40, 등락(%):-0.30%
+SPGI
+
+# FINANCIAL DATA & STOCK EXCHANGES / CME Group, 시총:$78.4B, 주가:$218.60, 등락(%):+0.10%
+CME
+
+# FINANCIAL DATA & STOCK EXCHANGES / Intercontinental Exchange, 시총:$90.5B, 주가:$157.80, 등락(%):+0.25%
+ICE
+
+# FINANCIAL DATA & STOCK EXCHANGES / Moody's, 시총:$86.4B, 주가:$472.10, 등락(%):-0.15%
+MCO
+
+# CAPITAL MARKETS / Morgan Stanley, 시총:$339.3B, 주가:$104.20, 등락(%):-0.47%
+MS
+
+# CAPITAL MARKETS / Goldman Sachs, 시총:$301.8B, 주가:$498.50, 등락(%):-0.35%
+GS
+
+# CAPITAL MARKETS / Charles Schwab, 시총:$192.2B, 주가:$64.80, 등락(%):+0.50%
+SCHW
+
+# CAPITAL MARKETS / Robinhood Markets, 시총:$17.5B, 주가:$19.80, 등락(%):+1.10%
+HOOD
+
+# CAPITAL MARKETS / Interactive Brokers, 시총:$52.4B, 주가:$125.60, 등락(%):+0.75%
+IBKR
+
+# INSURANCE - PROPERTY & CASUALTY / Chubb, 시총:$132.9B, 주가:$286.40, 등락(%):+0.20%
+CB
+
+# INSURANCE - PROPERTY & CASUALTY / Progressive, 시총:$121.7B, 주가:$246.80, 등락(%):+0.45%
+PGR
+
+# INSURANCE - PROPERTY & CASUALTY / Travelers Companies, 시총:$52.8B, 주가:$231.50, 등락(%):+0.30%
+TRV
+
+# INSURANCE - PROPERTY & CASUALTY / Allstate, 시총:$48.6B, 주가:$185.20, 등락(%):-0.40%
+ALL
+
+# BANKS - REGIONAL / PNC Financial Services, 시총:$72.4B, 주가:$182.10, 등락(%):+0.65%
+PNC
+
+# BANKS - REGIONAL / U.S. Bancorp, 시총:$68.5B, 주가:$43.90, 등락(%):+0.50%
+USB
+
+# BANKS - REGIONAL / Truist Financial, 시총:$56.2B, 주가:$42.10, 등락(%):+0.40%
+TFC
+
+# BANKS - REGIONAL / M&T Bank, 시총:$28.4B, 주가:$172.50, 등락(%):+0.35%
+MTB
+
+# BANKS - REGIONAL / KeyCorp, 시총:$15.6B, 주가:$16.40, 등락(%):+0.20%
+KEY
+
+# INSURANCE BROKERS / Marsh & McLennan, 시총:$110.2B, 주가:$224.50, 등락(%):+0.15%
+MMC
+
+# INSURANCE BROKERS / Aon, 시총:$75.4B, 주가:$348.60, 등락(%):+0.25%
+AON
+
+---
+
+## HEALTHCARE
+
+# DRUG MANUFACTURERS - GENERAL / Eli Lilly, 시총:$1.05T, 주가:$952.40, 등락(%):-2.38%
+LLY
+
+# DRUG MANUFACTURERS - GENERAL / Johnson & Johnson, 시총:$629.2B, 주가:$161.20, 등락(%):-0.54%
+JNJ
+
+# DRUG MANUFACTURERS - GENERAL / Merck, 시총:$331.9B, 주가:$116.40, 등락(%):+0.21%
+MRK
+
+# DRUG MANUFACTURERS - GENERAL / AbbVie, 시총:$442.3B, 주가:$193.80, 등락(%):-0.54%
+ABBV
+
+# DRUG MANUFACTURERS - GENERAL / Amgen, 시총:$223.4B, 주가:$325.60, 등락(%):+0.35%
+AMGN
+
+# DRUG MANUFACTURERS - GENERAL / Gilead Sciences, 시총:$171.4B, 주가:$79.20, 등락(%):+0.40%
+GILD
+
+# DRUG MANUFACTURERS - GENERAL / Pfizer, 시총:$152.5B, 주가:$28.90, 등락(%):-0.66%
+PFE
+
+# DRUG MANUFACTURERS - GENERAL / Bristol Myers Squibb, 시총:$130.8B, 주가:$48.50, 등락(%):-0.30%
+BMY
+
+# HEALTHCARE PLANS / UnitedHealth Group, 시총:$360.6B, 주가:$584.10, 등락(%):+0.45%
+UNH
+
+# HEALTHCARE PLANS / Cigna, 시총:$101.4B, 주가:$356.20, 등락(%):+0.30%
+CI
+
+# HEALTHCARE PLANS / CVS Health, 시총:$124.3B, 주가:$57.80, 등락(%):+0.20%
+CVS
+
+# HEALTHCARE PLANS / Humana, 시총:$42.8B, 주가:$352.40, 등락(%):+0.55%
+HUM
+
+# HEALTHCARE PLANS / Centene, 시총:$38.6B, 주가:$73.50, 등락(%):+0.40%
+CNC
+
+# HEALTHCARE PLANS / Elevance Health, 시총:$92.4B, 주가:$398.60, 등락(%):+0.15%
+ELV
+
+# DIAGNOSTICS & RESEARCH / Thermo Fisher Scientific, 시총:$219.0B, 주가:$608.40, 등락(%):+0.35%
+TMO
+
+# DIAGNOSTICS & RESEARCH / Danaher, 시총:$142.1B, 주가:$268.50, 등락(%):+0.20%
+DHR
+
+# DIAGNOSTICS & RESEARCH / Agilent Technologies, 시총:$41.5B, 주가:$142.80, 등락(%):-0.45%
+A
+
+# DIAGNOSTICS & RESEARCH / Laboratory Corp of America, 시총:$18.9B, 주가:$224.10, 등락(%):+0.10%
+LH
+
+# MEDICAL DEVICES / Intuitive Surgical, 시총:$139.5B, 주가:$488.20, 등락(%):+0.65%
+ISRG
+
+# MEDICAL DEVICES / Abbott Laboratories, 시총:$192.8B, 주가:$115.80, 등락(%):+0.40%
+ABT
+
+# MEDICAL DEVICES / Medtronic, 시총:$115.2B, 주가:$89.40, 등락(%):+0.25%
+MDT
+
+# MEDICAL DEVICES / Boston Scientific, 시총:$118.6B, 주가:$80.50, 등락(%):+0.50%
+BSX
+
+# MEDICAL DEVICES / Stryker, 시총:$130.1B, 주가:$358.20, 등락(%):+0.35%
+SYK
+
+# MEDICAL INSTRUMENTS & SUPPLIES / McKesson, 시총:$71.2B, 주가:$548.60, 등락(%):-0.30%
+MCK
+
+# MEDICAL INSTRUMENTS & SUPPLIES / Cardinal Health, 시총:$26.4B, 주가:$108.40, 등락(%):-0.15%
+CAH
+
+# BIOTECHNOLOGY / Vertex Pharmaceuticals, 시총:$128.8B, 주가:$482.10, 등락(%):+0.85%
+VRTX
+
+# MEDICAL CARE FACILITIES / HCA Healthcare, 시총:$98.6B, 주가:$378.40, 등락(%):+0.45%
+HCA
+
+---
+
+## INDUSTRIALS
+
+# AEROSPACE & DEFENSE / RTX, 시총:$298.7B, 주가:$122.50, 등락(%):+1.13%
+RTX
+
+# AEROSPACE & DEFENSE / Lockheed Martin, 시총:$140.3B, 주가:$562.40, 등락(%):+0.45%
+LMT
+
+# AEROSPACE & DEFENSE / General Dynamics, 시총:$82.5B, 주가:$301.20, 등락(%):+0.75%
+GD
+
+# AEROSPACE & DEFENSE / Northrop Grumman, 시총:$76.4B, 주가:$524.80, 등락(%):+0.35%
+NOC
+
+# AEROSPACE & DEFENSE / Boeing, 시총:$182.9B, 주가:$158.40, 등락(%):+0.25%
+BA
+
+# AEROSPACE & DEFENSE / TransDigm Group, 시총:$72.4B, 주가:$1285.00, 등락(%):+0.60%
+TDG
+
+# AEROSPACE & DEFENSE / Howmet Aerospace, 시총:$41.8B, 주가:$101.50, 등락(%):+0.80%
+HWM
+
+# AEROSPACE & DEFENSE / L3Harris Technologies, 시총:$45.2B, 주가:$238.40, 등락(%):+0.30%
+LHX
+
+# AEROSPACE & DEFENSE / Axon Enterprise, 시총:$28.6B, 주가:$378.20, 등락(%):+1.45%
+AXON
+
+# SPECIALTY INDUSTRIAL MACHINERY / GE Vernova, 시총:$283.0B, 주가:$245.60, 등락(%):+2.15%
+GEV
+
+# SPECIALTY INDUSTRIAL MACHINERY / Parker-Hannifin, 시총:$132.9B, 주가:$594.80, 등락(%):+0.50%
+PH
+
+# SPECIALTY INDUSTRIAL MACHINERY / Emerson Electric, 시총:$62.8B, 주가:$109.50, 등락(%):+0.35%
+EMR
+
+# SPECIALTY INDUSTRIAL MACHINERY / Cummins, 시총:$42.5B, 주가:$308.20, 등락(%):+0.40%
+CMI
+
+# SPECIALTY INDUSTRIAL MACHINERY / AMETEK, 시총:$40.8B, 주가:$176.40, 등락(%):+0.25%
+AME
+
+# SPECIALTY INDUSTRIAL MACHINERY / Eaton, 시총:$175.4B, 주가:$348.50, 등락(%):+1.32%
+ETN
+
+# SPECIALTY INDUSTRIAL MACHINERY / Illinois Tool Works, 시총:$74.2B, 주가:$248.50, 등락(%):+0.30%
+ITW
+
+# SPECIALTY INDUSTRIAL MACHINERY / Ingersoll Rand, 시총:$38.6B, 주가:$95.40, 등락(%):+0.45%
+IR
+
+# FARM & HEAVY CONSTRUCTION MACHINERY / Caterpillar, 시총:$394.5B, 주가:$348.20, 등락(%):+0.23%
+CAT
+
+# FARM & HEAVY CONSTRUCTION MACHINERY / John Deere, 시총:$165.2B, 주가:$392.40, 등락(%):-0.58%
+DE
+
+# RAILROADS / Union Pacific, 시총:$174.2B, 주가:$245.20, 등락(%):-1.38%
+UNP
+
+# RAILROADS / Norfolk Southern, 시총:$58.4B, 주가:$256.80, 등락(%):-0.45%
+NSC
+
+# RAILROADS / CSX, 시총:$66.8B, 주가:$34.50, 등락(%):-0.30%
+CSX
+
+# RAILROADS / Westinghouse Air Brake Technologies, 시총:$30.2B, 주가:$172.40, 등락(%):+0.20%
+WAB
+
+# INTEGRATED FREIGHT & LOGISTICS / UPS, 시총:$110.4B, 주가:$129.50, 등락(%):-0.40%
+UPS
+
+# INTEGRATED FREIGHT & LOGISTICS / FedEx, 시총:$71.8B, 주가:$294.20, 등락(%):-0.25%
+FDX
+
+# ENGINEERING & CONSTRUCTION / Quanta Services, 시총:$38.4B, 주가:$261.50, 등락(%):+0.85%
+PWR
+
+# ENGINEERING & CONSTRUCTION / Comfort Systems USA, 시총:$12.8B, 주가:$362.40, 등락(%):+1.10%
+FIX
+
+# INDUSTRIAL DISTRIBUTION / Ferguson, 시총:$42.6B, 주가:$212.80, 등락(%):+0.35%
+FERG
+
+# INDUSTRIAL DISTRIBUTION / W.W. Grainger, 시총:$48.2B, 주가:$978.40, 등락(%):+0.40%
+GWW
+
+# INDUSTRIAL DISTRIBUTION / Fastenal, 시총:$40.5B, 주가:$70.80, 등락(%):+0.25%
+FAST
+
+# CONGLOMERATES / Vertiv Holdings, 시총:$32.8B, 주가:$87.40, 등락(%):+1.80%
+VRT
+
+# BUILDING PRODUCTS & EQUIPMENT / Johnson Controls, 시총:$46.8B, 주가:$69.80, 등락(%):+0.55%
+JCI
+
+# BUILDING PRODUCTS & EQUIPMENT / Trane Technologies, 시총:$78.4B, 주가:$346.20, 등락(%):+0.70%
+TT
+
+# WASTE MANAGEMENT / Waste Management, 시총:$84.2B, 주가:$209.50, 등락(%):+0.30%
+WM
+
+# RENTAL & LEASING SERVICES / United Rentals, 시총:$49.6B, 주가:$742.80, 등락(%):+0.65%
+URI
+
+# TRUCKING / Old Dominion Freight Line, 시총:$42.8B, 주가:$198.40, 등락(%):+0.40%
+ODFL
+
+---
+
+## CONSUMER DEFENSIVE
+
+# DISCOUNT STORES / Walmart, 시총:$917.9B, 주가:$72.80, 등락(%):-0.39%
+WMT
+
+# DISCOUNT STORES / Costco, 시총:$426.0B, 주가:$884.50, 등락(%):-0.08%
+COST
+
+# DISCOUNT STORES / Target, 시총:$69.8B, 주가:$151.20, 등락(%):+0.25%
+TGT
+
+# DISCOUNT STORES / Dollar General, 시총:$18.4B, 주가:$84.20, 등락(%):-0.45%
+DG
+
+# BEVERAGES - NON-ALCOHOLIC / Coca-Cola, 시총:$377.3B, 주가:$71.20, 등락(%):+0.33%
+KO
+
+# BEVERAGES - NON-ALCOHOLIC / PepsiCo, 시총:$192.1B, 주가:$171.50, 등락(%):+0.15%
+PEP
+
+# BEVERAGES - NON-ALCOHOLIC / Keurig Dr Pepper, 시총:$50.4B, 주가:$37.20, 등락(%):+0.20%
+KDP
+
+# CONFECTIONERS / Mondelez International, 시총:$94.2B, 주가:$70.80, 등락(%):+0.10%
+MDLZ
+
+# CONFECTIONERS / Hershey, 시총:$38.4B, 주가:$189.50, 등락(%):+0.30%
+HSY
+
+# PACKAGED FOODS / Kraft Heinz, 시총:$42.6B, 주가:$35.10, 등락(%):-0.20%
+KHC
+
+# HOUSEHOLD & PERSONAL PRODUCTS / Procter & Gamble, 시총:$335.7B, 주가:$169.80, 등락(%):+0.20%
+PG
+
+# HOUSEHOLD & PERSONAL PRODUCTS / Colgate-Palmolive, 시총:$82.4B, 주가:$100.50, 등락(%):+0.15%
+CL
+
+# TOBACCO / Philip Morris, 시총:$296.1B, 주가:$123.80, 등락(%):+0.45%
+PM
+
+# TOBACCO / Altria Group, 시총:$90.5B, 주가:$52.40, 등락(%):+0.35%
+MO
+
+---
+
+## ENERGY
+
+# OIL & GAS INTEGRATED / Exxon Mobil, 시총:$658.5B, 주가:$118.60, 등락(%):+0.94%
+XOM
+
+# OIL & GAS INTEGRATED / Chevron, 시총:$392.7B, 주가:$148.20, 등락(%):+1.16%
+CVX
+
+# OIL & GAS E&P / ConocoPhillips, 시총:$152.6B, 주가:$111.40, 등락(%):+0.85%
+COP
+
+# OIL & GAS E&P / Devon Energy, 시총:$24.8B, 주가:$39.50, 등락(%):+0.60%
+DVN
+
+# OIL & GAS E&P / EOG Resources, 시총:$72.4B, 주가:$126.80, 등락(%):+0.75%
+EOG
+
+# OIL & GAS E&P / EQT, 시총:$15.8B, 주가:$35.40, 등락(%):+0.40%
+EQT
+
+# OIL & GAS REFINING & MARKETING / Valero Energy, 시총:$43.2B, 주가:$134.50, 등락(%):+0.90%
+VLO
+
+# OIL & GAS REFINING & MARKETING / Phillips 66, 시총:$56.4B, 주가:$132.80, 등락(%):+0.80%
+PSX
+
+# OIL & GAS MIDSTREAM / ONEOK, 시총:$51.6B, 주가:$88.20, 등락(%):+0.45%
+OKE
+
+# OIL & GAS EQUIPMENT & SERVICES / Baker Hughes, 시총:$35.4B, 주가:$35.80, 등락(%):+0.55%
+BKR
+
+---
+
+## UTILITIES
+
+# UTILITIES - REGULATED ELECTRIC / NextEra Energy, 시총:$179.8B, 주가:$81.50, 등락(%):+0.75%
+NEE
+
+# UTILITIES - REGULATED ELECTRIC / Duke Energy, 시총:$89.6B, 주가:$116.20, 등락(%):+0.60%
+DUK
+
+# UTILITIES - REGULATED ELECTRIC / American Electric Power, 시총:$51.2B, 주가:$97.40, 등락(%):+0.45%
+AEP
+
+# UTILITIES - REGULATED ELECTRIC / Dominion Energy, 시총:$48.5B, 주가:$57.80, 등락(%):+0.50%
+D
+
+# UTILITIES - REGULATED ELECTRIC / Southern Company, 시총:$94.2B, 주가:$86.40, 등락(%):+0.65%
+SO
+
+# UTILITIES - REGULATED ELECTRIC / Xcel Energy, 시총:$36.8B, 주가:$65.20, 등락(%):+0.35%
+XEL
+
+# UTILITIES - REGULATED ELECTRIC / Consolidated Edison, 시총:$34.5B, 주가:$99.80, 등락(%):+0.40%
+ED
+
+# UTILITIES - REGULATED ELECTRIC / Eversource Energy, 시총:$23.4B, 주가:$66.10, 등락(%):+0.25%
+ES
+
+# UTILITIES - REGULATED ELECTRIC / FirstEnergy, 시총:$24.8B, 주가:$43.20, 등락(%):+0.30%
+FE
+
+# UTILITIES - RENEWABLE / Constellation Energy, 시총:$81.2B, 주가:$256.40, 등락(%):+1.20%
+CEG
+
+# UTILITIES - DIVERSIFIED / Sempra, 시총:$56.8B, 주가:$89.20, 등락(%):+0.40%
+SRE
+
+---
+
+## REAL ESTATE
+
+# REIT - SPECIALTY / Equinix, 시총:$82.4B, 주가:$865.20, 등락(%):+0.65%
+EQIX
+
+# REIT - SPECIALTY / Digital Realty Trust, 시총:$51.8B, 주가:$158.40, 등락(%):+0.75%
+DLR
+
+# REIT - SPECIALTY / American Tower, 시총:$106.2B, 주가:$227.50, 등락(%):+0.50%
+AMT
+
+# REIT - HEALTHCARE / Welltower, 시총:$170.0B, 주가:$124.80, 등락(%):+0.85%
+WELL
+
+# REIT - HEALTHCARE / Ventas, 시총:$26.8B, 주가:$64.20, 등락(%):+0.40%
+VTR
+
+# REIT - RETAIL / Simon Property Group, 시총:$54.2B, 주가:$165.80, 등락(%):+0.55%
+SPG
+
+# REIT - RETAIL / Realty Income, 시총:$53.8B, 주가:$61.40, 등락(%):+0.45%
+O
+
+# REIT - INDUSTRIAL / Prologis, 시총:$134.0B, 주가:$123.50, 등락(%):+0.60%
+PLD
+
+---
+
+## BASIC MATERIALS
+
+# SPECIALTY CHEMICALS / Sherwin-Williams, 시총:$94.2B, 주가:$372.50, 등락(%):+0.40%
+SHW
+
+# SPECIALTY CHEMICALS / Air Products & Chemicals, 시총:$64.8B, 주가:$292.10, 등락(%):+0.25%
+APD
+
+# SPECIALTY CHEMICALS / Linde, 시총:$222.5B, 주가:$468.20, 등락(%):+0.55%
+LIN
+
+# SPECIALTY CHEMICALS / Ecolab, 시총:$71.4B, 주가:$249.60, 등락(%):+0.35%
+ECL
+
+# STEEL / Nucor, 시총:$34.8B, 주가:$145.20, 등락(%):-0.45%
+NUE
+
+# COPPER / Freeport-McMoRan, 시총:$64.2B, 주가:$44.80, 등락(%):-0.30%
+FCX
+
+# GOLD / Newmont, 시총:$124.1B, 주가:$51.20, 등락(%):+1.15%
+NEM

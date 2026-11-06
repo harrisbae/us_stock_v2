@@ -26,7 +26,7 @@ NUM_BOXES="2"  # 표시할 박스권 개수
 BOX_OVERLAP="5"  # 박스권 간 겹치는 일수
 BOX_STYLE="default"  # 박스권 스타일 ('default', 'gradient', 'rainbow')
 AVOID_TIME_OVERLAP="true"  # 시간축 겹침 방지 여부
-SHOW_PATTERN_STRIP="false"  # -v overlay 시 메인 아래 차트 패턴 스트립(CHART_PATTERN_CRITERIA 행 수)
+SHOW_PATTERN_STRIP="false"  # -v overlay 시 메인 아래 패턴 스트립(감지된 종류만 행 표시·높이 자동)
 # 메인 차트 패턴 오버레이 (--pattern-main, 쉼표 구분)
 # 패턴 ID: double_top_m, bear_flag, bear_diamond, range_box, triple_bottom_w, bull_flag, asc_triangle | all 또는 *
 PATTERN_MAIN=""
@@ -355,11 +355,19 @@ except Exception as e:
   PERIOD="${FROM_DATE}_${TO_DATE}"
 fi
 
+# 급등 필터 모드: -s / --file 누락 시 전용 안내 (전체 Usage 덤프 대신)
+if [ "$FILTER_SURGE_SETUP" = "true" ] && [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
+  echo "오류: --filter-surge-setup 은 -s SYMBOL[,SYMBOL...] 또는 --file SYMBOL_FILE 이 필요합니다."
+  echo "예: ./hma.sh --filter-surge-setup -s GM,DAL,LRCX -p 6mo"
+  echo "예: ./hma.sh --filter-surge-setup -f stocks/us_Harris_Wish.txt -p 6mo"
+  exit 1
+fi
+
 # 필수 인자 확인 (-s 또는 --file 중 하나는 필수)
 if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "Usage: $0 (-s SYMBOL | --file SYMBOL_FILE) [-p PERIOD | -d DAYS | --from START_DATE --to END_DATE] [-i INTERVAL] [-t PREPOST] [-a ANALYSIS_TYPE] [-v VOLUME_PROFILE_TYPE] [-e|--elliott] [박스권 옵션들]"
   echo "Options:"
-  echo "  -s SYMBOL           단일 종목 분석"
+  echo "  -s SYMBOL           종목 분석 (콤마로 여러 종목: 비교/급등필터 등)"
   echo "  --file SYMBOL_FILE  종목 파일에서 읽어서 분석 (한 줄에 하나의 종목코드)"
   echo "  -p PERIOD          기간 (예: 120d, 6mo, 1y, 기본값: 120d)"
   echo "  -d DAYS            일수 (예: 30, 60, 90, 365, 기본값: 사용 안함)"
@@ -384,19 +392,30 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --box-overlap      박스권 간 겹치는 일수 (기본값: 5)"
   echo "  --box-style        박스권 스타일 (default/gradient/rainbow, 기본값: default)"
   echo "  --allow-time-overlap 시간축 겹침 허용 (기본값: 겹침방지)"
-  echo "  --show-pattern-strip  -v overlay일 때 차트 패턴 타임라인 서브플롯 표시"
+  echo "  --show-pattern-strip  -v overlay일 때 차트 패턴 타임라인 표시(감지된 종류만·행수에 따라 높이 자동)"
   echo "  --pattern-main LIST   메인 차트 패턴 오버레이 (쉼표로 패턴 ID 나열). all 또는 *=전 패턴 id. -v overlay 전용"
-  echo "                        패턴 ID (chart_patterns.py CHART_PATTERN_CRITERIA와 동일):"
-  echo "                          double_top_m      쌍봉(M)"
-  echo "                          bear_flag         하락깃발"
-  echo "                          bear_diamond      하락다이아"
-  echo "                          range_box         박스권"
-  echo "                          triple_bottom_w   역삼중창(W)"
-  echo "                          bull_flag         상승깃발"
-  echo "                          asc_triangle      상승삼각"
-  echo "                          post_box_bull     박스후장대양봉"
-  echo "                          fvg_gap           FVG(갭)"
-  echo "                        예: --pattern-main triple_bottom_w,double_top_m  |  --pattern-main all"
+  echo "                        그룹: bull_rev / bull_cont / bear_rev / bear_cont / neutral / setup"
+  echo "                        패턴 ID (chart_patterns.py CHART_PATTERN_CRITERIA, alias 허용):"
+  echo "                          double_top_m         하락반·쌍봉"
+  echo "                          bull_double_bottom   상승반·쌍바닥"
+  echo "                          bear_flag            하락지·깃발"
+  echo "                          bull_flag            상승지·깃발"
+  echo "                          bear_diamond         하락반·다이아"
+  echo "                          range_box            중립·박스권"
+  echo "                          triple_bottom_w      상승반·삼중바닥"
+  echo "                          bear_triple_top      하락반·삼중탑"
+  echo "                          asc_triangle         상승지·상승삼각"
+  echo "                          bear_desc_triangle   하락지·하락삼각"
+  echo "                          post_box_bull        상승지·박스돌파"
+  echo "                          fvg_gap              중립·FVG"
+  echo "                          bull_falling_wedge   상승반·하락쐐기"
+  echo "                          bear_rising_wedge    하락반·상승쐐기"
+  echo "                          bull_pennant         상승지·펜넌트"
+  echo "                          bear_pennant         하락지·펜넌트"
+  echo "                          bull_inv_hs          상승반·역헤드앤숄더"
+  echo "                          bear_hs              하락반·헤드앤숄더"
+  echo "                          bull_cup_handle      상승지·컵핸들"
+  echo "                        예: --pattern-main bull_rev,bear_cont  |  --pattern-main all"
   echo "  --pattern-range-box-main-max N  메인 range_box 최대 N건(신뢰도·종료일 선별, 기본 1). 0=메인 미표시"
   echo "  --pattern-main-min-confidence F 메인 패턴 최소 신뢰도(0~1, 기본 0.0). 스트립에는 영향 없음"
   echo "  --show-disparity-strategy    이격도(95/105) 전략 마커/요약 표시"
@@ -417,11 +436,14 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --show-bb                   기술 분석 주석 차트에 볼린저 밴드 선 표시"
   echo ""
   echo "급등 셋업 필터:"
-  echo "  --filter-surge-setup              종목 목록(--file)에서 급등 셋업/급등 후보만 필터 (분석 생략)"
+  echo "  --filter-surge-setup              급등준비/셋업/급등 후보 필터 (분석 생략)"
+  echo "  -s SYMBOL[,SYMBOL...]             필터 대상 종목 (콤마 구분, 예: GM,DAL,LRCX)"
+  echo "  -f|--file SYMBOL_FILE             필터 대상 종목 목록 파일"
   echo "  --filter-surge-min-score N        최소 점수 (기본 40)"
   echo "  --filter-surge-include-active     이미 급등진행/급등과열 종목도 포함"
-  echo "  --filter-surge-kinds A,B          셋업 종류만 (예: A 또는 A,B)"
+  echo "  --filter-surge-kinds A,B          셋업 종류만 (예: A 또는 A,B). 지정 시 급등준비 제외"
   echo "  --filter-surge-out-dir DIR        결과 저장 경로 (기본 output/analysis)"
+  echo "  예: ./hma.sh --filter-surge-setup -s GM,DAL,LRCX -p 6mo"
   echo "  예: ./hma.sh --filter-surge-setup -f stocks/us_Harris_Wish.txt -p 6mo"
   echo ""
   echo "기간 설정 예시:"
@@ -442,28 +464,41 @@ fi
 
 # 급등 셋업 필터 모드: 목록만 걸러내고 종료 (전체 분석 루프 생략)
 if [ "$FILTER_SURGE_SETUP" = "true" ]; then
-  if [ -z "$SYMBOL_FILE" ]; then
-    echo "오류: --filter-surge-setup 은 --file SYMBOL_FILE 이 필요합니다."
+  if [ -z "$SYMBOL_FILE" ] && [ -z "$SYMBOL" ]; then
+    echo "오류: --filter-surge-setup 은 -s SYMBOL[,SYMBOL...] 또는 --file SYMBOL_FILE 이 필요합니다."
+    echo "예: ./hma.sh --filter-surge-setup -s GM,DAL,LRCX -p 6mo"
+    echo "예: ./hma.sh --filter-surge-setup -f stocks/us_Harris_Wish.txt -p 6mo"
     exit 1
   fi
-  if [ ! -f "$SYMBOL_FILE" ]; then
+  if [ -n "$SYMBOL_FILE" ] && [ ! -f "$SYMBOL_FILE" ]; then
     echo "오류: 종목 파일을 찾을 수 없습니다: $SYMBOL_FILE"
     exit 1
   fi
   FILTER_ARGS=(
     python filter_surge_setup.py
-    --file "$SYMBOL_FILE"
     -p "$PERIOD"
     --min-score "$FILTER_SURGE_MIN_SCORE"
     --out-dir "$FILTER_SURGE_OUT_DIR"
   )
+  if [ -n "$SYMBOL" ]; then
+    FILTER_ARGS+=(-s "$SYMBOL")
+  fi
+  if [ -n "$SYMBOL_FILE" ]; then
+    FILTER_ARGS+=(--file "$SYMBOL_FILE")
+  fi
   if [ "$FILTER_SURGE_INCLUDE_ACTIVE" = "true" ]; then
     FILTER_ARGS+=(--include-active)
   fi
   if [ -n "$FILTER_SURGE_KINDS" ]; then
     FILTER_ARGS+=(--kinds "$FILTER_SURGE_KINDS")
   fi
-  echo "급등 셋업 필터 실행: $SYMBOL_FILE"
+  if [ -n "$SYMBOL" ] && [ -n "$SYMBOL_FILE" ]; then
+    echo "급등 셋업 필터 실행: -s $SYMBOL + $SYMBOL_FILE"
+  elif [ -n "$SYMBOL" ]; then
+    echo "급등 셋업 필터 실행: -s $SYMBOL"
+  else
+    echo "급등 셋업 필터 실행: $SYMBOL_FILE"
+  fi
   "${FILTER_ARGS[@]}"
   exit $?
 fi

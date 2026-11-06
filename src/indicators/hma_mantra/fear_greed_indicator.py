@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
+
+import pandas as pd
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -93,6 +95,36 @@ def fetch_cnn_fear_greed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     except (HTTPError, URLError, ValueError, KeyError, TypeError) as e:
         print(f"⚠️ CNN 공포탐욕 지수 로드 실패: {e}")
         return None, None
+
+
+def fetch_cnn_fear_greed_history() -> Optional[pd.Series]:
+    """CNN Fear & Greed 일별 이력. 인덱스는 날짜, 값은 0~100 점수."""
+    try:
+        payload = _http_get_json(CNN_FEAR_GREED_URL, CNN_HEADERS)
+        hist = (payload.get("fear_and_greed_historical") or {}).get("data") or []
+        idx = []
+        vals = []
+        for pt in hist:
+            x, y = pt.get("x"), pt.get("y")
+            if x is None or y is None:
+                continue
+            ts = pd.to_datetime(float(x), unit="ms", utc=True).tz_localize(None).normalize()
+            idx.append(ts)
+            vals.append(float(y))
+        if not vals:
+            print("⚠️ CNN F&G 이력이 비어 있습니다.")
+            return None
+        series = pd.Series(vals, index=pd.DatetimeIndex(idx), name="CNN_FG")
+        series = series[~series.index.duplicated(keep="last")].sort_index()
+        print(
+            f"✅ CNN F&G 이력: {len(series)}개 "
+            f"({series.index[0].date()}~{series.index[-1].date()}, "
+            f"최근 {float(series.iloc[-1]):.1f})"
+        )
+        return series
+    except Exception as e:
+        print(f"⚠️ CNN F&G 이력 로드 실패: {e}")
+        return None
 
 
 def _safe_round(val: Any, digits: int = 1) -> Optional[float]:

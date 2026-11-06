@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-종목 목록 파일에서 급등 가능(셋업/급등) 종목을 필터링.
+종목 목록 파일 또는 -s 지정 종목에서 급등 가능(준비/셋업/급등) 종목을 필터링.
 
 예:
   python filter_surge_setup.py -f stocks/us_Harris_Wish.txt -p 6mo
+  python filter_surge_setup.py -s GM,DAL,LRCX -p 6mo
   python filter_surge_setup.py -f stocks/us_Harris_Wish.txt --min-score 45 --include-active
+  ./hma.sh --filter-surge-setup -s GM,DAL,LRCX -p 6mo
   ./hma.sh --filter-surge-setup -f stocks/us_Harris_Wish.txt -p 6mo
 """
 
@@ -22,6 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from indicators.hma_mantra.surge_setup_screener import (  # noqa: E402
     format_candidates_table,
     parse_symbol_list,
+    parse_symbols_arg,
     screen_surge_candidates,
     write_candidates_csv,
     write_symbol_list,
@@ -29,14 +32,23 @@ from indicators.hma_mantra.surge_setup_screener import (  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="급등 셋업/급등 진행 종목 필터")
-    parser.add_argument("-f", "--file", required=True, help="종목 목록 파일 (txt/csv)")
+    parser = argparse.ArgumentParser(description="급등 준비/셋업/급등 진행 종목 필터")
+    parser.add_argument(
+        "-f", "--file",
+        default="",
+        help="종목 목록 파일 (txt/csv)",
+    )
+    parser.add_argument(
+        "-s", "--symbols",
+        default="",
+        help="콤마 구분 종목 (예: GM,DAL,LRCX). -f 와 함께 쓰면 합집합",
+    )
     parser.add_argument("-p", "--period", default="6mo", help="시세 기간 (기본 6mo)")
     parser.add_argument("--min-score", type=int, default=40, help="최소 점수 (기본 40)")
     parser.add_argument(
         "--kinds",
         default="",
-        help="허용 셋업 종류 필터 (예: A,B). 비우면 전체",
+        help="허용 셋업 종류 필터 (예: A,B). 비우면 전체(준비 포함)",
     )
     parser.add_argument(
         "--include-active",
@@ -60,18 +72,37 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    src = Path(args.file)
-    if not src.is_file():
-        print(f"오류: 종목 파일 없음: {src}", file=sys.stderr)
-        return 1
+    tickers: list[str] = []
+    src_bits: list[str] = []
 
-    tickers = parse_symbol_list(src)
+    if args.symbols:
+        from_s = parse_symbols_arg(args.symbols)
+        if not from_s:
+            print(f"오류: -s 종목을 파싱할 수 없습니다: {args.symbols!r}", file=sys.stderr)
+            return 1
+        tickers.extend(from_s)
+        src_bits.append(f"-s {','.join(from_s)}")
+
+    if args.file:
+        src = Path(args.file)
+        if not src.is_file():
+            print(f"오류: 종목 파일 없음: {src}", file=sys.stderr)
+            return 1
+        from_f = parse_symbol_list(src)
+        if not from_f:
+            print(f"오류: 파싱된 종목이 없습니다: {src}", file=sys.stderr)
+            return 1
+        tickers.extend(from_f)
+        src_bits.append(src.name)
+
+    tickers = list(dict.fromkeys(tickers))
     if not tickers:
-        print(f"오류: 파싱된 종목이 없습니다: {src}", file=sys.stderr)
+        print("오류: -s SYMBOL[,SYMBOL...] 또는 -f/--file SYMBOL_FILE 이 필요합니다.", file=sys.stderr)
         return 1
 
     kinds = [k.strip() for k in args.kinds.split(",") if k.strip()] or None
     print(f"스캔: {len(tickers)}종목 · period={args.period} · min_score={args.min_score}")
+    print(f"입력: {'; '.join(src_bits)}")
     if kinds:
         print(f"kinds={kinds}")
     if args.include_active:
@@ -102,7 +133,7 @@ def main() -> int:
         list_path = write_symbol_list(
             out_dir / f"{prefix}.txt",
             hits,
-            header=f"from {src.name} · min_score={args.min_score}",
+            header=f"from {' + '.join(src_bits)} · min_score={args.min_score}",
         )
         print(f"\nCSV : {csv_path}")
         print(f"LIST: {list_path}  (hma.sh --file 로 재사용 가능)")

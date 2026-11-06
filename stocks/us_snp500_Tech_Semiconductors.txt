@@ -1,0 +1,45 @@
+### 2026-08-15 : 12:37
+
+## TECHNOLOGY
+
+# Semiconductors / Analog Devices, Inc., 시총:189.67B, 주가:389.39, 등락(%):2.16%
+ADI
+
+# Semiconductors / Advanced Micro Devices, Inc., 시총:839.73B, 주가:514.39, 등락(%):6.50%
+AMD
+
+# Semiconductors / Broadcom Inc., 시총:1869.68B, 주가:392.99, 등락(%):-5.94%
+AVGO
+
+# Semiconductors / Intel Corporation, 시총:517.01B, 주가:102.50, 등락(%):-1.97%
+INTC
+
+# Semiconductors / Microchip Technology Incorporated, 시총:42.99B, 주가:79.17, 등락(%):1.91%
+MCHP
+
+# Semiconductors / Monolithic Power Systems, Inc., 시총:68.90B, 주가:1402.01, 등락(%):2.90%
+MPWR
+
+# Semiconductors / Marvell Technology, Inc., 시총:194.44B, 주가:222.02, 등락(%):-0.07%
+MRVL
+
+# Semiconductors / Micron Technology, Inc., 시총:1097.39B, 주가:971.66, 등락(%):2.30%
+MU
+
+# Semiconductors / NVIDIA Corporation, 시총:5448.87B, 주가:225.16, 등락(%):-0.06%
+NVDA
+
+# Semiconductors / NXP Semiconductors N.V., 시총:59.19B, 주가:234.71, 등락(%):1.21%
+NXPI
+
+# Semiconductors / ON Semiconductor Corporation, 시총:32.18B, 주가:82.66, 등락(%):1.35%
+ON
+
+# Semiconductors / QUALCOMM Incorporated, 시총:174.12B, 주가:165.79, 등락(%):0.61%
+QCOM
+
+# Semiconductors / Skyworks Solutions, Inc., 시총:10.48B, 주가:69.62, 등락(%):-0.20%
+SWKS
+
+# Semiconductors / Texas Instruments Incorporated, 시총:255.33B, 주가:279.58, 등락(%):2.25%
+TXN

@@ -14,7 +14,9 @@ from ..core import calculate_hma, calculate_mantra_bands, calculate_rsi, calcula
 from ..signals import get_hma_mantra_md_signals
 from ..chart_patterns import (
     analyze_seven_criteria,
+    count_pattern_strip_rows,
     normalize_pattern_main_ids,
+    pattern_strip_height_ratio,
     plot_pattern_main_overlays,
     plot_pattern_strip,
 )
@@ -22,7 +24,7 @@ from ..utils import get_available_font
 from ..box_range_windows import compute_box_range_windows
 from ..disparity_strategy import analyze_disparity_strategy
 from ..buffett_indicator import calculate_buffett_indicator, get_buffett_sentiment
-from ..fear_greed_indicator import calculate_fear_greed_indicator
+from ..fear_greed_indicator import calculate_fear_greed_indicator, fetch_cnn_fear_greed_history
 from ..peg_indicator import calculate_peg_indicator
 from ..adx_dmi_indicator import analyze_adx_dmi, plot_adx_buy_on_main
 import matplotlib.patches as mpatches
@@ -1105,12 +1107,14 @@ def _get_market_sentiment_summary(vix_value, naaim_value, pcr_value):
     
     # VIX 해석
     if vix_value is not None:
-        if vix_value < 20:
-            vix_sentiment = "VIX:[G](안정)"
+        if vix_value < 15:
+            vix_sentiment = "VIX:[G](위험선호)"
+        elif vix_value < 25:
+            vix_sentiment = "VIX:[O](선별대응)"
         elif vix_value < 30:
-            vix_sentiment = "VIX:[O](중간)"
+            vix_sentiment = "VIX:[R](위험축소)"
         else:
-            vix_sentiment = "VIX:[R](불안)"
+            vix_sentiment = "VIX:[R](자본보전)"
         summary_parts.append(vix_sentiment)
     
     # NAIIM 해석
@@ -1232,12 +1236,14 @@ def _get_strategy_guide(vix_value, naaim_value, pcr_value):
     
     # VIX 전략
     if vix_value is not None:
-        if vix_value < 20:
-            vix_strategy = "VIX<20: 매수기회(안정)"
+        if vix_value < 15:
+            vix_strategy = "VIX<15: 위험선호(Risk-On)"
+        elif vix_value < 25:
+            vix_strategy = "VIX 15-25: 선별 대응(Caution)"
         elif vix_value < 30:
-            vix_strategy = "VIX 20-30: 관망(중간)"
+            vix_strategy = "VIX 25-30: 위험축소(Risk-Off)"
         else:
-            vix_strategy = "VIX>30: 방어(불안)"
+            vix_strategy = "VIX≥30: 자본보전(위기 경계)"
         strategy_parts.append(vix_strategy)
     
     # NAIIM 전략
@@ -1265,6 +1271,410 @@ def _get_strategy_guide(vix_value, naaim_value, pcr_value):
         strategy_parts.append(pcr_strategy)
     
     return " | ".join(strategy_parts)
+
+def _finite_close_series(series):
+    """yfinance Close(Series/DataFrame)를 유한 값 Series로 정리합니다."""
+    if series is None:
+        return None
+    try:
+        if isinstance(series, pd.DataFrame):
+            if series.empty:
+                return None
+            series = series.iloc[:, 0]
+        values = pd.to_numeric(series, errors="coerce").dropna()
+        values = values[np.isfinite(values.to_numpy(dtype=float))]
+        if values.empty:
+            return None
+        return values
+    except Exception:
+        return None
+
+
+def _rate_regime_lines(ffr_series, tnx_series, inflation_series):
+    """FFR·TNX·CPI로 금리 상태와 시사점. FFR 시계열은 차트의 단기금리."""
+    ffr = _finite_close_series(ffr_series)
+    tnx = _finite_close_series(tnx_series)
+    cpi = _finite_close_series(inflation_series)
+    if ffr is None or tnx is None or cpi is None:
+        return "금리: 데이터 부족"
+
+    short = float(ffr.iloc[-1])
+    long = float(tnx.iloc[-1])
+    infl = float(cpi.iloc[-1])
+    gap = short - infl
+    curve = long - short
+
+    if gap >= 0.50:
+        stance = "단기금리가 물가보다 높음"
+    elif gap >= -0.25:
+        stance = "단기금리 ≈ 물가"
+    else:
+        stance = "단기금리가 물가보다 낮음"
+
+    if curve >= 0.50:
+        curve_txt = f"10년이 단기보다 {curve:.2f}%p 위"
+    elif curve > -0.10:
+        curve_txt = "장단기 금리 비슷"
+    else:
+        curve_txt = f"장단기 역전 {curve:.2f}%p"
+
+    if infl >= 3.5 and gap < 0.50 and curve >= 0.50:
+        implication = "완화 장세 아님 — 10년 금리가 성장주 할인율 부담"
+    elif infl >= 3.5 and gap < 0.50:
+        implication = "물가는 높은데 실질 정책금리는 타이트하지 않음"
+    elif gap >= 0.50 and infl < 3.0:
+        implication = "실질금리 플러스 — 긴축이 물가보다 위"
+    elif curve < -0.10:
+        implication = "장단기 역전 — 경기 둔화 경계"
+    elif curve >= 0.50:
+        implication = "10년 금리가 할인율 부담"
+    else:
+        implication = "금리·물가 간격으로 완화 장세를 확인하지 않음"
+
+    return "\n".join([
+        f"금리: FFR {short:.2f}% · TNX {long:.2f}% · CPI {infl:.2f}%",
+        f"금리 상태: {stance} · {curve_txt}",
+        f"금리 시사: {implication}",
+    ])
+
+
+def _market_regime_text(hy_series, vix_series, tnx_series, ffr_series=None, inflation_series=None):
+    """HY·VIX·10년물로 현재 국면 문구를 만듭니다.
+
+    Risk-Off 확정은 HY ≥ 3.50%(350bp)이고 VIX ≥ 25일 때만.
+    HY ≥ 3.30%이거나 직전 대비 10bp 이상 확대면 Caution 후반(잠정).
+    10년물 하락은 주식 Risk-On으로 해석하지 않습니다.
+    """
+    hy_values = _finite_close_series(hy_series)
+    vix_values = _finite_close_series(vix_series)
+    tnx_values = _finite_close_series(tnx_series)
+
+    hy = float(hy_values.iloc[-1]) if hy_values is not None else None
+    hy_prev = float(hy_values.iloc[-2]) if hy_values is not None and len(hy_values) >= 2 else None
+    vix = float(vix_values.iloc[-1]) if vix_values is not None else None
+
+    if hy is None and vix is None:
+        return "현재 국면: 데이터 부족"
+
+    hy_confirm = hy is not None and hy >= 3.50
+    vix_confirm = vix is not None and vix >= 25.0
+    delta_bp = None
+    if hy is not None and hy_prev is not None:
+        delta_bp = int(round((hy - hy_prev) * 100))
+    late_caution = (hy is not None and hy >= 3.30) or (delta_bp is not None and delta_bp >= 10)
+
+    if hy_confirm and vix_confirm:
+        title = "Risk-Off 확정"
+    elif late_caution:
+        title = "Caution 후반 — Risk-Off 경계 (잠정)"
+    elif (hy is not None and hy >= 3.00) or (vix is not None and vix >= 20.0):
+        title = "Caution"
+    elif hy is not None and vix is not None:
+        title = "Risk-On"
+    else:
+        title = "국면 판단 보류"
+
+    lines = [f"현재 국면: {title}"]
+
+    if hy is None:
+        lines.append("HY: 데이터 없음")
+    else:
+        hy_bp = int(round(hy * 100))
+        if delta_bp is None:
+            delta_txt = ""
+        else:
+            delta_txt = f", 직전 대비 {delta_bp:+d}bp"
+        gate = "350bp 충족" if hy_confirm else "350bp 미달"
+        lines.append(f"HY {hy:.2f}% ({hy_bp}bp{delta_txt}) · {gate}")
+
+    if vix is None:
+        lines.append("VIX: 데이터 없음 → Risk-Off 확정 보류")
+    elif hy_confirm and vix_confirm:
+        lines.append(f"VIX {vix:.2f} · 25 충족 → Risk-Off 확정")
+    elif vix_confirm:
+        lines.append(f"VIX {vix:.2f} · 25 충족 · HY 350bp 미달 → Risk-Off 확정 보류")
+    else:
+        lines.append(f"VIX {vix:.2f} · 25 미달 → Risk-Off 확정 보류")
+
+    if tnx_values is not None and len(tnx_values) >= 2:
+        lookback = min(5, len(tnx_values) - 1)
+        tnx_now = float(tnx_values.iloc[-1])
+        tnx_then = float(tnx_values.iloc[-1 - lookback])
+        if tnx_now <= tnx_then - 0.05:
+            lines.append("금리 하락은 Risk-On으로 보지 않음")
+
+    lines.append(_rate_regime_lines(ffr_series, tnx_series, inflation_series))
+    return "\n".join(lines)
+
+def _naive_close_index(series):
+    """종가 인덱스를 timezone 없는 날짜로 맞춥니다."""
+    series = series.copy()
+    idx = pd.to_datetime(series.index)
+    if getattr(idx, "tz", None) is not None:
+        idx = idx.tz_localize(None)
+    series.index = idx
+    return series[~series.index.duplicated(keep="last")].sort_index()
+
+
+def _download_close(symbol, start, end):
+    """종가 시계열. yfinance MultiIndex를 한 열로 접습니다."""
+    try:
+        import yfinance as yf
+
+        raw = yf.download(symbol, start=start, end=end, progress=False, auto_adjust=True)
+        if raw is None or getattr(raw, "empty", True):
+            return None
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw = raw.copy()
+            raw.columns = raw.columns.get_level_values(0)
+        close = raw["Close"] if "Close" in getattr(raw, "columns", []) else raw.iloc[:, 0]
+        series = _finite_close_series(close)
+        if series is None:
+            return None
+        return _naive_close_index(series)
+    except Exception as e:
+        print(f"⚠️ {symbol} 종가 다운로드 실패: {e}")
+        return None
+
+
+def _ols_beta(stock_close, market_close, max_obs=252, min_obs=60):
+    """일간 수익률 공분산으로 시장 대비 베타. (beta, 관측 수) 또는 None."""
+    stock = _finite_close_series(stock_close)
+    market = _finite_close_series(market_close)
+    if stock is None or market is None:
+        return None
+    stock = _naive_close_index(stock)
+    market = _naive_close_index(market)
+    joined = pd.concat(
+        [stock.rename("s"), market.rename("m")], axis=1, join="inner"
+    ).dropna()
+    if len(joined) < min_obs + 1:
+        return None
+    rets = joined.pct_change().dropna().tail(max_obs)
+    if len(rets) < min_obs:
+        return None
+    var_m = float(rets["m"].var(ddof=1))
+    if not np.isfinite(var_m) or var_m <= 0:
+        return None
+    beta = float(rets["s"].cov(rets["m"])) / var_m
+    if not np.isfinite(beta):
+        return None
+    return beta, int(len(rets))
+
+
+def _beta_strategy_line(beta, regime_text):
+    """베타 구간과 현재 국면에 맞는 한 줄 전략.
+
+    Caution 후반(잠정)과 일반 Caution을 구분합니다.
+    금리 하락 주석이 있으면 Risk-On 참여 문구를 쓰지 않습니다.
+    """
+    if beta <= 0:
+        band = "역베타"
+    elif beta < 0.8:
+        band = "저베타"
+    elif beta > 1.2:
+        band = "고베타"
+    else:
+        band = "시장동행"
+
+    text = regime_text or ""
+    title = text.split("\n", 1)[0]
+    if "Risk-Off 확정" in title:
+        bucket = "off"
+    elif "Caution 후반" in title or ("경계" in title and "잠정" in title):
+        bucket = "late"
+    elif "Risk-On" in title:
+        bucket = "caution" if "금리 하락은 Risk-On으로 보지 않음" in text else "on"
+    elif "Caution" in title:
+        bucket = "caution"
+    else:
+        bucket = "unknown"
+
+    strategy = {
+        ("고베타", "off"): "비중 축소 — 하락이 시장보다 큼",
+        ("고베타", "late"): "신규 매수 중단 — 확정 전 축소는 보류, 비중 동결",
+        ("고베타", "caution"): "추격 금지 — 비중 유지",
+        ("고베타", "on"): "참여 — 상승이 시장보다 큼",
+        ("고베타", "unknown"): "고베타 — 시장보다 크게 움직임",
+        ("시장동행", "off"): "지수와 함께 비중 축소",
+        ("시장동행", "late"): "신규 매수 중단, 비중 동결",
+        ("시장동행", "caution"): "지수와 같이 보유",
+        ("시장동행", "on"): "지수와 같이 운용",
+        ("시장동행", "unknown"): "시장 동행 — 지수와 비슷하게 움직임",
+        ("저베타", "off"): "방어 우선 — 낙폭이 시장보다 작음",
+        ("저베타", "late"): "방어 보유 — 고베타 대체 후보",
+        ("저베타", "caution"): "보유 — 시장보다 완만",
+        ("저베타", "on"): "탄력 제한 — 시장보다 덜 오름",
+        ("저베타", "unknown"): "저베타 — 시장보다 작게 움직임",
+        ("역베타", "off"): "헤지 유지",
+        ("역베타", "late"): "헤지 확대 보류 — 확정 전 추가 금지",
+        ("역베타", "caution"): "소폭 헤지만",
+        ("역베타", "on"): "축소 — 상승장에서 역행",
+        ("역베타", "unknown"): "역베타 — 시장과 반대로 움직임",
+    }[(band, bucket)]
+    return band, strategy
+
+
+def _beta_info_text(symbol, ohlcv_data, regime_text):
+    """최근 1년(최대 252거래일) 베타와 전략 문구. 벤치마크는 SPY."""
+    if not symbol or ohlcv_data is None or getattr(ohlcv_data, "empty", True):
+        return "베타: 데이터 부족"
+    end = pd.Timestamp(ohlcv_data.index[-1])
+    if getattr(end, "tz", None) is not None:
+        end = end.tz_localize(None)
+    start = (end - pd.Timedelta(days=400)).date()
+    end_fetch = (end + pd.Timedelta(days=1)).date()
+    stock = _download_close(symbol, start, end_fetch)
+    spy = _download_close("SPY", start, end_fetch)
+    if stock is None and "Close" in ohlcv_data.columns:
+        stock = ohlcv_data["Close"]
+    result = _ols_beta(stock, spy) if spy is not None else None
+    if result is None:
+        print(f"⚠️ {symbol} 베타 계산 실패")
+        return "베타: 데이터 부족"
+    beta, n_obs = result
+    window = "1년" if n_obs >= 200 else f"{n_obs}일"
+    band, strategy = _beta_strategy_line(beta, regime_text)
+    print(f"베타({symbol} vs SPY): {beta:.2f} ({band}, {window}, {n_obs}일) / {strategy}")
+    return f"베타: {beta:.2f} ({band}, {window} vs SPY)\n베타 전략: {strategy}"
+
+
+def _align_series_to_dates(series, dates):
+    """날짜 인덱스를 차트 날짜에 맞춥니다. 없는 날은 NaN."""
+    if series is None or dates is None or len(dates) == 0:
+        return None
+    idx = pd.DatetimeIndex(pd.to_datetime(dates))
+    if getattr(idx, "tz", None) is not None:
+        keys = idx.tz_localize(None).normalize()
+    else:
+        keys = idx.normalize()
+    src = series.copy()
+    if getattr(src.index, "tz", None) is not None:
+        src.index = src.index.tz_localize(None)
+    src.index = pd.DatetimeIndex(pd.to_datetime(src.index)).normalize()
+    src = src[~src.index.duplicated(keep="last")].sort_index()
+    aligned = src.reindex(keys)
+    return pd.Series(pd.to_numeric(aligned, errors="coerce").to_numpy(), index=dates)
+
+
+def _cross_asset_regime_text(end_date, fear_greed_score=None, fear_greed_data=None):
+    """WTI·금·BTC 20일 변화와 CNN F&G로 국면 보조 문구를 만듭니다."""
+    end = pd.Timestamp(end_date)
+    if getattr(end, "tz", None) is not None:
+        end = end.tz_localize(None)
+    start = (end - pd.Timedelta(days=90)).date()
+    end_fetch = (end + pd.Timedelta(days=1)).date()
+    symbols = {"WTI": "CL=F", "GOLD": "GC=F", "BTC": "BTC-USD"}
+    changes = {}
+    for name, sym in symbols.items():
+        series = _download_close(sym, start, end_fetch)
+        if series is None or series.empty:
+            continue
+        series = series[series.index <= end]
+        if len(series) < 21:
+            continue
+        now = float(series.iloc[-1])
+        prev = float(series.iloc[-21])
+        if not np.isfinite(now) or not np.isfinite(prev) or prev == 0:
+            continue
+        changes[name] = (now / prev - 1.0) * 100.0
+
+    lines = []
+    if fear_greed_score is not None and np.isfinite(float(fear_greed_score)):
+        rating = ""
+        if fear_greed_data is not None:
+            rating = fear_greed_data.get("rating_ko") or ""
+        rating_txt = f" ({rating})" if rating else ""
+        lines.append(f"F&G: {float(fear_greed_score):.1f}{rating_txt}")
+
+    if len(changes) < 3:
+        lines.append("교차자산: WTI·GOLD·BTC 데이터 부족")
+        return "\n".join(lines)
+
+    wti, gold, btc = changes["WTI"], changes["GOLD"], changes["BTC"]
+    lines.append(
+        f"WTI 20일 {wti:+.1f}% · GOLD 20일 {gold:+.1f}% · BTC 20일 {btc:+.1f}%"
+    )
+    gold_up = gold >= 2.0
+    gold_down = gold <= -2.0
+    btc_up = btc >= 2.0
+    btc_down = btc <= -2.0
+    oil_up = wti >= 3.0
+    if gold_up and btc_down:
+        read = "교차자산: 금 상승·BTC 하락 — 안전자산 선호"
+    elif btc_up and gold_down:
+        read = "교차자산: BTC 상승·금 하락 — 위험자산 선호"
+    elif oil_up and gold_up:
+        read = "교차자산: 유가·금 동반 상승 — 공급 충격·안전자산 수요"
+    elif oil_up and not gold_up:
+        read = "교차자산: 유가 상승은 공급 위험 — 금이 동반 상승하지 않아 안전자산 도피로 확정하지 않음"
+    else:
+        read = "교차자산: 방향 혼재 — 국면 확정에 쓰지 않음"
+    lines.append(read)
+    return "\n".join(lines)
+
+
+def _regime_synthesis(regime_text, beta_text, cross_text):
+    """국면·금리·베타·교차자산 시사점을 현재국면 종합으로 모읍니다."""
+    text = regime_text or ""
+    beta = beta_text or ""
+    cross = cross_text or ""
+    title = text.split("\n", 1)[0]
+
+    if "Risk-Off 확정" in title:
+        bucket = "off"
+    elif "Caution 후반" in title or ("경계" in title and "잠정" in title):
+        bucket = "late"
+    elif "Risk-On" in title:
+        rates_block_on = (
+            "금리 하락은 Risk-On으로 보지 않음" in text
+            or "완화 장세 아님" in text
+            or "할인율 부담" in text
+        )
+        bucket = "caution" if rates_block_on else "on"
+    elif "Caution" in title:
+        bucket = "caution"
+    else:
+        bucket = "unknown"
+
+    if "베타 전략:" in beta:
+        action = beta.split("베타 전략:", 1)[1].strip().split("\n", 1)[0]
+    else:
+        action = {
+            "off": "비중 축소",
+            "late": "신규 매수 중단, 비중 동결",
+            "caution": "추격 금지, 비중 유지",
+            "on": "지수와 같이 참여",
+            "unknown": "관망",
+        }[bucket]
+
+    reasons = []
+    if bucket == "off":
+        reasons.append("Risk-Off 확정")
+    elif bucket == "late":
+        reasons.append("Risk-Off 미확정")
+    if "완화 장세 아님" in text or "할인율 부담" in text:
+        reasons.append("금리는 완화 장세 아님")
+    elif "금리 하락은 Risk-On으로 보지 않음" in text:
+        reasons.append("단기 금리 하락은 Risk-On 아님")
+    elif "장단기 역전" in text:
+        reasons.append("장단기 역전")
+    elif "실질금리 플러스" in text:
+        reasons.append("실질금리 플러스")
+    if "극단적 공포" in cross and bucket in ("off", "late", "caution"):
+        reasons.append("극공포는 시장 분할 검토")
+    if "공급 위험" in cross:
+        reasons.append("유가는 공급 위험")
+    elif "안전자산 선호" in cross:
+        reasons.append("안전자산 선호")
+    elif "위험자산 선호" in cross and bucket == "on":
+        reasons.append("교차자산은 위험자산 선호")
+
+    line = f"현재국면 종합: {action}"
+    if reasons:
+        line += "\n시사: " + " · ".join(reasons[:4])
+    return line
+
 
 def _detect_macd_divergences(ohlcv_data: pd.DataFrame,
                              macd_hist: pd.Series,
@@ -1479,45 +1889,50 @@ def calculate_period_return(ohlcv_data, start_date, end_date):
         if ohlcv_data is None or ohlcv_data.empty:
             print("오류: OHLCV 데이터가 비어있습니다.")
             return None
-        
-        if 'Close' not in ohlcv_data.columns:
+
+        if "Close" not in ohlcv_data.columns:
             print("오류: Close 컬럼을 찾을 수 없습니다.")
             return None
-        
-        # 날짜 인덱스 확인 및 조정
-        if start_date not in ohlcv_data.index:
-            # 가장 가까운 날짜로 조정
-            available_dates = ohlcv_data.index[ohlcv_data.index >= start_date]
-            if len(available_dates) == 0:
-                print(f"오류: 시작일 {start_date} 이후 데이터가 없습니다.")
-                return None
-            start_date = available_dates[0]
-            print(f"시작일 조정: {start_date}")
-        
-        if end_date not in ohlcv_data.index:
-            # 가장 가까운 날짜로 조정
-            available_dates = ohlcv_data.index[ohlcv_data.index <= end_date]
-            if len(available_dates) == 0:
-                print(f"오류: 종료일 {end_date} 이전 데이터가 없습니다.")
-                return None
-            end_date = available_dates[-1]
-            print(f"종료일 조정: {end_date}")
-        
-        # 시작일과 종료일의 종가
-        start_price = float(ohlcv_data.loc[start_date, 'Close'])
-        end_price = float(ohlcv_data.loc[end_date, 'Close'])
-        
-        # 0으로 나누기 방지
+
+        close = ohlcv_data["Close"]
+        # yfinance MultiIndex 잔여 → Series 1열
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        close = pd.to_numeric(close, errors="coerce").dropna()
+        if len(close) < 2:
+            print("오류: 유효 종가 데이터가 부족합니다.")
+            return None
+
+        # 요청 구간 안(가능하면)에서 첫·마지막 유효 종가 사용
+        seg = close
+        try:
+            if start_date is not None:
+                seg = seg[seg.index >= pd.Timestamp(start_date)]
+            if end_date is not None:
+                seg = seg[seg.index <= pd.Timestamp(end_date)]
+        except Exception:
+            seg = close
+        if len(seg) < 2:
+            seg = close
+
+        start_ts = seg.index[0]
+        end_ts = seg.index[-1]
+        start_price = float(np.asarray(seg.iloc[0]).ravel()[0])
+        end_price = float(np.asarray(seg.iloc[-1]).ravel()[0])
+
+        if not np.isfinite(start_price) or not np.isfinite(end_price):
+            print("오류: 시작가/종료가가 유효하지 않습니다.")
+            return None
         if start_price == 0:
             print("오류: 시작가가 0입니다.")
             return None
-        
+
         # 상승률 계산
         return_percentage = ((end_price - start_price) / start_price) * 100
-        
+
         # 상승 금액 계산
         return_amount = end_price - start_price
-        
+
         # 방향 결정 (폰트 호환성을 위해 텍스트 사용)
         if return_amount > 0:
             direction = "▲ 상승"
@@ -1528,16 +1943,16 @@ def calculate_period_return(ohlcv_data, start_date, end_date):
         else:
             direction = "→ 보합"
             color = "gray"
-        
+
         return {
-            'start_price': start_price,
-            'end_price': end_price,
-            'return_percentage': return_percentage,
-            'return_amount': return_amount,
-            'direction': direction,
-            'color': color,
-            'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d')
+            "start_price": start_price,
+            "end_price": end_price,
+            "return_percentage": float(return_percentage),
+            "return_amount": float(return_amount),
+            "direction": direction,
+            "color": color,
+            "start_date": pd.Timestamp(start_ts).strftime("%Y-%m-%d"),
+            "end_date": pd.Timestamp(end_ts).strftime("%Y-%m-%d"),
         }
     except Exception as e:
         print(f"기간 수익률 계산 오류: {e}")
@@ -1769,51 +2184,55 @@ def get_current_stock_price(symbol):
         print(f"현재 주가 가져오기 실패: {e}")
         return None, None, 'error'
 
-def calculate_daily_change_percentage(symbol):
-    """전일대비 등락률을 계산합니다."""
+def calculate_daily_change_percentage(symbol, ohlcv_data=None):
+    """전일대비 등락률을 계산합니다. (종가 NaN 봉 제외)"""
     try:
-        import yfinance as yf
-        from datetime import datetime, timedelta
-        import pytz
-        
-        # yfinance로 전일 종가와 현재가 가져오기
-        ticker = yf.Ticker(symbol)
-        
-        # 전일 종가 가져오기 (2일 데이터로 전일 확인)
-        hist_data = ticker.history(period='2d')
-        
-        if len(hist_data) >= 2:
-            # 전일 종가
-            prev_close = hist_data.iloc[-2]['Close']
-            # 현재가 (가장 최근)
-            current_price = hist_data.iloc[-1]['Close']
-            
-            # 등락률 계산
-            change_amount = current_price - prev_close
-            change_percentage = (change_amount / prev_close) * 100
-            
-            # 등락 방향과 색상 결정
-            if change_amount > 0:
-                direction = "▲"
-                color = "green"
-            elif change_amount < 0:
-                direction = "▼"
-                color = "red"
-            else:
-                direction = "─"
-                color = "gray"
-            
-            return {
-                'prev_close': prev_close,
-                'current_price': current_price,
-                'change_amount': change_amount,
-                'change_percentage': change_percentage,
-                'direction': direction,
-                'color': color
-            }
-        else:
+        close = None
+        if ohlcv_data is not None and not getattr(ohlcv_data, "empty", True) and "Close" in ohlcv_data.columns:
+            close = ohlcv_data["Close"]
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+            close = pd.to_numeric(close, errors="coerce").dropna()
+
+        if close is None or len(close) < 2:
+            import yfinance as yf
+
+            # 미완성 봉 대비 여유 있게 조회
+            hist_data = yf.Ticker(symbol).history(period="5d")
+            if hist_data is None or hist_data.empty or "Close" not in hist_data.columns:
+                return None
+            close = pd.to_numeric(hist_data["Close"], errors="coerce").dropna()
+
+        if len(close) < 2:
             return None
-            
+
+        prev_close = float(np.asarray(close.iloc[-2]).ravel()[0])
+        current_price = float(np.asarray(close.iloc[-1]).ravel()[0])
+        if not np.isfinite(prev_close) or not np.isfinite(current_price) or prev_close == 0:
+            return None
+
+        change_amount = current_price - prev_close
+        change_percentage = (change_amount / prev_close) * 100
+
+        if change_amount > 0:
+            direction = "▲"
+            color = "green"
+        elif change_amount < 0:
+            direction = "▼"
+            color = "red"
+        else:
+            direction = "─"
+            color = "gray"
+
+        return {
+            "prev_close": prev_close,
+            "current_price": current_price,
+            "change_amount": float(change_amount),
+            "change_percentage": float(change_percentage),
+            "direction": direction,
+            "color": color,
+        }
+
     except Exception as e:
         print(f"전일대비 등락률 계산 실패: {e}")
         return None
@@ -1854,10 +2273,29 @@ def get_cdr_data(start_date, end_date):
         return None
 
 def get_inflation_data(start_date, end_date):
-    """FRED API를 사용하여 실제 인플레이션 데이터를 가져옵니다."""
+    """CPI 전년비(%)를 가져옵니다. 임의 근사치는 반환하지 않습니다."""
     try:
         import pandas as pd
-        
+
+        fetch_start = pd.Timestamp(start_date) - pd.DateOffset(months=14)
+        try:
+            raw = web.DataReader("CPIAUCSL", "fred", start=fetch_start, end=end_date)
+            series = raw.iloc[:, 0] if isinstance(raw, pd.DataFrame) else raw
+            series = pd.to_numeric(series, errors="coerce").dropna()
+            yoy = (series.pct_change(12) * 100).dropna()
+            business_days = pd.bdate_range(start=start_date, end=end_date)
+            daily = yoy.reindex(business_days, method="ffill").dropna()
+            if not daily.empty:
+                daily.name = "CPI_YOY"
+                print(
+                    f"✅ CPI 전년비 로드: {len(daily)}개 "
+                    f"({pd.Timestamp(daily.index[0]).date()}~{pd.Timestamp(daily.index[-1]).date()}, "
+                    f"최근 {float(daily.iloc[-1]):.2f}%)"
+                )
+                return daily
+        except Exception as e:
+            print(f"⚠️ CPI 전년비 로드 실패: {e}")
+
         # fredapi import 시도
         try:
             from fredapi import Fred
@@ -1905,41 +2343,12 @@ def get_inflation_data(start_date, end_date):
             except Exception as e:
                 print(f"⚠️ FRED CPI 로드 실패: {e}")
         
-        # 최종 백업: 최근 12개월 평균 CPI 사용 (변동성 추가)
-        print("📊 인플레이션 데이터: FRED 실패 또는 사용 불가, 변동성 있는 CPI 근사치 사용")
-        business_days = pd.bdate_range(start=start_date, end=end_date)
-        
-        # 실제 CPI 변동성을 시뮬레이션 (2.5% ~ 4.0% 범위)
-        import numpy as np
-        np.random.seed(42)  # 재현 가능한 결과를 위해
-        base_inflation = 3.2
-        volatility = 0.3
-        inflation_values = base_inflation + np.random.normal(0, volatility, len(business_days))
-        inflation_values = np.clip(inflation_values, 2.5, 4.0)  # 2.5% ~ 4.0% 범위로 제한
-        
-        inflation_data = pd.Series(inflation_values, index=business_days)
-        print(f"✅ 변동성 있는 인플레이션 데이터 생성: {len(inflation_data)}개 (평균: {inflation_data.mean():.2f}%)")
-        
-        return inflation_data
+        print("⚠️ 인플레이션 데이터 없음")
+        return None
         
     except Exception as e:
         print(f"인플레이션 데이터 가져오기 실패: {e}")
-        # 최종 백업
-        import pandas as pd
-        import numpy as np
-        
-        business_days = pd.bdate_range(start=start_date, end=end_date)
-        
-        # 변동성 있는 CPI 근사치 사용
-        np.random.seed(42)
-        base_inflation = 3.2
-        volatility = 0.3
-        inflation_values = base_inflation + np.random.normal(0, volatility, len(business_days))
-        inflation_values = np.clip(inflation_values, 2.5, 4.0)
-        
-        inflation_data = pd.Series(inflation_values, index=business_days)
-        print(f"📊 인플레이션 데이터: 오류 발생, 변동성 있는 CPI 근사치 사용 (평균: {inflation_data.mean():.2f}%)")
-        return inflation_data
+        return None
 
 def calculate_real_interest_rate(nominal_rate, inflation_rate):
     """실질금리를 계산합니다 (인덱스 정렬 포함)."""
@@ -1984,6 +2393,32 @@ def get_tnx_data(start_date, end_date):
         return None
     except Exception as e:
         print(f"TNX 데이터 가져오기 실패: {e}")
+        return None
+
+
+def get_hy_spread_data(start_date, end_date):
+    """ICE BofA 미국 하이일드 OAS (FRED BAMLH0A0HYM2, %)."""
+    try:
+        import pandas_datareader.data as web
+
+        raw = web.DataReader("BAMLH0A0HYM2", "fred", start=start_date, end=end_date)
+        if raw is None or getattr(raw, "empty", True):
+            print("⚠️ HY 스프레드 데이터가 비어 있습니다.")
+            return None
+        series = raw.iloc[:, 0] if isinstance(raw, pd.DataFrame) else raw
+        series = pd.to_numeric(series, errors="coerce").dropna()
+        if series.empty:
+            print("⚠️ HY 스프레드 유효값이 없습니다.")
+            return None
+        series.name = "HY"
+        print(
+            f"✅ HY 스프레드 로드: {len(series)}개 "
+            f"({pd.Timestamp(series.index[0]).date()}~{pd.Timestamp(series.index[-1]).date()}, "
+            f"최근 {float(series.iloc[-1]):.2f}%)"
+        )
+        return series
+    except Exception as e:
+        print(f"⚠️ HY 스프레드 데이터 가져오기 실패: {e}")
         return None
 
 def plot_main_chart_with_volume_profile_overlay(
@@ -2047,6 +2482,18 @@ def plot_main_chart_with_volume_profile_overlay(
     else:
         ohlcv_data = data
 
+    # yfinance 미완성 봉(종가 NaN 등) 제거 — 기간수익률/SMA200 nan 방지
+    need_cols = [c for c in ("Open", "High", "Low", "Close") if c in ohlcv_data.columns]
+    if need_cols:
+        before_n = len(ohlcv_data)
+        ohlcv_data = ohlcv_data.dropna(subset=need_cols)
+        dropped = before_n - len(ohlcv_data)
+        if dropped > 0:
+            print(f"⚠️ 미완성 OHLCV {dropped}봉 제외 (유효 {len(ohlcv_data)}봉)")
+    if ohlcv_data.empty:
+        print("오류: 유효 OHLCV 데이터가 없습니다.")
+        return
+
     # 시장 데이터 가져오기
     start_date = ohlcv_data.index[0]
     end_date = ohlcv_data.index[-1]
@@ -2055,31 +2502,9 @@ def plot_main_chart_with_volume_profile_overlay(
     # 추가 지표 데이터 가져오기
     ffr_data = get_ffr_data(start_date, end_date)
     tnx_data = get_tnx_data(start_date, end_date)
+    hy_spread_data = get_hy_spread_data(start_date, end_date)
     
-    # 인플레이션 데이터 가져오기 및 실질금리 계산
     inflation_data = get_inflation_data(start_date, end_date)
-    real_rate_data = None
-    real_rate_tnx_data = None
-    
-    # FFR 기반 실질금리
-    if ffr_data is not None and inflation_data is not None:
-        real_rate_data = calculate_real_interest_rate(ffr_data, inflation_data)
-        if real_rate_data is not None:
-            print(f"✅ FFR 실질금리 계산 완료: {len(real_rate_data)}개 데이터")
-        else:
-            print("⚠️ FFR 실질금리 계산 실패")
-    else:
-        print("⚠️ FFR 또는 인플레이션 데이터 없음으로 FFR 실질금리 계산 불가")
-    
-    # TNX 기반 실질금리
-    if tnx_data is not None and inflation_data is not None:
-        real_rate_tnx_data = calculate_real_interest_rate(tnx_data, inflation_data)
-        if real_rate_tnx_data is not None:
-            print(f"✅ TNX 실질금리 계산 완료: {len(real_rate_tnx_data)}개 데이터")
-        else:
-            print("⚠️ TNX 실질금리 계산 실패")
-    else:
-        print("⚠️ TNX 또는 인플레이션 데이터 없음으로 TNX 실질금리 계산 불가")
     
     # 메인 차트 파란 박스만 계산 (show_box_ranges). range_box 패턴과 완전히 별도.
     display_box_ranges: list = []
@@ -2375,8 +2800,10 @@ def plot_main_chart_with_volume_profile_overlay(
         conf_weight_trend=disparity_conf_weight_trend,
     )
     
-    # SMA200일 이동평균선 계산
+    # SMA 이동평균선 계산
     sma200 = ohlcv_data['Close'].rolling(window=200).mean()
+    sma120 = ohlcv_data['Close'].rolling(window=120).mean()
+    sma50 = ohlcv_data['Close'].rolling(window=50).mean()
     sma20 = ohlcv_data['Close'].rolling(window=20).mean()
     
     # 신호 생성
@@ -2455,9 +2882,34 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_disparity = None
     ax_adx = None
 
+    # 패턴 스트립 높이 산정용 — 감지된 종류 수만 행으로 쓰므로 미리 분석
+    _enabled_main_early = normalize_pattern_main_ids(pattern_main_overlays or [])
+    _pat_events_cached = None
+    _pattern_box_ranges_cached = None
+    _strip_n_rows = 0
+    if show_pattern_strip or bool(_enabled_main_early):
+        try:
+            _pattern_box_ranges_cached = compute_box_range_windows(
+                ohlcv_data,
+                pattern_range_box_period,
+                pattern_range_box_num,
+                pattern_range_box_overlap,
+                pattern_range_box_avoid_time_overlap,
+            )
+            _pat_events_cached = analyze_seven_criteria(
+                ohlcv_data, box_ranges=_pattern_box_ranges_cached
+            )
+            if show_pattern_strip:
+                _strip_n_rows = count_pattern_strip_rows(_pat_events_cached)
+        except Exception as e:
+            print(f"차트 패턴 사전 분석 실패(스트립 높이 기본값 사용): {e}")
+            _pat_events_cached = None
+            _pattern_box_ranges_cached = None
+            _strip_n_rows = 8 if show_pattern_strip else 0
+
     height_ratios = [3.0]
     if show_pattern_strip:
-        height_ratios.append(0.45)
+        height_ratios.append(pattern_strip_height_ratio(_strip_n_rows))
     height_ratios.extend([1.0, 1.0, 1.0])  # Volume, RSI, MACD
     if show_adx_dmi:
         height_ratios.append(0.85)
@@ -2465,7 +2917,10 @@ def plot_main_chart_with_volume_profile_overlay(
         height_ratios.append(0.95)
     height_ratios.extend([1.5, 1.2])  # 금리, 시장심리
 
+    # 스트립이 커지면 전체 figure도 조금 키움
     fig_height = 19 + len(height_ratios) * 0.55
+    if show_pattern_strip:
+        fig_height += max(0.0, pattern_strip_height_ratio(_strip_n_rows) - 0.45) * 2.2
     fig = plt.figure(figsize=(20, fig_height))
     gs = GridSpec(len(height_ratios), 1, height_ratios=height_ratios, figure=fig, hspace=0.12)
 
@@ -2541,22 +2996,6 @@ def plot_main_chart_with_volume_profile_overlay(
             peg_value = peg_data.get('peg')
             peg_sentiment = peg_data.get('sentiment')
             peg_guide = peg_data.get('guide')
-
-    # 전략 가이드를 시장 심리 요약 아래에 표시 (zorder 최고값 설정)
-    if strategy_guide:
-        ax_strategy = fig.add_axes([0.1, 0.91, 0.8, 0.03])
-        ax_strategy.set_facecolor('lightyellow')
-        ax_strategy.set_xlim(0, 1)
-        ax_strategy.set_ylim(0, 1)
-        ax_strategy.axis('off')
-        ax_strategy.set_zorder(1000)  # 최고 zorder 값 설정
-
-        # 전략 가이드 텍스트를 박스 안에 표시 (폰트 크기 30% 감소)
-        ax_strategy.text(0.5, 0.5, strategy_guide,
-                       fontsize=7.7, fontweight='bold', ha='center', va='center',
-                       bbox=dict(boxstyle="round,pad=0.4", facecolor='lightyellow',
-                                edgecolor='orange', linewidth=2),
-                       zorder=1001)  # 텍스트도 최고 zorder 값 설정
 
     ax_volume = fig.add_subplot(gs[row, 0], sharex=ax_main)
     row += 1
@@ -2912,105 +3351,6 @@ def plot_main_chart_with_volume_profile_overlay(
                                bbox=dict(boxstyle="round,pad=0.2", 
                                        facecolor='lightyellow', 
                                        edgecolor='orange', alpha=0.8))
-    
-    # 시장 지표들을 수평으로 우측 상단에 표시
-    indicators = []
-    
-    # VIX 값 추가
-    if not vix.empty:
-        try:
-            end_date = ohlcv_data.index[-1]
-            vix_end_date = vix.index[vix.index <= end_date][-1] if len(vix.index[vix.index <= end_date]) > 0 else vix.index[-1]
-            vix_value = vix.loc[vix_end_date]
-            
-            # Series인 경우 첫 번째 값 추출, 스칼라인 경우 그대로 사용
-            if hasattr(vix_value, 'iloc'):
-                vix_value = float(vix_value.iloc[0])
-            else:
-                vix_value = float(vix_value)
-            
-            if vix_value < 20:
-                vix_color = 'green'
-            elif vix_value < 30:
-                vix_color = 'orange'
-            else:
-                vix_color = 'red'
-            
-            indicators.append({
-                'text': f'VIX: {vix_value:.2f}',
-                'color': vix_color,
-            'date': vix_end_date.strftime("%Y-%m-%d")
-        })
-        except Exception as e:
-            print(f"VIX 표시 오류: {e}")
-            # 오류 발생 시 기본값 사용
-            indicators.append({
-                'text': f'VIX: 20.0',
-                'color': 'green',
-                'date': '오류'
-            })
-    
-    # NAIIM 값 추가
-    if naaim is not None and not naaim.empty:
-        try:
-            naaim_end_date = naaim.index[naaim.index <= end_date][-1] if len(naaim.index[naaim.index <= end_date]) > 0 else naaim.index[-1]
-            naaim_value = naaim.loc[naaim_end_date]
-            
-            # Series인 경우 첫 번째 값 추출, 스칼라인 경우 그대로 사용
-            if hasattr(naaim_value, 'iloc'):
-                naaim_value = float(naaim_value.iloc[0])
-            else:
-                naaim_value = float(naaim_value)
-            
-            if naaim_value < 30:
-                naaim_color = 'red'
-            elif naaim_value < 50:
-                naaim_color = 'orange'
-            else:
-                naaim_color = 'blue'
-            
-            indicators.append({
-                'text': f'NAIIM: {naaim_value:.1f}',
-                'color': naaim_color,
-                'date': naaim_end_date.strftime("%Y-%m-%d")
-            })
-        except Exception as e:
-            print(f"NAIIM 표시 오류: {e}")
-    
-    # PCR 값 추가
-    if pcr is not None:
-        try:
-            if pcr < 0.7:
-                pcr_color = 'green'
-            elif pcr < 1.0:
-                pcr_color = 'orange'
-            else:
-                pcr_color = 'red'
-            
-            indicators.append({
-                'text': f'PCR: {pcr:.3f}',
-                'color': pcr_color,
-                'date': None
-            })
-        except Exception as e:
-            print(f"PCR 표시 오류: {e}")
-    
-    # 세로로 지표들 표시 (전략 가이드와 겹치지 않도록 위치 조정)
-    if indicators:
-        # 지표들을 세로로 배치 (폰트 크기 6, 비율에 맞는 수직 간격)
-        y_positions = [0.97, 0.94, 0.91]  # VIX, NAIIM, PCR 순서로 비율에 맞게 조정
-        
-        for i, indicator in enumerate(indicators):
-            x_pos = 0.99  # 우측 끝에 고정
-            y_pos = y_positions[i] if i < len(y_positions) else 0.91  # 비율에 맞는 y 위치 사용
-            
-            # NAIIM 사이즈와 동일한 width로 박스 크기 통일 (pad를 2로 조정)
-            ax_main.text(x_pos, y_pos, indicator['text'], 
-                        transform=ax_main.transAxes, fontsize=6, ha='right', va='top',
-                        bbox=dict(facecolor=indicator['color'], alpha=0.8, edgecolor='black', pad=2, 
-                                 boxstyle='round,pad=0.3'),
-                        color='white', fontweight='bold',
-                        zorder=1000)  # 최고 zorder 값으로 레이어 최상단에 표시
 
     # HMA와 만트라 밴드
     ax_main.plot(ohlcv_data.index, hma, color='blue', linewidth=0.525, label='HMA')
@@ -3028,10 +3368,12 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.plot(ohlcv_data.index, bb_ma, color='purple', linewidth=0.175, label='BB MA(20)')
     ax_main.plot(ohlcv_data.index, bb_upper, color='purple', linewidth=0.175, linestyle=':', label='BB Upper')
     ax_main.plot(ohlcv_data.index, bb_lower, color='purple', linewidth=0.175, linestyle=':', label='BB Lower')
-    ax_main.plot(ohlcv_data.index, sma20, color='#8e44ad', linewidth=0.85, linestyle='-', alpha=0.9, label='SMA20')
+    ax_main.plot(ohlcv_data.index, sma20, color='#8e44ad', linewidth=0.85, linestyle='-', alpha=0.9, label='MA 20', zorder=7)
     
-    # SMA200일 이동평균선 추가
-    ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='SMA200', alpha=0.8)
+    # 긴 이평을 먼저 깔고, 짧은 이평을 그 위에 그린다.
+    ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='MA 200', alpha=0.8, zorder=4)
+    ax_main.plot(ohlcv_data.index, sma120, color='#117A65', linewidth=0.62, linestyle='-', label='MA 120', alpha=0.9, zorder=5)
+    ax_main.plot(ohlcv_data.index, sma50, color='#E67E22', linewidth=0.7, linestyle='-', label='MA 50', alpha=0.9, zorder=6)
     
     # 박스권 표시: display_box_ranges 만 사용 (패턴 range_box 후보와 무관).
     if show_box_ranges and display_box_ranges:
@@ -3079,11 +3421,12 @@ def plot_main_chart_with_volume_profile_overlay(
         current_price = ohlcv_data['Close'].iloc[-1]
         price_source = "기존데이터"
     
-    # 전일대비 등락률 계산
-    daily_change = calculate_daily_change_percentage(ticker)
-    if daily_change:
+    # 전일대비 등락률 계산 (정제된 OHLCV 우선)
+    daily_change = calculate_daily_change_percentage(ticker, ohlcv_data)
+    if daily_change and np.isfinite(daily_change.get("change_percentage", np.nan)):
         print(f"전일대비: {daily_change['direction']} {daily_change['change_percentage']:.2f}% ({currency_symbol}{daily_change['change_amount']:.2f})")
     else:
+        daily_change = None
         print("전일대비 등락률 계산 실패")
     
     support, resistance = calculate_support_resistance(ohlcv_data)
@@ -3098,9 +3441,9 @@ def plot_main_chart_with_volume_profile_overlay(
     
     # 수평선 및 가격 표시 (메인차트 중앙에 표시) - thin 스타일
     ax_main.axhline(y=current_price, color='black', linestyle=':', linewidth=0.3, alpha=0.5)
-    # 현재가 텍스트를 메인차트 우측 바깥에 배치
-    ax_main.text(1.02, 0.5, f'현재가: {currency_symbol}{current_price:.2f}', 
-                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
+    # 현재가 텍스트는 가격 차트 안 우측 (우측 여백은 주황 요약 박스)
+    ax_main.text(0.985, 0.5, f'현재가: {currency_symbol}{current_price:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='right', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='black', pad=2, boxstyle='round,pad=0.2'),
                 color='black', fontweight='bold')
     # 현재가 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
@@ -3108,9 +3451,9 @@ def plot_main_chart_with_volume_profile_overlay(
                 [current_price, current_price], color='black', linestyle='-', linewidth=1.0, alpha=0.8)
     
     ax_main.axhline(y=support, color='green', linestyle=':', linewidth=0.3, alpha=0.5)
-    # 지지선 텍스트를 메인차트 우측 바깥에 배치
-    ax_main.text(1.02, 0.3, f'지지선: {currency_symbol}{support:.2f}', 
-                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
+    # 지지선 텍스트는 가격 차트 안 우측
+    ax_main.text(0.985, 0.3, f'지지선: {currency_symbol}{support:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='right', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='green', pad=2, boxstyle='round,pad=0.2'),
                 color='green', fontweight='bold')
     # 지지선 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
@@ -3118,9 +3461,9 @@ def plot_main_chart_with_volume_profile_overlay(
                 [support, support], color='green', linestyle='-', linewidth=1.0, alpha=0.8)
     
     ax_main.axhline(y=resistance, color='red', linestyle=':', linewidth=0.3, alpha=0.5)
-    # 저항선 텍스트를 메인차트 우측 바깥에 배치
-    ax_main.text(1.02, 0.7, f'저항선: {currency_symbol}{resistance:.2f}', 
-                transform=ax_main.transAxes, fontsize=8, ha='left', va='center',
+    # 저항선 텍스트는 가격 차트 안 우측
+    ax_main.text(0.985, 0.7, f'저항선: {currency_symbol}{resistance:.2f}', 
+                transform=ax_main.transAxes, fontsize=8, ha='right', va='center',
                 bbox=dict(facecolor='white', alpha=0.9, edgecolor='red', pad=2, boxstyle='round,pad=0.2'),
                 color='red', fontweight='bold')
     # 저항선 수평선을 우측 텍스트까지 연결 (더 두껍고 명확하게)
@@ -3128,6 +3471,7 @@ def plot_main_chart_with_volume_profile_overlay(
                 [resistance, resistance], color='red', linestyle='-', linewidth=1.0, alpha=0.8)
     
     # 현재가 캔들바 아래에 투자심리도와 RSI 표시
+    ax_realtime = None
     if investor_sentiment is not None and current_rsi is not None:
         # 투자심리도에 따른 색상 설정
         if investor_sentiment < 40:
@@ -3171,18 +3515,16 @@ def plot_main_chart_with_volume_profile_overlay(
                     # 밴드 하단 위치 계산 (subplot과 겹치지 않도록 더 아래쪽으로 조정)
         band_bottom_y = bottom_y - price_range * 0.30
             
-                    # SMA200과 현재가 비교 정보 추가
-        sma200_current = sma200.iloc[-1] if not sma200.empty else None
-        if sma200_current is not None:
-            if current_price > sma200_current:
-                sma_status = f'SMA200: {sma200_current:.2f} (현재가 상단)'
-                sma_color = 'green'
-            else:
-                sma_status = f'SMA200: {sma200_current:.2f} (현재가 하단)'
-                sma_color = 'red'
-        else:
-            sma_status = 'SMA200: 데이터 부족'
-            sma_color = 'gray'
+                    # MA50·MA200과 현재가 비교. MA50을 MA200 윗줄에 둔다.
+        def _ma_vs_price(label, series):
+            valid = series.dropna() if series is not None and len(series) else series
+            value = float(valid.iloc[-1]) if valid is not None and len(valid) else None
+            if value is None or not np.isfinite(value):
+                return f'{label}: 데이터 부족'
+            side = '현재가 상단' if current_price > value else '현재가 하단'
+            return f'{label}: {value:.2f} ({side})'
+
+        sma_status = f"{_ma_vs_price('MA 50', sma50)}\n{_ma_vs_price('MA 200', sma200)}"
         
         # 통합 정보를 하나의 박스에 표시 (현재 일시, 현재가, 투자전략, 버핏지수 포함)
         # 실시간 주가 시간을 우선으로 사용하여 일시 표시
@@ -3226,12 +3568,30 @@ def plot_main_chart_with_volume_profile_overlay(
             current_datetime = local_datetime.strftime('%Y-%m-%d %H:%M')
         
         info_text = f'[일시] {current_datetime} (KST)\n{price_info}\n[데이터] {price_source}\n\n투자전략: {investment_strategy}\n투자액션: {investment_action}\nRSI: {current_rsi:.1f}\n투자심리도: {investor_sentiment:.1f}%\n{sma_status}'
+
+        regime_text = _market_regime_text(
+            hy_spread_data, vix, tnx_data, ffr_data, inflation_data
+        )
+        beta_text = _beta_info_text(ticker, ohlcv_data, regime_text)
+        cross_text = _cross_asset_regime_text(
+            ohlcv_data.index[-1], fear_greed_score, fear_greed_data
+        )
+        # 베타·교차자산 뒤에 국면 시사점을 현재국면 종합으로 붙인다.
+        regime_block = regime_text or ""
+        for extra in (beta_text, cross_text, _regime_synthesis(regime_text, beta_text, cross_text)):
+            if extra:
+                regime_block = f"{regime_block}\n{extra}" if regime_block else extra
+        if regime_block:
+            info_text += "\n\n" + regime_block
+            print(f"시장 국면:\n{regime_block}")
         
         # 버핏지수 정보 추가
         if buffett_value and buffett_data:
             info_text += f'\n\n버핏지수: {buffett_value}% ({buffett_sentiment})\n시장가이드: {buffett_guide}'
             info_text += f'\nWilshire 5000: {buffett_data["wilshire_market_cap"]}조 달러 ({buffett_data["wilshire_date"]})'
-            info_text += f'\nUS GDP: {buffett_data["us_gdp"]}조 달러 ({buffett_data["gdp_date"]})'
+            gdp_yoy = buffett_data.get("us_gdp_yoy")
+            yoy_txt = f", 전년비 {gdp_yoy:+.1f}%" if gdp_yoy is not None else ""
+            info_text += f'\nUS GDP: {buffett_data["us_gdp"]}조 달러 ({buffett_data["gdp_date"]}{yoy_txt})'
             if buffett_data.get('used_fallback'):
                 info_text += '\n⚠️ 버핏지수: 일부 fallback 데이터'
 
@@ -3287,25 +3647,14 @@ def plot_main_chart_with_volume_profile_overlay(
             if n_adx_buy:
                 info_text += f"\nADX buy 신호: {n_adx_buy}건 (DI↑ & ADX≥{adx_trend:.0f})"
 
-        # 실시간 가격 하이라이트 텍스트 박스를 메인차트 밖 오른쪽에 표시
-        ax_realtime = fig.add_axes([0.78, 0.42, 0.20, 0.28])  # 버핏·F&G·PEG·ADX
-        ax_realtime.set_facecolor('white')
+        # 위치는 레이아웃 확정 후 가격 차트 오른쪽에 맞춤
+        ax_realtime = fig.add_axes([0.76, 0.62, 0.22, 0.30])
+        ax_realtime.set_facecolor('none')
+        ax_realtime.patch.set_alpha(0)
         ax_realtime.set_xlim(0, 1)
         ax_realtime.set_ylim(0, 1)
         ax_realtime.axis('off')
-        ax_realtime.set_zorder(1000)  # 최고 zorder 값 설정
-        
-        # 실시간 가격 정보를 박스 안에 표시
-        ax_realtime.text(0.5, 0.5, info_text,
-                        fontsize=8, ha='center', va='center',
-                        bbox=dict(boxstyle="round,pad=0.5", 
-                             facecolor='white', 
-                                 edgecolor='darkorange', 
-                                 linewidth=2.5, 
-                                 alpha=0.95),
-                        color='black', 
-                        fontweight='bold',
-                        zorder=1001)  # 텍스트도 최고 zorder 값 설정
+        ax_realtime.set_zorder(1000)
 
         if show_disparity_strategy:
             try:
@@ -3322,6 +3671,23 @@ def plot_main_chart_with_volume_profile_overlay(
                 )
             except Exception as e:
                 print(f"이격도 정보 텍스트 구성 실패: {e}")
+
+        ax_realtime.text(
+            0.04, 0.98, info_text,
+            fontsize=8, ha='left', va='top',
+            multialignment='left',
+            linespacing=1.25,
+            bbox=dict(
+                boxstyle="round,pad=0.45",
+                facecolor='white',
+                edgecolor='darkorange',
+                linewidth=2.5,
+                alpha=0.95,
+            ),
+            color='black',
+            fontweight='bold',
+            zorder=1001,
+        )
         
         # 현재가 수직선 - 원래 위치로 복원
         if current_price_line_style == 'thin':
@@ -3397,6 +3763,7 @@ def plot_main_chart_with_volume_profile_overlay(
         'wilshire_market_cap': buffett_data.get('wilshire_market_cap') if buffett_data else None,
         'wilshire_date': buffett_data.get('wilshire_date') if buffett_data else None,
         'us_gdp': buffett_data.get('us_gdp') if buffett_data else None,
+        'us_gdp_yoy': buffett_data.get('us_gdp_yoy') if buffett_data else None,
         'gdp_date': buffett_data.get('gdp_date') if buffett_data else None,
         'fear_greed_score': fear_greed_score,
         'fear_greed_rating': fear_greed_data.get('rating_ko') if fear_greed_data else None,
@@ -3535,7 +3902,9 @@ def plot_main_chart_with_volume_profile_overlay(
         f.write(f"버핏지수: {signal_info['buffett_indicator']}% ({signal_info['buffett_sentiment']})\n")
         f.write(f"버핏가이드: {signal_info['buffett_guide']}\n")
         f.write(f"Wilshire 5000 시가총액: {signal_info['wilshire_market_cap']}조 달러 ({signal_info['wilshire_date']})\n")
-        f.write(f"US GDP: {signal_info['us_gdp']}조 달러 ({signal_info['gdp_date']})\n")
+        gdp_yoy = signal_info.get('us_gdp_yoy')
+        yoy_txt = f", 전년비 {gdp_yoy:+.1f}%" if gdp_yoy is not None else ""
+        f.write(f"US GDP: {signal_info['us_gdp']}조 달러 ({signal_info['gdp_date']}{yoy_txt})\n")
         if signal_info.get('fear_greed_score') is not None:
             f.write(
                 f"공포탐욕: {signal_info['fear_greed_score']} "
@@ -3966,7 +4335,7 @@ def plot_main_chart_with_volume_profile_overlay(
         except Exception as e:
             print(f"ADX/DMI subplot 표시 실패: {e}")
     
-    # 금리 통합 차트 표시 (FFR + TNX + 실질금리)
+    # 금리 통합 차트 표시 (FFR + TNX + HY + 인플레이션)
     rates_plotted = False
     
     if ffr_data is not None and not ffr_data.empty:
@@ -3990,62 +4359,40 @@ def plot_main_chart_with_volume_profile_overlay(
             label='TNX (10년물 국채금리)'
         )
         rates_plotted = True
-    
-    # 실질금리를 위한 오른쪽 Y축 생성
-    ax_rates_right = ax_rates.twinx()
-    
-    # FFR 기반 실질금리 추가 (오른쪽 Y축)
-    if real_rate_data is not None and not real_rate_data.empty:
-        # 실질금리(FFR): 색각이상 친화 팔레트(reddish purple)
-        ax_rates_right.plot(
-            real_rate_data.index,
-            real_rate_data,
-            color='#CC79A7',
-            linewidth=1.3,
-            linestyle='--',
-            label='실질금리 (FFR-인플레이션)'
-        )
-        rates_plotted = True
-        print(f"✅ FFR 실질금리 차트 표시: {len(real_rate_data)}개 데이터 (오른쪽 Y축)")
 
-    # TNX 기반 실질금리 추가 (오른쪽 Y축)
-    if real_rate_tnx_data is not None and not real_rate_tnx_data.empty:
-        # 실질금리(TNX): 색각이상 친화 팔레트(bluish green)
-        ax_rates_right.plot(
-            real_rate_tnx_data.index,
-            real_rate_tnx_data,
-            color='#009E73',
+    if hy_spread_data is not None and not hy_spread_data.empty:
+        # HY OAS: FFR·TNX와 같은 왼쪽 축(%)에서 수준 비교
+        ax_rates.plot(
+            hy_spread_data.index,
+            hy_spread_data,
+            color='#882255',
             linewidth=1.3,
-            linestyle=':',
-            label='실질금리 (TNX-인플레이션)'
+            linestyle='-.',
+            label='HY (하이일드 스프레드)'
         )
         rates_plotted = True
-        print(f"✅ TNX 실질금리 차트 표시: {len(real_rate_tnx_data)}개 데이터 (오른쪽 Y축)")
-    
-    # 오른쪽 Y축 설정
-    ax_rates_right.set_ylabel('실질금리 (%)', fontsize=8, color='dimgray')
-    ax_rates_right.tick_params(axis='y', labelcolor='dimgray', labelsize=7)
-    try:
-        ax_rates_right.spines['right'].set_color('dimgray')
-    except Exception:
-        pass
-    
-    # 실질금리 범례 추가 (오른쪽)
-    if real_rate_data is not None and not real_rate_data.empty or real_rate_tnx_data is not None and not real_rate_tnx_data.empty:
-        lines_right = ax_rates_right.get_lines()
-        labels_right = [line.get_label() for line in lines_right if '실질금리' in line.get_label()]
-        if labels_right:
-            ax_rates_right.legend(labels_right, loc='upper right', fontsize=6, framealpha=0.8)
+
+    if inflation_data is not None and not inflation_data.empty:
+        ax_rates.plot(
+            inflation_data.index,
+            inflation_data,
+            color='#009E73',
+            linewidth=1.5,
+            linestyle='--',
+            label='인플레이션 (CPI 전년비)'
+        )
+        rates_plotted = True
+        print(f"✅ 인플레이션 차트 표시: {len(inflation_data)}개 데이터")
     
     if rates_plotted:
-        ax_rates.set_title('금리 통합 차트 (FFR + TNX + 실질금리)')
+        ax_rates.set_title('금리 통합 차트 (FFR + TNX + HY + 인플레이션)')
         ax_rates.set_ylabel('금리 (%)')
         ax_rates.legend(fontsize=8, loc='upper left')
         ax_rates.grid(True, alpha=0.3)
     else:
         ax_rates.text(0.5, 0.5, '금리 데이터 없음', ha='center', va='center', 
                      transform=ax_rates.transAxes, fontsize=10, color='gray')
-        ax_rates.set_title('금리 통합 차트 (FFR + TNX + 실질금리)')
+        ax_rates.set_title('금리 통합 차트 (FFR + TNX + HY + 인플레이션)')
         ax_rates.set_ylabel('금리 (%)')
     
     # =====================
@@ -4096,12 +4443,25 @@ def plot_main_chart_with_volume_profile_overlay(
                     naiim_aligned = naiim_data.loc[common_dates]
                 
                 print(f"PCR 데이터 최종 형태: {type(pcr_aligned)}, 길이: {len(pcr_aligned) if hasattr(pcr_aligned, '__len__') else 'N/A'}")
+
+                fg_aligned = None
+                try:
+                    fg_hist = fetch_cnn_fear_greed_history()
+                    if fg_hist is not None:
+                        fg_aligned = _align_series_to_dates(fg_hist, common_dates)
+                        fg_finite = int(np.isfinite(pd.to_numeric(fg_aligned, errors="coerce")).sum())
+                        print(f"CNN F&G 차트 정렬: {fg_finite}/{len(common_dates)}")
+                except Exception as e:
+                    print(f"CNN F&G 이력 정렬 실패: {e}")
+                    fg_aligned = None
                 
-                # 통합 차트 생성
+                # 통합 차트 생성. 왼쪽 축은 PCR 대신 CNN F&G.
                 try:
                     print(f"차트 생성 전 데이터 타입: PCR={type(pcr_aligned)}, VIX={type(vix_aligned)}, NAIIM={type(naiim_aligned)}")
                     print(f"차트 생성 전 데이터 길이: PCR={len(pcr_aligned) if hasattr(pcr_aligned, '__len__') else 'N/A'}, VIX={len(vix_aligned)}, NAIIM={len(naiim_aligned)}")
-                    create_integrated_market_sentiment_chart(ax_sentiment, common_dates, pcr_aligned, vix_aligned, naiim_aligned)
+                    create_integrated_market_sentiment_chart(
+                        ax_sentiment, common_dates, pcr_aligned, vix_aligned, naiim_aligned, fg_aligned
+                    )
                 except Exception as e:
                     print(f"통합 차트 생성 오류: {e}")
                     import traceback
@@ -4116,29 +4476,42 @@ def plot_main_chart_with_volume_profile_overlay(
                         pcr_value = pcr_aligned
                     
                     sentiment_signals = analyze_integrated_market_sentiment(pcr_value, vix_aligned.iloc[-1], naiim_aligned.iloc[-1])
-                    composite_score = calculate_comprehensive_sentiment_index(pcr_value, vix_aligned.iloc[-1], naiim_aligned.iloc[-1])
+                    fg_last = None
+                    if fg_aligned is not None:
+                        fg_num = pd.to_numeric(fg_aligned, errors="coerce")
+                        fg_ok = fg_num[np.isfinite(fg_num.to_numpy(dtype=float))]
+                        if len(fg_ok):
+                            fg_last = float(fg_ok.iloc[-1])
+                    if fg_last is not None:
+                        vix_score = float(np.clip((float(vix_aligned.iloc[-1]) - 10) / 40 * 100, 0, 100))
+                        naaim_score = float(np.clip(float(naiim_aligned.iloc[-1]), 0, 100))
+                        composite_score = fg_last * 0.3 + vix_score * 0.4 + naaim_score * 0.3
+                    else:
+                        composite_score = calculate_comprehensive_sentiment_index(
+                            pcr_value, vix_aligned.iloc[-1], naiim_aligned.iloc[-1]
+                        )
                     
                     # 차트 타이틀에 종합 점수 추가
-                    title = f'시장 심리 통합 지표 (종합점수: {composite_score:.1f})' if composite_score else '시장 심리 통합 지표'
-                    ax_sentiment.set_title(title, fontsize=10, fontweight='bold')
+                    ax_sentiment.set_title('CNN F&G vs. VIX', fontsize=10, fontweight='bold')
                     
-                    print(f"시장 심리 통합 차트 생성 완료: PCR={pcr_value:.3f}, VIX={vix_aligned.iloc[-1]:.2f}, NAIIM={naiim_aligned.iloc[-1]:.1f}")
+                    fg_log = f"{fg_last:.1f}" if fg_last is not None else "없음"
+                    print(f"시장 심리 통합 차트 생성 완료: F&G={fg_log}, VIX={vix_aligned.iloc[-1]:.2f}, NAIIM={naiim_aligned.iloc[-1]:.1f}")
                 except Exception as e:
                     print(f"시장 심리 분석 오류: {e}")
-                    ax_sentiment.set_title('시장 심리 통합 지표 (분석 오류)')
+                    ax_sentiment.set_title('CNN F&G vs. VIX')
             else:
                 ax_sentiment.text(0.5, 0.5, '공통 데이터 없음', ha='center', va='center', 
                                 transform=ax_sentiment.transAxes, fontsize=12, color='gray')
-                ax_sentiment.set_title('시장 심리 통합 지표')
+                ax_sentiment.set_title('CNN F&G vs. VIX')
         else:
             ax_sentiment.text(0.5, 0.5, '시장 심리 데이터 부족', ha='center', va='center', 
                             transform=ax_sentiment.transAxes, fontsize=12, color='gray')
-            ax_sentiment.set_title('시장 심리 통합 지표')
+            ax_sentiment.set_title('CNN F&G vs. VIX')
     except Exception as e:
         print(f"시장 심리 통합 차트 생성 오류: {e}")
         ax_sentiment.text(0.5, 0.5, f'차트 생성 오류: {str(e)}', ha='center', va='center', 
                          transform=ax_sentiment.transAxes, fontsize=10, color='red')
-        ax_sentiment.set_title('시장 심리 통합 지표')
+        ax_sentiment.set_title('CNN F&G vs. VIX')
     
     ax_sentiment.grid(True, alpha=0.3)
 
@@ -4306,25 +4679,29 @@ def plot_main_chart_with_volume_profile_overlay(
         print(f"메인 차트에 RSI 다이버전스 표시 실패: {e}")
         pass
 
-    _enabled_main = normalize_pattern_main_ids(pattern_main_overlays or [])
+    _enabled_main = _enabled_main_early
     _need_pattern_analysis = show_pattern_strip or bool(_enabled_main)
     if _need_pattern_analysis:
         try:
-            # 차트 패턴 전용: 기하 창만(box_range_windows). VP·표시용 로그 없음 — calculate_box_ranges 와 분리
-            pattern_box_ranges = compute_box_range_windows(
-                ohlcv_data,
-                pattern_range_box_period,
-                pattern_range_box_num,
-                pattern_range_box_overlap,
-                pattern_range_box_avoid_time_overlap,
-            )
+            if _pat_events_cached is not None:
+                pattern_box_ranges = _pattern_box_ranges_cached or []
+                pat_events = _pat_events_cached
+            else:
+                # 차트 패턴 전용: 기하 창만(box_range_windows). VP·표시용 로그 없음 — calculate_box_ranges 와 분리
+                pattern_box_ranges = compute_box_range_windows(
+                    ohlcv_data,
+                    pattern_range_box_period,
+                    pattern_range_box_num,
+                    pattern_range_box_overlap,
+                    pattern_range_box_avoid_time_overlap,
+                )
+                pat_events = analyze_seven_criteria(ohlcv_data, box_ranges=pattern_box_ranges)
             print(
                 f"패턴 range_box 후보 창: 기간={pattern_range_box_period}일, "
                 f"개수={pattern_range_box_num}, 겹침={pattern_range_box_overlap}일 "
                 f"(box_range_windows · 메인 파란 박스와 별도)"
             )
             # 박스권(range_box) 후보를 먼저 넣어 분석 → 스트립/메인은 동일 pat_events 사용
-            pat_events = analyze_seven_criteria(ohlcv_data, box_ranges=pattern_box_ranges)
             _rb_ev = sum(1 for e in pat_events if e.get("pattern_id") == "range_box")
             print(
                 f"차트 패턴 분석: {len(pat_events)}개 구간 "
@@ -4337,7 +4714,8 @@ def plot_main_chart_with_volume_profile_overlay(
                     "  참고: 패턴용 박스 후보는 있으나 range_box 응축 필터(횡보·변동폭 등)를 통과한 구간이 없습니다."
                 )
             if show_pattern_strip and ax_pattern is not None:
-                plot_pattern_strip(ax_pattern, ohlcv_data, pat_events)
+                n_shown = plot_pattern_strip(ax_pattern, ohlcv_data, pat_events)
+                print(f"  패턴 스트립 표시 행: {n_shown} (감지된 종류만)")
                 ax_pattern.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
                 ax_pattern.tick_params(axis='x', labelbottom=False)
             if _enabled_main:
@@ -4367,14 +4745,44 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.set_title(title)
     ax_main.set_ylabel('Price')
     ax_main.grid(True, alpha=0.3)
-    ax_main.legend(loc='upper left', fontsize=8)
+    legend_handles, legend_labels = ax_main.get_legend_handles_labels()
+    ma_order = ["MA 20", "MA 50", "MA 120", "MA 200"]
+    ma_items = []
+    other_items = []
+    first_ma = None
+    for handle, label in zip(legend_handles, legend_labels):
+        if label in ma_order:
+            if first_ma is None:
+                first_ma = len(other_items)
+            ma_items.append((handle, label))
+        else:
+            other_items.append((handle, label))
+    ma_items.sort(key=lambda item: ma_order.index(item[1]))
+    if first_ma is None:
+        ordered_legend = list(zip(legend_handles, legend_labels))
+    else:
+        ordered_legend = other_items[:]
+        for offset, item in enumerate(ma_items):
+            ordered_legend.insert(first_ma + offset, item)
+    ax_main.legend(
+        [handle for handle, _label in ordered_legend],
+        [label for _handle, label in ordered_legend],
+        loc='upper left',
+        fontsize=8,
+    )
     
     # x축 날짜 포맷 설정
     ax_main.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax_main.tick_params(axis='x', rotation=45)
 
-    # 레이아웃 조정 (우측 여백을 늘려서 외부 라벨들과 시장심리 박스가 표시되도록)
-    plt.subplots_adjust(left=0.08, right=0.75, top=0.95, bottom=0.06, hspace=0.12)
+    # 레이아웃 조정. 우측 여백은 가격 차트 높이의 주황 요약 박스용
+    plt.subplots_adjust(left=0.08, right=0.74, top=0.95, bottom=0.06, hspace=0.12)
+    if ax_realtime is not None:
+        main_pos = ax_main.get_position()
+        gap = 0.012
+        box_left = main_pos.x1 + gap
+        box_width = max(0.995 - box_left, 0.16)
+        ax_realtime.set_position([box_left, main_pos.y0, box_width, main_pos.height])
 
     # 저장 또는 표시 (폰트 경고 방지)
     if save_path:
@@ -4387,8 +4795,8 @@ def plot_main_chart_with_volume_profile_overlay(
     else:
         plt.show() 
 
-def create_integrated_market_sentiment_chart(ax, dates, pcr_data, vix_data, naiim_data):
-    """PCR, VIX, NAIIM을 3축으로 통합한 차트 생성"""
+def create_integrated_market_sentiment_chart(ax, dates, pcr_data, vix_data, naiim_data, fg_data=None):
+    """CNN F&G, VIX, NAIIM을 3축으로 통합한 차트. 왼쪽 축은 F&G."""
     
     print(f"=== 시장 심리 통합 차트 생성 디버깅 ===")
     print(f"입력 데이터 타입: PCR={type(pcr_data)}, VIX={type(vix_data)}, NAIIM={type(naiim_data)}")
@@ -4457,59 +4865,21 @@ def create_integrated_market_sentiment_chart(ax, dates, pcr_data, vix_data, naii
     print(f"정규화 후 VIX 데이터: {vix_normalized[:5]} ... {vix_normalized[-5:]}")
     print(f"정규화 후 NAIIM 데이터: {naiim_normalized[:5]} ... {naiim_normalized[-5:]}")
     
-    # 1차 Y축: PCR (왼쪽)
-    print(f"PCR 차트 그리기 시작: dates={dates[:5]} ... {dates[-5:]}")
-    print(f"PCR 차트 그리기: y값={pcr_normalized[:5]} ... {pcr_normalized[-5:]}")
-    
-    line1 = ax.plot(dates, pcr_normalized, 'b-', linewidth=2.1, label='PCR', alpha=0.9, zorder=10)
-    print(f"PCR 차트 그리기 완료: {len(line1)}개 라인 생성")
-    
-    # PCR Y축 범위 설정 (정규화된 데이터 기준으로 최적화, NaN 방지)
-    pcr_min, pcr_max = pcr_normalized.min(), pcr_normalized.max()
-    
-    # NaN 값이 있는 경우 기본값 사용
-    if np.isnan(pcr_min) or np.isnan(pcr_max):
-        print(f"⚠️  PCR 정규화 데이터에 NaN 값이 있습니다. 기본값 사용")
-        pcr_min, pcr_max = 0.0, 1.0
-        pcr_range = 1.0
-        pcr_buffer = 0.1
-    else:
-        pcr_range = pcr_max - pcr_min
-        
-        # PCR 변화가 작은 경우에도 차트에서 잘 보이도록 조정
-        if pcr_range < 0.05:  # PCR 변화가 매우 작은 경우
-            pcr_range = 0.05
-            pcr_buffer = 0.025
-        else:
-            pcr_buffer = pcr_range * 0.2  # 20% 버퍼 추가
-    
-    # Y축 범위 설정 (유효한 값인지 확인)
-    y_min = pcr_min - pcr_buffer
-    y_max = pcr_max + pcr_buffer
-    
-    if np.isnan(y_min) or np.isnan(y_max) or np.isinf(y_min) or np.isinf(y_max):
-        print(f"⚠️  Y축 범위에 유효하지 않은 값이 있습니다. 기본값 사용")
-        y_min, y_max = 0.0, 1.0
-    
-    ax.set_ylim(y_min, y_max)
-    print(f"PCR Y축 범위 설정: [{y_min:.3f}, {y_max:.3f}]")
-    
-    ax.set_ylabel('PCR (Put-Call Ratio)', color='blue', fontsize=10, fontweight='bold')
-    ax.tick_params(axis='y', labelcolor='blue')
-    
-    # PCR 값 텍스트 표시 (중간 지점에, NaN 방지)
-    mid_idx = len(dates) // 2
-    mid_date = dates[mid_idx]
-    mid_pcr = pcr_normalized[mid_idx]
-    
-    # NaN 값이 있는 경우 기본값 사용
-    if np.isnan(mid_pcr):
-        print(f"⚠️  중간 PCR 값이 NaN입니다. 기본값 사용")
-        mid_pcr = 0.5
-    
-    ax.text(mid_date, mid_pcr + pcr_range * 0.05, f'PCR: {mid_pcr:.3f}', 
-            color='blue', fontsize=9, fontweight='bold', ha='center',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='lightblue', alpha=0.8))
+    # 1차 Y축: CNN F&G (왼쪽, 0~100). PCR 선은 그리지 않음.
+    fg_plot = None
+    if fg_data is not None:
+        fg_plot = pd.to_numeric(pd.Series(fg_data), errors="coerce").to_numpy(dtype=float)
+        if len(fg_plot) != len(dates):
+            print(f"⚠️ CNN F&G 길이 불일치: {len(fg_plot)} != {len(dates)}")
+            fg_plot = None
+    if fg_plot is None or not np.any(np.isfinite(fg_plot)):
+        fg_plot = np.full(len(dates), np.nan)
+        print("⚠️ CNN F&G 시계열 없음 — 왼쪽 축은 비움")
+    line1 = ax.plot(dates, fg_plot, color="#4C78A8", linewidth=2.1, label="CNN F&G", alpha=0.95, zorder=10)
+    ax.set_ylim(0, 100)
+    ax.set_ylabel("CNN F&G", color="#4C78A8", fontsize=10, fontweight="bold")
+    ax.tick_params(axis="y", labelcolor="#4C78A8")
+    finite_idx = np.where(np.isfinite(fg_plot))[0]
     
     # 2차 Y축: VIX (오른쪽)
     ax2 = ax.twinx()
@@ -4524,171 +4894,126 @@ def create_integrated_market_sentiment_chart(ax, dates, pcr_data, vix_data, naii
     ax3.set_ylabel('NAIIM (기관투자자)', color='green', fontsize=10)
     ax3.tick_params(axis='y', labelcolor='green')
     
-    # 기준선 추가
-    ax.axhline(y=1.0, color='blue', linestyle='--', alpha=0.5, label='PCR 중립')
-    ax2.axhline(y=20, color='red', linestyle='--', alpha=0.5, label='VIX 탐욕')
-    ax2.axhline(y=30, color='red', linestyle='--', alpha=0.5, label='VIX 중립')
-    ax2.axhline(y=40, color='red', linestyle='--', alpha=0.5, label='VIX 공포')
-    ax3.axhline(y=50, color='green', linestyle='--', alpha=0.5, label='NAIIM 중립')
+    ax3.axhline(y=50, color='green', linestyle='--', alpha=0.35, label='NAIIM 중립')
+
+    # 왼쪽 CNN F&G 구간 표시. 배경 전체는 칠하지 않는다.
+    from matplotlib.transforms import blended_transform_factory
+    zone_trans = blended_transform_factory(ax.transAxes, ax.transData)
+    fg_zones = (
+        (0, 25, "극공포", "darkred", "white"),
+        (25, 45, "공포", "red", "white"),
+        (45, 55, "중립", "orange", "black"),
+        (55, 75, "탐욕", "green", "white"),
+        (75, 100, "극탐욕", "darkgreen", "white"),
+    )
+    zone_w = 0.036
+    for y0, y1, name, face, ink in fg_zones:
+        ax.add_patch(mpatches.Rectangle(
+            (0.0, y0), zone_w, y1 - y0,
+            transform=zone_trans,
+            facecolor=face,
+            edgecolor="white",
+            linewidth=0.4,
+            alpha=0.95,
+            zorder=12,
+            clip_on=True,
+        ))
+        ax.text(
+            zone_w / 2, (y0 + y1) / 2, name,
+            transform=zone_trans,
+            ha="center", va="center",
+            fontsize=6.5, color=ink, fontweight="bold",
+            zorder=13, clip_on=True,
+        )
+
+    # 오른쪽 VIX 전략. <15 위험선호, 15–25 선별 대응, 25–30 위험축소, ≥30 자본보전.
+    vix_lo, vix_hi = ax2.get_ylim()
+    vix_lo = min(vix_lo, 12)
+    vix_hi = max(vix_hi, 32)
+    ax2.set_ylim(vix_lo, vix_hi)
+    vix_trans = blended_transform_factory(ax.transAxes, ax2.transData)
+    vix_zone_w = 0.052
+    vix_zones = (
+        (vix_lo, 15, "위험선호\nRisk-On", "green", "white"),
+        (15, 25, "선별대응\nCaution", "orange", "black"),
+        (25, 30, "위험축소\nRisk-Off", "#C0392B", "white"),
+        (30, vix_hi, "자본보전\n위기경계", "darkred", "white"),
+    )
+    for y0, y1, name, face, ink in vix_zones:
+        start, end = max(y0, vix_lo), min(y1, vix_hi)
+        if end - start < 0.6:
+            continue
+        ax2.add_patch(mpatches.Rectangle(
+            (1.0 - vix_zone_w, start), vix_zone_w, end - start,
+            transform=vix_trans,
+            facecolor=face,
+            edgecolor="white",
+            linewidth=0.4,
+            alpha=0.95,
+            zorder=12,
+            clip_on=True,
+        ))
+        ax2.text(
+            1.0 - vix_zone_w / 2, (start + end) / 2, name,
+            transform=vix_trans,
+            ha="center", va="center",
+            fontsize=6.2, color=ink, fontweight="bold",
+            zorder=13, clip_on=True,
+            linespacing=0.95,
+        )
+
+    # 구간 식별선. F&G는 파란 파선, VIX는 보라 점선으로 구분한다.
+    for level in (25, 45, 55, 75):
+        ax.axhline(
+            y=level, color="#4C78A8", linestyle=(0, (6, 3)),
+            linewidth=0.58, alpha=0.95, zorder=4,
+        )
+        ax.text(
+            0.20, level, f"F&G {level}",
+            transform=zone_trans,
+            color="#4C78A8", fontsize=7, fontweight="bold",
+            ha="left", va="bottom", zorder=15, clip_on=True,
+            bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="#4C78A8", linewidth=0.6, alpha=0.9),
+        )
+    for level in (15, 25, 30):
+        ax2.axhline(
+            y=level, color="#6C3483", linestyle=(0, (1.2, 1.5)),
+            linewidth=0.62, alpha=0.95, zorder=4,
+        )
+        ax2.text(
+            0.78, level, f"VIX {level}",
+            transform=vix_trans,
+            color="#6C3483", fontsize=7, fontweight="bold",
+            ha="right", va="bottom", zorder=15, clip_on=True,
+            bbox=dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="#6C3483", linewidth=0.6, alpha=0.9),
+        )
+
+    if len(finite_idx):
+        last_i = int(finite_idx[-1])
+        ax.text(
+            1.0 - vix_zone_w - 0.008,
+            min(float(fg_plot[last_i]) + 6, 96),
+            f"F&G {fg_plot[last_i]:.0f}",
+            transform=zone_trans,
+            color="#4C78A8",
+            fontsize=8,
+            fontweight="bold",
+            ha="right",
+            va="bottom",
+            zorder=14,
+            clip_on=True,
+        )
     
     # 범례 통합
     lines = line1 + line2 + line3
     labels = [l.get_label() for l in lines]
-    ax.legend(lines, labels, loc='upper left', fontsize=9)
-    
-    # 구간별 배경 하이라이트
-    highlight_market_sentiment_zones(ax, dates, pcr_normalized, vix_normalized, naiim_normalized)
-    
-    # 구간별 설명 범례 추가
-    add_sentiment_zone_legend(ax)
+    ax.legend(
+        lines, labels, loc="upper left",
+        bbox_to_anchor=(zone_w + 0.006, 1.0),
+        fontsize=9, framealpha=0.9,
+    )
     
     return ax, ax2, ax3
-
-def add_sentiment_zone_legend(ax):
-    """시장 심리 구간별 설명 범례 추가 (종합점수 가이드 중심, 좌측 하단 배치)"""
-    
-    # 종합점수 해석 가이드 (좌측 하단, 구간별 색상 배경)
-    # 폰트 사이즈 30% 감소: 6.4 → 4.48
-    
-    # 강력 매수 구간 (0-30) - 진한 파란색 배경
-    strong_buy_text = """[BLUE] 0-30
-강력 매수"""
-    
-    ax.text(0.02, 0.05, strong_buy_text, transform=ax.transAxes, fontsize=4.48,
-            ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.5", facecolor='darkblue', 
-                                          alpha=0.9, edgecolor='navy', linewidth=1),
-            color='white')
-    
-    # 매수 관심 구간 (30-50) - 연한 파란색 배경
-    buy_interest_text = """[BLUE] 30-50
-매수 관심"""
-    
-    ax.text(0.02, 0.15, buy_interest_text, transform=ax.transAxes, fontsize=4.48,
-            ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.5", facecolor='lightblue', 
-                                          alpha=0.9, edgecolor='blue', linewidth=1),
-            color='black')
-    
-    # 중립 구간 (50) - 회색 배경
-    neutral_text = """[WHITE] 50
-중립"""
-    
-    ax.text(0.02, 0.25, neutral_text, transform=ax.transAxes, fontsize=4.48,
-            ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.5", facecolor='lightgray', 
-                                          alpha=0.9, edgecolor='gray', linewidth=1),
-            color='black')
-    
-    # 매도 관심 구간 (50-70) - 연한 빨간색 배경
-    sell_interest_text = """[RED] 50-70
-매도 관심"""
-    
-    ax.text(0.02, 0.35, sell_interest_text, transform=ax.transAxes, fontsize=4.48,
-            ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.5", facecolor='lightcoral', 
-                                          alpha=0.9, edgecolor='red', linewidth=1),
-            color='black')
-    
-    # 강력 매도 구간 (70-100) - 진한 빨간색 배경
-    strong_sell_text = """[RED] 70-100
-강력 매도"""
-    
-    ax.text(0.02, 0.45, strong_sell_text, transform=ax.transAxes, fontsize=4.48,
-            ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.5", facecolor='darkred', 
-                                          alpha=0.9, edgecolor='maroon', linewidth=1),
-            color='white')
-
-def highlight_market_sentiment_zones(ax, dates, pcr_data, vix_data, naiim_data):
-    """시장 심리 구간별 배경 하이라이트 (차트 배경 반영)"""
-    
-    # 데이터 유효성 검증
-    if dates is None or len(dates) == 0:
-        return
-    
-    if pcr_data is None or vix_data is None or naiim_data is None:
-        return
-    
-    # 데이터가 Series인지 확인하고 numpy 배열로 변환
-    if hasattr(pcr_data, 'values'):
-        pcr_data = pcr_data.values
-    if hasattr(vix_data, 'values'):
-        vix_data = vix_data.values
-    if hasattr(naiim_data, 'values'):
-        naiim_data = naiim_data.values
-    
-    # 데이터 길이 확인
-    if len(pcr_data) != len(dates) or len(vix_data) != len(dates) or len(naiim_data) != len(dates):
-        return
-    
-    # 종합점수 계산 및 구간별 하이라이트
-    for i in range(len(dates)):
-        try:
-            # PCR 점수 (0-100 스케일)
-            pcr_score = 0
-            if pcr_data[i] > 1.5:
-                pcr_score = 20  # 극한 과매도
-            elif pcr_data[i] > 1.0:
-                pcr_score = 40  # 과매도
-            elif pcr_data[i] > 0.7:
-                pcr_score = 50  # 중립
-            elif pcr_data[i] > 0.5:
-                pcr_score = 60  # 과매수
-            else:
-                pcr_score = 80  # 극한 과매수
-            
-            # VIX 점수 (0-100 스케일)
-            vix_score = 0
-            if vix_data[i] > 40:
-                vix_score = 20  # 극한 공포
-            elif vix_data[i] > 30:
-                vix_score = 40  # 공포
-            elif vix_data[i] > 20:
-                vix_score = 50  # 중립
-            elif vix_data[i] > 15:
-                vix_score = 60  # 탐욕
-            else:
-                vix_score = 80  # 극한 탐욕
-            
-            # NAIIM 점수 (0-100 스케일)
-            naaim_score = 0
-            if naiim_data[i] < 30:
-                naaim_score = 20  # 극한 매도
-            elif naiim_data[i] < 50:
-                naaim_score = 40  # 매도
-            elif naiim_data[i] == 50:
-                naaim_score = 50  # 중립
-            elif naiim_data[i] < 70:
-                naaim_score = 60  # 매수
-            else:
-                naaim_score = 80  # 극한 매수
-            
-            # 종합점수 (가중 평균: PCR 30%, VIX 40%, NAIIM 30%)
-            composite_score = (pcr_score * 0.3 + vix_score * 0.4 + naaim_score * 0.3)
-            
-            # 구간별 배경색 설정
-            if composite_score <= 30:
-                # 강력 매수 구간 - 진한 파란색
-                color = 'darkblue'
-                alpha = 0.3
-            elif composite_score <= 50:
-                # 매수 관심 구간 - 연한 파란색
-                color = 'lightblue'
-                alpha = 0.2
-            elif composite_score <= 70:
-                # 매도 관심 구간 - 연한 빨간색
-                color = 'lightcoral'
-                alpha = 0.2
-            else:
-                # 강력 매도 구간 - 진한 빨간색
-                color = 'darkred'
-                alpha = 0.3
-            
-            # 배경 하이라이트 추가
-            if i < len(dates) - 1:
-                try:
-                    ax.axvspan(dates[i], dates[i+1], alpha=alpha, color=color, zorder=0)
-                except (ValueError, TypeError):
-                    pass
-                    
-        except (IndexError, ValueError, TypeError):
-            continue
 
 def analyze_integrated_market_sentiment(pcr_data, vix_data, naiim_data):
     """3개 지표 통합 시그널 분석"""
@@ -4738,15 +5063,15 @@ def analyze_integrated_market_sentiment(pcr_data, vix_data, naiim_data):
         else:
             signals.append("PCR: 중립 구간")
         
-        # VIX 분석 (변동성 지수)
-        if vix_value > 40:
-            signals.append("VIX: 극한 공포 (매수 신호)")
-        elif vix_value > 30:
-            signals.append("VIX: 공포 구간")
-        elif vix_value < 20:
-            signals.append("VIX: 탐욕 구간")
+        # VIX 전략 구간
+        if vix_value < 15:
+            signals.append("VIX: 위험선호 (Risk-On)")
+        elif vix_value < 25:
+            signals.append("VIX: 선별 대응 (Caution)")
+        elif vix_value < 30:
+            signals.append("VIX: 위험축소 (Risk-Off)")
         else:
-            signals.append("VIX: 중립 구간")
+            signals.append("VIX: 자본보전 (위기 경계)")
         
         # NAIIM 분석 (기관투자자)
         if naaim_value < 30:

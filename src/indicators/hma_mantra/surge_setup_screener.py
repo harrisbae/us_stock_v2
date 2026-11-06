@@ -1,13 +1,14 @@
 """
-종목 목록 → 급등 셋업/급등 진행 후보 필터.
+종목 목록 → 급등 준비/셋업/급등 진행 후보 필터.
 
-detect_surge_setup / detect_surge_state 를 재사용해
-셋업A·셋업B·점화임박 (및 옵션으로 이미 급등 중) 종목을 걸러낸다.
+detect_surge_prep / detect_surge_setup / detect_surge_state 를 재사용해
+급등준비·셋업A·셋업B·점화임박 (및 옵션으로 이미 급등 중) 종목을 걸러낸다.
 """
 
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -21,13 +22,22 @@ from .visualization.tech_annotation_chart import (
     _compute_aux_trend_indicators,
     _normalize,
     compute_support_resistance_levels,
+    detect_surge_prep,
     detect_surge_setup,
     detect_surge_state,
 )
 
 SETUP_STATES = ("점화임박", "셋업A", "셋업B")
+PREP_STATES = ("급등준비",)
 ACTIVE_SURGE_STATES = ("급등진행", "급등과열")
-TIER_ORDER = {"점화임박": 0, "셋업A": 1, "셋업B": 2, "급등진행": 3, "급등과열": 4}
+TIER_ORDER = {
+    "점화임박": 0,
+    "셋업A": 1,
+    "셋업B": 2,
+    "급등준비": 3,
+    "급등진행": 4,
+    "급등과열": 5,
+}
 
 
 @dataclass
@@ -108,6 +118,18 @@ def _normalize_ticker(raw: str) -> Optional[str]:
     return tok
 
 
+def parse_symbols_arg(raw: str) -> List[str]:
+    """콤마(또는 공백/세미콜론) 구분 종목 문자열 파싱. 예: 'GM,DAL, LRCX'."""
+    if not raw or not str(raw).strip():
+        return []
+    tickers: List[str] = []
+    for part in re.split(r"[,;\s]+", str(raw).strip()):
+        tok = _normalize_ticker(part)
+        if tok:
+            tickers.append(tok)
+    return list(dict.fromkeys(tickers))
+
+
 def _rsi14(close: pd.Series) -> Optional[float]:
     if close is None or len(close) < 16:
         return None
@@ -150,6 +172,9 @@ def evaluate_ticker(
             lv_by_label=lv,
         )
         setup = detect_surge_setup(df, aux_ind=aux, adx_res=adx)
+        prep = detect_surge_prep(
+            df, aux_ind=aux, adx_res=adx, surge_setup=setup, surge_state=surge,
+        )
         return {
             "ticker": ticker,
             "price": float(close.iloc[-1]),
@@ -157,6 +182,7 @@ def evaluate_ticker(
             "rsi": rsi,
             "surge": surge,
             "setup": setup,
+            "prep": prep,
         }
     except Exception:
         return None
@@ -165,8 +191,10 @@ def evaluate_ticker(
 def _to_candidate(snap: Dict[str, Any], *, prefer_setup: bool) -> Optional[SurgeCandidate]:
     surge = snap["surge"]
     setup = snap["setup"]
+    prep = snap.get("prep") or {}
     s_state = surge.get("state") or "해당없음"
     u_state = setup.get("state") or "해당없음"
+    p_state = prep.get("state") or "해당없음"
 
     if s_state in ACTIVE_SURGE_STATES and not prefer_setup:
         tier = s_state
@@ -178,6 +206,8 @@ def _to_candidate(snap: Dict[str, Any], *, prefer_setup: bool) -> Optional[Surge
         consol_net = setup.get("consol_net")
         consol_rng = setup.get("consol_rng")
         dist = setup.get("dist_hi20")
+        vol_mult = surge.get("vol_mult")
+        setup_state_out = u_state
     elif setup.get("active") and u_state in SETUP_STATES:
         tier = u_state
         score = int(setup.get("score") or 0)
@@ -188,6 +218,20 @@ def _to_candidate(snap: Dict[str, Any], *, prefer_setup: bool) -> Optional[Surge
         consol_net = setup.get("consol_net")
         consol_rng = setup.get("consol_rng")
         dist = setup.get("dist_hi20")
+        vol_mult = surge.get("vol_mult")
+        setup_state_out = u_state
+    elif prep.get("active") and p_state in PREP_STATES:
+        tier = p_state
+        score = int(prep.get("score") or 0)
+        kind = None
+        reasons = ",".join(prep.get("reasons") or [])
+        flip_age = prep.get("down_len")
+        flip_date = prep.get("break_date")
+        consol_net = None
+        consol_rng = None
+        dist = None
+        vol_mult = prep.get("vol_mult")
+        setup_state_out = p_state
     else:
         return None
 
@@ -205,10 +249,10 @@ def _to_candidate(snap: Dict[str, Any], *, prefer_setup: bool) -> Optional[Surge
         adx=snap.get("adx") if snap.get("adx") is not None else setup.get("adx"),
         rsi=snap.get("rsi"),
         ret_5=surge.get("ret_5"),
-        vol_mult=surge.get("vol_mult"),
+        vol_mult=vol_mult,
         reasons=reasons[:80],
         surge_state=s_state,
-        setup_state=u_state,
+        setup_state=setup_state_out,
     )
 
 
@@ -240,6 +284,7 @@ def screen_surge_candidates(
 
         surge = snap["surge"]
         setup = snap["setup"]
+        prep = snap.get("prep") or {}
         s_state = surge.get("state") or "해당없음"
 
         # 이미 급등 중
@@ -249,15 +294,20 @@ def screen_surge_candidates(
             cand = _to_candidate(snap, prefer_setup=False)
         elif setup.get("active"):
             cand = _to_candidate(snap, prefer_setup=True)
+        elif prep.get("active"):
+            cand = _to_candidate(snap, prefer_setup=True)
         else:
             continue
 
         if cand is None or cand.score < min_score:
             continue
-        if allow_kinds and cand.kind and cand.kind.upper() not in allow_kinds:
-            # 급등진행/과열은 kind=None → kinds 필터 시 제외할지: include_active면 통과
-            if cand.tier not in ACTIVE_SURGE_STATES:
+        if allow_kinds:
+            # kinds 지정 시 급등준비는 제외 (A/B 셋업만)
+            if cand.tier in PREP_STATES:
                 continue
+            if cand.kind and cand.kind.upper() not in allow_kinds:
+                if cand.tier not in ACTIVE_SURGE_STATES:
+                    continue
         hits.append(cand)
 
     hits.sort(key=lambda c: (TIER_ORDER.get(c.tier, 9), -c.score, c.ticker))

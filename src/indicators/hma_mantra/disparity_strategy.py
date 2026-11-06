@@ -90,7 +90,7 @@ def _bb_state(close: pd.Series, bb_upper: Optional[pd.Series], bb_lower: Optiona
 def _monthly_confirm(close: pd.Series) -> str:
     if len(close) < 80:
         return "unknown"
-    m_close = close.resample("M").last().dropna()
+    m_close = close.resample("ME").last().dropna()  # Month End (pandas: M → ME)
     if len(m_close) < 6:
         return "unknown"
     m20 = m_close.rolling(window=4).mean()

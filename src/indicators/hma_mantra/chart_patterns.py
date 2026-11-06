@@ -1,6 +1,10 @@
 """
 차트 패턴 기준(CHART_PATTERN_CRITERIA 메타·감지 휴리스틱·스트립 시각화).
 
+분류 메타: bias(bull|bear|neutral) · role(rev|cont|setup) · family(chart|candle|structure)
+표시명: 상승반·/상승지·/하락반·/하락지·/중립· 접두로 방향·역할 식별.
+그룹 필터: bull_rev / bull_cont / bear_rev / bear_cont / neutral / setup (--pattern-main).
+
 박스권 range_box (Rectangle / Box):
     상단 저항과 하단 지지 사이에서 수평 횡보하며 에너지를 응축하는 단계.
     구현은 box_range_windows.compute_box_range_windows 로 만든 시간 창 후보에
@@ -22,40 +26,256 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from matplotlib.patches import Polygon as MplPolygon, Rectangle as MplRectangle
 
+# bias: bull|bear|neutral  /  role: rev|cont|setup  /  family: chart|candle|structure
+# label: 상승반· / 상승지· / 하락반· / 하락지· / 중립· 접두로 방향·역할 식별
 CHART_PATTERN_CRITERIA: List[Dict[str, Any]] = [
-    {"id": "double_top_m", "label": "쌍봉(M)", "confidence": 1.0, "color": "#c0392b"},
-    {"id": "bear_flag", "label": "하락깃발", "confidence": 0.8, "color": "#e74c3c"},
-    {"id": "bear_diamond", "label": "하락다이아", "confidence": 0.65, "color": "#9b59b6"},
+    {
+        "id": "double_top_m",
+        "label": "하락반·쌍봉",
+        "confidence": 1.0,
+        "color": "#c0392b",
+        "bias": "bear",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("bear_double_top", "double_top"),
+    },
+    {
+        "id": "bear_flag",
+        "label": "하락지·깃발",
+        "confidence": 0.8,
+        "color": "#e74c3c",
+        "bias": "bear",
+        "role": "cont",
+        "family": "chart",
+        "aliases": (),
+    },
+    {
+        "id": "bear_diamond",
+        "label": "하락반·다이아",
+        "confidence": 0.65,
+        "color": "#9b59b6",
+        "bias": "bear",
+        "role": "rev",
+        "family": "chart",
+        "aliases": (),
+    },
     {
         "id": "range_box",
-        "label": "박스권",
+        "label": "중립·박스권",
         "confidence": 0.5,
         "color": "#7f8c8d",
-        # 개념 정의(Rectangle/Box): 상단 저항·하단 지지 사이 수평 횡보·에너지 응축
+        "bias": "neutral",
+        "role": "setup",
+        "family": "structure",
+        "aliases": ("neu_range_box",),
         "definition": "Rectangle/Box — 상단 저항과 하단 지지 사이에서 수평 횡보하며 에너지를 응축하는 단계",
     },
-    {"id": "triple_bottom_w", "label": "역삼중창(W)", "confidence": 0.65, "color": "#16a085"},
-    {"id": "bull_flag", "label": "상승깃발", "confidence": 0.8, "color": "#27ae60"},
-    {"id": "asc_triangle", "label": "상승삼각", "confidence": 1.0, "color": "#2980b9"},
+    {
+        "id": "triple_bottom_w",
+        "label": "상승반·삼중바닥",
+        "confidence": 0.65,
+        "color": "#16a085",
+        "bias": "bull",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("bull_triple_bottom", "triple_bottom"),
+    },
+    {
+        "id": "bull_flag",
+        "label": "상승지·깃발",
+        "confidence": 0.8,
+        "color": "#27ae60",
+        "bias": "bull",
+        "role": "cont",
+        "family": "chart",
+        "aliases": (),
+    },
+    {
+        "id": "asc_triangle",
+        "label": "상승지·상승삼각",
+        "confidence": 1.0,
+        "color": "#2980b9",
+        "bias": "bull",
+        "role": "cont",
+        "family": "chart",
+        "aliases": ("bull_asc_triangle",),
+    },
     {
         "id": "post_box_bull",
-        "label": "박스후장대양봉",
+        "label": "상승지·박스돌파",
         "confidence": 0.62,
         "color": "#e67e22",
+        "bias": "bull",
+        "role": "cont",
+        "family": "structure",
+        "aliases": ("bull_box_breakout",),
         "definition": "range_box 구간 직후 봉이 박스 상단을 돌파한 장대 양봉(휴리스틱)",
     },
     {
         "id": "fvg_gap",
-        "label": "FVG(갭)",
+        "label": "중립·FVG",
         "confidence": 0.55,
         "color": "#8e44ad",
+        "bias": "neutral",
+        "role": "setup",
+        "family": "structure",
+        "aliases": (),
         "definition": "3봉 기준 Fair Value Gap — 상방: 3번째 저가>1번째 고가, 하방: 3번째 고가<1번째 저가",
     },
-    {"id": "bull_hammer", "label": "강세해머", "confidence": 0.56, "color": "#27ae60"},
-    {"id": "bull_engulf", "label": "강세엥걸핑", "confidence": 0.62, "color": "#2ecc71"},
-    {"id": "bear_hanging_man", "label": "행잉맨", "confidence": 0.56, "color": "#e74c3c"},
-    {"id": "bear_engulf", "label": "약세엥걸핑", "confidence": 0.62, "color": "#c0392b"},
-    {"id": "doji", "label": "도지(중립)", "confidence": 0.45, "color": "#7f8c8d"},
+    {
+        "id": "bull_hammer",
+        "label": "상승반·해머",
+        "confidence": 0.56,
+        "color": "#27ae60",
+        "bias": "bull",
+        "role": "rev",
+        "family": "candle",
+        "aliases": (),
+    },
+    {
+        "id": "bull_engulf",
+        "label": "상승반·엥걸핑",
+        "confidence": 0.62,
+        "color": "#2ecc71",
+        "bias": "bull",
+        "role": "rev",
+        "family": "candle",
+        "aliases": (),
+    },
+    {
+        "id": "bear_hanging_man",
+        "label": "하락반·행잉맨",
+        "confidence": 0.56,
+        "color": "#e74c3c",
+        "bias": "bear",
+        "role": "rev",
+        "family": "candle",
+        "aliases": (),
+    },
+    {
+        "id": "bear_engulf",
+        "label": "하락반·엥걸핑",
+        "confidence": 0.62,
+        "color": "#c0392b",
+        "bias": "bear",
+        "role": "rev",
+        "family": "candle",
+        "aliases": (),
+    },
+    {
+        "id": "doji",
+        "label": "중립·도지",
+        "confidence": 0.45,
+        "color": "#7f8c8d",
+        "bias": "neutral",
+        "role": "setup",
+        "family": "candle",
+        "aliases": ("neu_doji",),
+    },
+    # Phase 1 — 대칭 패턴 (감지·오버레이는 동일 파일 하단)
+    {
+        "id": "bull_double_bottom",
+        "label": "상승반·쌍바닥",
+        "confidence": 0.9,
+        "color": "#1abc9c",
+        "bias": "bull",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("double_bottom", "double_bottom_w"),
+    },
+    {
+        "id": "bear_desc_triangle",
+        "label": "하락지·하락삼각",
+        "confidence": 0.9,
+        "color": "#e67e22",
+        "bias": "bear",
+        "role": "cont",
+        "family": "chart",
+        "aliases": ("desc_triangle",),
+    },
+    {
+        "id": "bear_triple_top",
+        "label": "하락반·삼중탑",
+        "confidence": 0.65,
+        "color": "#c0392b",
+        "bias": "bear",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("triple_top", "triple_top_m"),
+    },
+    # Phase 2 — 웨지·펜넌트·H&S
+    {
+        "id": "bull_falling_wedge",
+        "label": "상승반·하락쐐기",
+        "confidence": 0.7,
+        "color": "#27ae60",
+        "bias": "bull",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("falling_wedge",),
+    },
+    {
+        "id": "bear_rising_wedge",
+        "label": "하락반·상승쐐기",
+        "confidence": 0.7,
+        "color": "#e74c3c",
+        "bias": "bear",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("rising_wedge",),
+    },
+    {
+        "id": "bull_pennant",
+        "label": "상승지·펜넌트",
+        "confidence": 0.72,
+        "color": "#2ecc71",
+        "bias": "bull",
+        "role": "cont",
+        "family": "chart",
+        "aliases": (),
+    },
+    {
+        "id": "bear_pennant",
+        "label": "하락지·펜넌트",
+        "confidence": 0.72,
+        "color": "#e74c3c",
+        "bias": "bear",
+        "role": "cont",
+        "family": "chart",
+        "aliases": (),
+    },
+    {
+        "id": "bull_inv_hs",
+        "label": "상승반·역헤드앤숄더",
+        "confidence": 0.75,
+        "color": "#1abc9c",
+        "bias": "bull",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("inverse_hs", "inv_head_shoulders"),
+    },
+    {
+        "id": "bear_hs",
+        "label": "하락반·헤드앤숄더",
+        "confidence": 0.75,
+        "color": "#c0392b",
+        "bias": "bear",
+        "role": "rev",
+        "family": "chart",
+        "aliases": ("head_shoulders", "hs"),
+    },
+    # Phase 3 — 컵앤핸들
+    {
+        "id": "bull_cup_handle",
+        "label": "상승지·컵핸들",
+        "confidence": 0.7,
+        "color": "#2980b9",
+        "bias": "bull",
+        "role": "cont",
+        "family": "chart",
+        "aliases": ("cup_handle", "cup_and_handle"),
+        "definition": "U자형 컵(원형 바닥) 후 짧은 핸들 조정, 림(저항) 상방 돌파 시 지속 상승",
+    },
 ]
 
 ID_TO_ROW = {c["id"]: i for i, c in enumerate(CHART_PATTERN_CRITERIA)}
@@ -68,19 +288,70 @@ CANDLE_PATTERN_IDS: Tuple[str, ...] = (
     "bear_engulf",
     "doji",
 )
-CHART_SHAPE_PATTERN_IDS: Tuple[str, ...] = tuple(pid for pid in ALL_PATTERN_IDS if pid not in CANDLE_PATTERN_IDS)
+CHART_SHAPE_PATTERN_IDS: Tuple[str, ...] = tuple(
+    pid for pid in ALL_PATTERN_IDS if pid not in CANDLE_PATTERN_IDS
+)
 BULL_CANDLE_IDS: Tuple[str, ...] = ("bull_hammer", "bull_engulf")
 BEAR_CANDLE_IDS: Tuple[str, ...] = ("bear_hanging_man", "bear_engulf")
 NEUTRAL_CANDLE_IDS: Tuple[str, ...] = ("doji",)
+
+# alias → canonical id (구 id·제안명 모두 해석)
+PATTERN_ALIAS_TO_ID: Dict[str, str] = {}
+for _c in CHART_PATTERN_CRITERIA:
+    _pid = str(_c["id"])
+    PATTERN_ALIAS_TO_ID[_pid] = _pid
+    for _a in _c.get("aliases") or ():
+        PATTERN_ALIAS_TO_ID[str(_a).lower()] = _pid
+
+PATTERN_GROUP_KEYS: Tuple[str, ...] = (
+    "bull_rev",
+    "bull_cont",
+    "bear_rev",
+    "bear_cont",
+    "neutral",
+    "setup",
+)
+
+
+def pattern_ids_by_group(group: str) -> Tuple[str, ...]:
+    """bull_rev / bull_cont / bear_rev / bear_cont / neutral / setup → id 튜플."""
+    g = str(group).strip().lower()
+    out: List[str] = []
+    for c in CHART_PATTERN_CRITERIA:
+        bias = str(c.get("bias") or "")
+        role = str(c.get("role") or "")
+        if g == "neutral" and bias == "neutral":
+            out.append(str(c["id"]))
+        elif g == "setup" and role == "setup":
+            out.append(str(c["id"]))
+        elif g == "bull_rev" and bias == "bull" and role == "rev":
+            out.append(str(c["id"]))
+        elif g == "bull_cont" and bias == "bull" and role == "cont":
+            out.append(str(c["id"]))
+        elif g == "bear_rev" and bias == "bear" and role == "rev":
+            out.append(str(c["id"]))
+        elif g == "bear_cont" and bias == "bear" and role == "cont":
+            out.append(str(c["id"]))
+    return tuple(out)
+
+
+def resolve_pattern_id(raw: str) -> Optional[str]:
+    """id 또는 alias → canonical id."""
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    return PATTERN_ALIAS_TO_ID.get(s)
 
 
 def normalize_pattern_main_ids(arg: Optional[Sequence[str]]) -> Set[str]:
     """
     메인 차트에 그릴 패턴 id 집합. None/빈 시퀀스 → 아무 것도 안 그림.
     'all' 또는 '*' → CHART_PATTERN_CRITERIA 전 id.
-    'chart_all' → 기존 차트 패턴만.
+    'chart_all' → 차트/구조 패턴만.
     'candle_all' → 캔들 패턴만.
     'bull_candles'/'bear_candles'/'neutral_candles' 지원.
+    'bull_rev'/'bull_cont'/'bear_rev'/'bear_cont'/'neutral'/'setup' 그룹 키 지원.
+    개별 id는 alias도 허용 (예: bear_double_top → double_top_m).
     """
     if not arg:
         return set()
@@ -106,8 +377,12 @@ def normalize_pattern_main_ids(arg: Optional[Sequence[str]]) -> Set[str]:
         if s == "neutral_candles":
             out.update(NEUTRAL_CANDLE_IDS)
             continue
-        if s in ID_TO_ROW:
-            out.add(s)
+        if s in PATTERN_GROUP_KEYS:
+            out.update(pattern_ids_by_group(s))
+            continue
+        resolved = resolve_pattern_id(s)
+        if resolved:
+            out.add(resolved)
     return out
 
 
@@ -301,16 +576,24 @@ def extract_range_box_pattern_events(
 
 
 def _detect_non_range_box_patterns(ohlcv: pd.DataFrame) -> List[Dict[str, Any]]:
-    """2단계 — range_box 이외 6종(피벗·구간 통계 기반)."""
+    """2단계 — range_box 이외 차트 도형(피벗·구간 통계 기반)."""
     out: List[Dict[str, Any]] = []
     high = ohlcv["High"]
     low = ohlcv["Low"]
     piv_hi = _pivot_highs(high, 3, 3)
     piv_lo = _pivot_lows(low, 3, 3)
     out.extend(_detect_double_tops(ohlcv, piv_hi))
+    out.extend(_detect_double_bottoms(ohlcv, piv_lo))
     out.extend(_detect_triple_bottoms(ohlcv, piv_lo))
+    out.extend(_detect_triple_tops(ohlcv, piv_hi))
+    out.extend(_detect_inv_hs(ohlcv, piv_lo))
+    out.extend(_detect_hs(ohlcv, piv_hi))
     out.extend(_detect_ascending_triangles(ohlcv))
+    out.extend(_detect_descending_triangles(ohlcv))
+    out.extend(_detect_wedges(ohlcv))
     out.extend(_detect_flags(ohlcv))
+    out.extend(_detect_pennants(ohlcv))
+    out.extend(_detect_cup_handle(ohlcv))
     out.extend(_detect_diamonds(ohlcv))
     return out
 
@@ -352,6 +635,50 @@ def _detect_double_tops(
                     "peak_prices": [float(p1), float(p2)],
                     "valley_date": _idx_ts(ohlcv, vi),
                     "valley_price": lv,
+                }
+            )
+            if len(events) >= max_events:
+                return events
+    return events
+
+
+def _detect_double_bottoms(
+    ohlcv: pd.DataFrame, pivots: List[Tuple[int, float]], max_events: int = 4
+) -> List[Dict[str, Any]]:
+    """두 저점이 유사하고 중간에 넥라인 위 고점이 있는 구간(쌍바닥 근사)."""
+    high = ohlcv["High"]
+    events: List[Dict[str, Any]] = []
+    if len(pivots) > 35:
+        pivots = pivots[-35:]
+    for a in range(len(pivots)):
+        i, p1 = pivots[a]
+        for b in range(a + 1, len(pivots)):
+            j, p2 = pivots[b]
+            if j - i < 8:
+                continue
+            mx = max(p1, p2)
+            if mx <= 0:
+                continue
+            if abs(p1 - p2) / mx > 0.045:
+                continue
+            seg = high.iloc[i : j + 1].astype(float)
+            seg_hi = float(seg.max())
+            vi = i + int(seg.values.argmax())
+            hv = float(high.iloc[vi])
+            if seg_hi < max(p1, p2) * 1.015:
+                continue
+            sim = 1.0 - abs(p1 - p2) / mx
+            conf = float(np.clip(0.55 + 0.45 * sim, 0.55, 1.0))
+            events.append(
+                {
+                    "pattern_id": "bull_double_bottom",
+                    "start": _idx_ts(ohlcv, i),
+                    "end": _idx_ts(ohlcv, j),
+                    "confidence": conf,
+                    "trough_dates": [_idx_ts(ohlcv, i), _idx_ts(ohlcv, j)],
+                    "trough_prices": [float(p1), float(p2)],
+                    "peak_date": _idx_ts(ohlcv, vi),
+                    "peak_price": hv,
                 }
             )
             if len(events) >= max_events:
@@ -456,6 +783,99 @@ def _detect_triple_bottoms(
     return events
 
 
+def _triple_top_valid(
+    i: int,
+    j: int,
+    k: int,
+    ni1: int,
+    ni2: int,
+    h1: float,
+    h2: float,
+    h3: float,
+    np1: float,
+    np2: float,
+) -> bool:
+    """세 고점(i<j<k)과 목선 저점(ni1, ni2)이 시간·가격상 한 세트로 맞는지."""
+    if not (i < ni1 < j < ni2 < k):
+        return False
+    ceiling = max(h1, h2, h3)
+    if ceiling <= 0:
+        return False
+    if max(np1, np2) >= ceiling:
+        return False
+    return True
+
+
+def _triple_top_neckline_indices(ohlcv: pd.DataFrame, i: int, j: int, k: int) -> Tuple[int, int]:
+    """삼중탑 목선: 1~2고점·2~3고점 사이 각각 저가(조정 저점)가 가장 작은 봉 인덱스."""
+    lv = ohlcv["Low"].astype(float).values
+    if j > i + 1:
+        s1 = slice(i + 1, j)
+        if s1.stop > s1.start:
+            ni1 = i + 1 + int(np.argmin(lv[s1]))
+        else:
+            ni1 = i
+    else:
+        ni1 = i if lv[i] <= lv[j] else j
+    if k > j + 1:
+        s2 = slice(j + 1, k)
+        if s2.stop > s2.start:
+            ni2 = j + 1 + int(np.argmin(lv[s2]))
+        else:
+            ni2 = j
+    else:
+        ni2 = j if lv[j] <= lv[k] else k
+    return ni1, ni2
+
+
+def _detect_triple_tops(
+    ohlcv: pd.DataFrame, pivots: List[Tuple[int, float]], max_events: int = 3
+) -> List[Dict[str, Any]]:
+    """세 고점이 유사하고 사이 목선 저점이 있는 구간(삼중탑 근사)."""
+    highs = pivots[-35:] if len(pivots) > 35 else pivots
+    events: List[Dict[str, Any]] = []
+    for a in range(len(highs)):
+        for b in range(a + 1, len(highs)):
+            for c in range(b + 1, len(highs)):
+                i, h1 = highs[a]
+                j, h2 = highs[b]
+                k, h3 = highs[c]
+                m = max(h1, h2, h3)
+                if m <= 0:
+                    continue
+                if max(abs(h1 - h2), abs(h2 - h3), abs(h1 - h3)) / m > 0.04:
+                    continue
+                if k - i < 15:
+                    continue
+                ni1, ni2 = _triple_top_neckline_indices(ohlcv, i, j, k)
+                lv = ohlcv["Low"].astype(float).values
+                np1, np2 = float(lv[ni1]), float(lv[ni2])
+                if not _triple_top_valid(i, j, k, ni1, ni2, h1, h2, h3, np1, np2):
+                    continue
+                events.append(
+                    {
+                        "pattern_id": "bear_triple_top",
+                        "start": _idx_ts(ohlcv, i),
+                        "end": _idx_ts(ohlcv, k),
+                        "confidence": 0.65,
+                        "pivot_dates": [
+                            _idx_ts(ohlcv, i),
+                            _idx_ts(ohlcv, j),
+                            _idx_ts(ohlcv, k),
+                        ],
+                        "pivot_prices": [float(h1), float(h2), float(h3)],
+                        "neckline_dates": [
+                            _idx_ts(ohlcv, ni1),
+                            _idx_ts(ohlcv, ni2),
+                        ],
+                        "neckline_prices": [np1, np2],
+                    }
+                )
+                if len(events) >= max_events:
+                    return events
+    return events
+
+
 def _detect_ascending_triangles(ohlcv: pd.DataFrame, win: int = 25) -> List[Dict[str, Any]]:
     """저점 연결이 우상향·고점은 횡보에 가깝다고 볼 수 있는 구간."""
     events: List[Dict[str, Any]] = []
@@ -487,6 +907,269 @@ def _detect_ascending_triangles(ohlcv: pd.DataFrame, win: int = 25) -> List[Dict
             }
         )
         break
+    return events
+
+
+def _detect_descending_triangles(ohlcv: pd.DataFrame, win: int = 25) -> List[Dict[str, Any]]:
+    """고점 연결이 우하향·저점은 횡보에 가깝다고 볼 수 있는 구간."""
+    events: List[Dict[str, Any]] = []
+    close = ohlcv["Close"]
+    hi = ohlcv["High"]
+    lo = ohlcv["Low"]
+    n = len(ohlcv)
+    if n < win + 5:
+        return events
+    x = np.arange(win, dtype=float)
+    for end in range(win, n):
+        sl = slice(end - win, end)
+        hc = hi.iloc[sl].values
+        lc = lo.iloc[sl].values
+        cc = close.iloc[sl].values
+        if cc.mean() <= 0:
+            continue
+        if np.std(lc) / cc.mean() > 0.035:
+            continue
+        slope_hi, _ = np.polyfit(x, hc, 1)
+        if slope_hi >= 0:
+            continue
+        events.append(
+            {
+                "pattern_id": "bear_desc_triangle",
+                "start": _idx_ts(ohlcv, end - win),
+                "end": _idx_ts(ohlcv, end - 1),
+                "confidence": 0.72,
+            }
+        )
+        break
+    return events
+
+
+def _detect_wedges(ohlcv: pd.DataFrame, win: int = 36) -> List[Dict[str, Any]]:
+    """고·저 동시 하향/상향 + 폭 축소(폴링/라이징 웨지 근사).
+
+    폴링 웨지: 둘 다 하향이되 고점선이 더 가파르게 내려와 수렴.
+    라이징 웨지: 둘 다 상향이되 저점선이 더 가파르게 올라와 수렴.
+    """
+    events: List[Dict[str, Any]] = []
+    hi = ohlcv["High"].astype(float)
+    lo = ohlcv["Low"].astype(float)
+    close = ohlcv["Close"].astype(float)
+    n = len(ohlcv)
+    if n < win + 5:
+        return events
+    x = np.arange(win, dtype=float)
+    found_fall = False
+    found_rise = False
+    for end in range(win, n):
+        if found_fall and found_rise:
+            break
+        sl = slice(end - win, end)
+        hc = hi.iloc[sl].values
+        lc = lo.iloc[sl].values
+        cc = close.iloc[sl].values
+        mean_c = float(np.mean(cc))
+        if mean_c <= 0:
+            continue
+        slope_hi, _ = np.polyfit(x, hc, 1)
+        slope_lo, _ = np.polyfit(x, lc, 1)
+        w0 = float(hc[0] - lc[0])
+        w1 = float(hc[-1] - lc[-1])
+        if w0 <= mean_c * 0.005 or w1 <= 0:
+            continue
+        if w1 / w0 > 0.88:
+            continue
+        # 폴링 웨지: 고·저 하향 + 고점선이 더 가파름(수렴)
+        if (
+            (not found_fall)
+            and slope_hi < 0
+            and slope_lo < 0
+            and slope_hi < slope_lo
+        ):
+            events.append(
+                {
+                    "pattern_id": "bull_falling_wedge",
+                    "start": _idx_ts(ohlcv, end - win),
+                    "end": _idx_ts(ohlcv, end - 1),
+                    "confidence": 0.68,
+                    "slope_hi": float(slope_hi),
+                    "slope_lo": float(slope_lo),
+                }
+            )
+            found_fall = True
+        # 라이징 웨지: 고·저 상향 + 저점선이 더 가파름(수렴)
+        if (
+            (not found_rise)
+            and slope_hi > 0
+            and slope_lo > 0
+            and slope_lo > slope_hi
+        ):
+            events.append(
+                {
+                    "pattern_id": "bear_rising_wedge",
+                    "start": _idx_ts(ohlcv, end - win),
+                    "end": _idx_ts(ohlcv, end - 1),
+                    "confidence": 0.68,
+                    "slope_hi": float(slope_hi),
+                    "slope_lo": float(slope_lo),
+                }
+            )
+            found_rise = True
+    return events
+
+
+def _detect_pennants(ohlcv: pd.DataFrame) -> List[Dict[str, Any]]:
+    """급등/급락 후 고·저가 수렴하는 짧은 삼각(펜넌트 근사). 깃발과 구분: 수렴 필수."""
+    events: List[Dict[str, Any]] = []
+    close = ohlcv["Close"].astype(float)
+    hi = ohlcv["High"].astype(float).values
+    lo = ohlcv["Low"].astype(float).values
+    n = len(close)
+    if n < 35:
+        return events
+    cv = close.values
+
+    def _try(bullish: bool) -> Optional[Dict[str, Any]]:
+        for end in range(30, n):
+            base = end - 28
+            impulse_end = end - 10
+            flag_end = end
+            c0 = float(cv[base])
+            c1 = float(cv[impulse_end])
+            if c0 <= 0:
+                continue
+            imp_ret = (c1 - c0) / c0
+            if bullish and imp_ret < 0.07:
+                continue
+            if (not bullish) and imp_ret > -0.07:
+                continue
+            hc = hi[impulse_end:flag_end]
+            lc = lo[impulse_end:flag_end]
+            if len(hc) < 8:
+                continue
+            xx = np.arange(len(hc), dtype=float)
+            slope_hi, _ = np.polyfit(xx, hc, 1)
+            slope_lo, _ = np.polyfit(xx, lc, 1)
+            # 수렴: 고점은 하락·저점은 상승 (또는 둘 다 안쪽으로)
+            if not (slope_hi < 0 and slope_lo > 0):
+                continue
+            w0 = float(hc[0] - lc[0])
+            w1 = float(hc[-1] - lc[-1])
+            if w0 <= 0 or w1 / w0 > 0.75:
+                continue
+            return {
+                "pattern_id": "bull_pennant" if bullish else "bear_pennant",
+                "start": _idx_ts(ohlcv, impulse_end),
+                "end": _idx_ts(ohlcv, flag_end - 1),
+                "confidence": 0.70,
+            }
+        return None
+
+    b = _try(True)
+    if b:
+        events.append(b)
+    s = _try(False)
+    if s:
+        events.append(s)
+    return events
+
+
+def _detect_inv_hs(
+    ohlcv: pd.DataFrame, pivots: List[Tuple[int, float]], max_events: int = 2
+) -> List[Dict[str, Any]]:
+    """역헤드앤숄더: 세 저점 중 중앙이 명확히 최저, 좌·우어깨 유사."""
+    lows = pivots[-35:] if len(pivots) > 35 else pivots
+    events: List[Dict[str, Any]] = []
+    for a in range(len(lows)):
+        for b in range(a + 1, len(lows)):
+            for c in range(b + 1, len(lows)):
+                i, l1 = lows[a]
+                j, l2 = lows[b]
+                k, l3 = lows[c]
+                m = max(l1, l2, l3)
+                if m <= 0 or k - i < 15:
+                    continue
+                # 머리가 좌·우보다 뚜렷히 낮음
+                if not (l2 < l1 * 0.985 and l2 < l3 * 0.985):
+                    continue
+                # 어깨 높이 유사
+                sh_mx = max(l1, l3)
+                if abs(l1 - l3) / sh_mx > 0.04:
+                    continue
+                ni1, ni2 = _triple_bottom_neckline_indices(ohlcv, i, j, k)
+                hv = ohlcv["High"].astype(float).values
+                np1, np2 = float(hv[ni1]), float(hv[ni2])
+                if not _triple_bottom_valid(i, j, k, ni1, ni2, l1, l2, l3, np1, np2):
+                    continue
+                events.append(
+                    {
+                        "pattern_id": "bull_inv_hs",
+                        "start": _idx_ts(ohlcv, i),
+                        "end": _idx_ts(ohlcv, k),
+                        "confidence": 0.74,
+                        "pivot_dates": [
+                            _idx_ts(ohlcv, i),
+                            _idx_ts(ohlcv, j),
+                            _idx_ts(ohlcv, k),
+                        ],
+                        "pivot_prices": [float(l1), float(l2), float(l3)],
+                        "neckline_dates": [
+                            _idx_ts(ohlcv, ni1),
+                            _idx_ts(ohlcv, ni2),
+                        ],
+                        "neckline_prices": [np1, np2],
+                    }
+                )
+                if len(events) >= max_events:
+                    return events
+    return events
+
+
+def _detect_hs(
+    ohlcv: pd.DataFrame, pivots: List[Tuple[int, float]], max_events: int = 2
+) -> List[Dict[str, Any]]:
+    """헤드앤숄더: 세 고점 중 중앙이 명확히 최고, 좌·우어깨 유사."""
+    highs = pivots[-35:] if len(pivots) > 35 else pivots
+    events: List[Dict[str, Any]] = []
+    for a in range(len(highs)):
+        for b in range(a + 1, len(highs)):
+            for c in range(b + 1, len(highs)):
+                i, h1 = highs[a]
+                j, h2 = highs[b]
+                k, h3 = highs[c]
+                m = max(h1, h2, h3)
+                if m <= 0 or k - i < 15:
+                    continue
+                if not (h2 > h1 * 1.015 and h2 > h3 * 1.015):
+                    continue
+                sh_mn = min(h1, h3)
+                if sh_mn <= 0 or abs(h1 - h3) / max(h1, h3) > 0.04:
+                    continue
+                ni1, ni2 = _triple_top_neckline_indices(ohlcv, i, j, k)
+                lv = ohlcv["Low"].astype(float).values
+                np1, np2 = float(lv[ni1]), float(lv[ni2])
+                if not _triple_top_valid(i, j, k, ni1, ni2, h1, h2, h3, np1, np2):
+                    continue
+                events.append(
+                    {
+                        "pattern_id": "bear_hs",
+                        "start": _idx_ts(ohlcv, i),
+                        "end": _idx_ts(ohlcv, k),
+                        "confidence": 0.74,
+                        "pivot_dates": [
+                            _idx_ts(ohlcv, i),
+                            _idx_ts(ohlcv, j),
+                            _idx_ts(ohlcv, k),
+                        ],
+                        "pivot_prices": [float(h1), float(h2), float(h3)],
+                        "neckline_dates": [
+                            _idx_ts(ohlcv, ni1),
+                            _idx_ts(ohlcv, ni2),
+                        ],
+                        "neckline_prices": [np1, np2],
+                    }
+                )
+                if len(events) >= max_events:
+                    return events
     return events
 
 
@@ -552,6 +1235,139 @@ def _detect_flags(ohlcv: pd.DataFrame) -> List[Dict[str, Any]]:
             }
         )
         break
+    return events
+
+
+def _detect_cup_handle(
+    ohlcv: pd.DataFrame,
+    *,
+    cup_lens: Sequence[int] = (40, 48, 60),
+    handle_len: int = 12,
+    max_events: int = 2,
+) -> List[Dict[str, Any]]:
+    """
+    컵앤핸들 근사:
+      - 컵: 좌·우 림(고점) 유사, 중앙 저점이 뚜렷한 U자
+      - 핸들: 우림 이후 짧은 얕은 조정(컵 깊이의 ~1/2 이하)
+    """
+    events: List[Dict[str, Any]] = []
+    hi = ohlcv["High"].astype(float).values
+    lo = ohlcv["Low"].astype(float).values
+    close = ohlcv["Close"].astype(float).values
+    n = len(ohlcv)
+
+    def _append_if_ok(
+        left_i: int,
+        right_i: int,
+        bottom_i: int,
+        h0: int,
+        h1: int,
+        left_rim: float,
+        right_rim: float,
+        bottom: float,
+        handle_lo: float,
+        rim: float,
+        depth: float,
+        conf: float,
+    ) -> bool:
+        new_start = _idx_ts(ohlcv, left_i)
+        for e in events:
+            if abs((pd.Timestamp(e["start"]) - new_start).days) < 12:
+                return False
+        events.append(
+            {
+                "pattern_id": "bull_cup_handle",
+                "start": new_start,
+                "end": _idx_ts(ohlcv, h1 - 1),
+                "confidence": conf,
+                "cup_start": _idx_ts(ohlcv, left_i),
+                "cup_end": _idx_ts(ohlcv, right_i),
+                "handle_start": _idx_ts(ohlcv, h0),
+                "handle_end": _idx_ts(ohlcv, h1 - 1),
+                "left_rim_date": _idx_ts(ohlcv, left_i),
+                "right_rim_date": _idx_ts(ohlcv, right_i),
+                "bottom_date": _idx_ts(ohlcv, bottom_i),
+                "left_rim": left_rim,
+                "right_rim": right_rim,
+                "rim": rim,
+                "bottom": bottom,
+                "handle_low": handle_lo,
+            }
+        )
+        return True
+
+    for cup_len in cup_lens:
+        hlen = max(8, min(handle_len, cup_len // 3))
+        need = cup_len + hlen + 2
+        if n < need:
+            continue
+        # 최근 구간 우선
+        for cup_end in range(n - hlen, cup_len - 1, -1):
+            if len(events) >= max_events:
+                return events
+            cup_start = cup_end - cup_len
+            edge = max(3, cup_len // 5)
+            left_seg = hi[cup_start : cup_start + edge]
+            right_seg = hi[cup_end - edge : cup_end]
+            if len(left_seg) < 2 or len(right_seg) < 2:
+                continue
+            left_i = cup_start + int(np.argmax(left_seg))
+            right_i = cup_end - edge + int(np.argmax(right_seg))
+            left_rim = float(hi[left_i])
+            right_rim = float(hi[right_i])
+            rim = max(left_rim, right_rim)
+            if rim <= 0:
+                continue
+            if abs(left_rim - right_rim) / rim > 0.08:
+                continue
+
+            mid_slice = slice(cup_start + edge, cup_end - edge)
+            if mid_slice.stop - mid_slice.start < 8:
+                continue
+            mid_lo = lo[mid_slice]
+            bottom_i = (cup_start + edge) + int(np.argmin(mid_lo))
+            bottom = float(lo[bottom_i])
+            depth = rim - bottom
+            if depth <= 0 or depth / rim < 0.055 or depth / rim > 0.48:
+                continue
+            if not (left_i < bottom_i < right_i):
+                continue
+            mid_frac = (bottom_i - cup_start) / float(cup_len)
+            if mid_frac < 0.22 or mid_frac > 0.78:
+                continue
+
+            h0 = right_i + 1
+            h1 = min(h0 + hlen, n)
+            if h1 - h0 < 5:
+                continue
+            handle_hi = float(np.max(hi[h0:h1]))
+            handle_lo = float(np.min(lo[h0:h1]))
+            if handle_hi > rim * 1.025:
+                continue
+            handle_depth = rim - handle_lo
+            if handle_depth <= 0 or handle_depth > depth * 0.58:
+                continue
+            if float(np.min(close[h0:h1])) <= bottom * 1.01:
+                continue
+
+            rim_sim = 1.0 - abs(left_rim - right_rim) / rim
+            conf = float(
+                np.clip(0.55 + 0.25 * rim_sim + 0.12 * (1.0 - handle_depth / depth), 0.55, 0.88)
+            )
+            _append_if_ok(
+                left_i,
+                right_i,
+                bottom_i,
+                h0,
+                h1,
+                left_rim,
+                right_rim,
+                bottom,
+                handle_lo,
+                rim,
+                depth,
+                conf,
+            )
     return events
 
 
@@ -826,52 +1642,93 @@ def analyze_seven_criteria(
     return merged
 
 
+def _strip_group_rank(crit: Dict[str, Any]) -> Tuple[int, str]:
+    """스트립 행 정렬: 상승반→상승지→하락반→하락지→중립."""
+    bias = str(crit.get("bias") or "")
+    role = str(crit.get("role") or "")
+    if bias == "bull" and role == "rev":
+        return (0, str(crit["id"]))
+    if bias == "bull" and role == "cont":
+        return (1, str(crit["id"]))
+    if bias == "bear" and role == "rev":
+        return (2, str(crit["id"]))
+    if bias == "bear" and role == "cont":
+        return (3, str(crit["id"]))
+    return (4, str(crit["id"]))
+
+
+def _events_for_pattern_strip(
+    events: Sequence[Dict[str, Any]],
+    *,
+    candle_max: int = 10,
+    doji_max: int = 6,
+) -> List[Dict[str, Any]]:
+    """스트립용 이벤트 선별 — 캔들/도지 과밀 구간을 최근 N건으로 제한."""
+    by_id: Dict[str, List[Dict[str, Any]]] = {}
+    for ev in events:
+        pid = str(ev.get("pattern_id") or ev.get("id") or "")
+        if not pid or pid not in ID_TO_ROW:
+            continue
+        by_id.setdefault(pid, []).append(ev)
+    out: List[Dict[str, Any]] = []
+    for pid, evs in by_id.items():
+        evs_sorted = sorted(evs, key=lambda e: pd.Timestamp(e.get("end") or e.get("start")))
+        if pid == "doji":
+            evs_sorted = evs_sorted[-doji_max:]
+        elif pid in CANDLE_PATTERN_IDS:
+            evs_sorted = evs_sorted[-candle_max:]
+        out.extend(evs_sorted)
+    return out
+
+
+def pattern_strip_height_ratio(n_rows: int) -> float:
+    """감지 행 수에 비례한 GridSpec height_ratios 값 (대략 행당 0.1)."""
+    if n_rows <= 0:
+        return 0.40
+    return float(np.clip(0.32 + 0.11 * n_rows, 0.50, 2.20))
+
+
+def count_pattern_strip_rows(events: Optional[Sequence[Dict[str, Any]]]) -> int:
+    """스트립에 실제로 그려질 패턴 종류 수."""
+    if not events:
+        return 0
+    slim = _events_for_pattern_strip(events)
+    return len({str(e.get("pattern_id") or e.get("id")) for e in slim if e.get("pattern_id") in ID_TO_ROW})
+
+
 def plot_pattern_strip(
     ax,
     ohlcv_data: pd.DataFrame,
     events: Optional[List[Dict[str, Any]]] = None,
-) -> None:
+    *,
+    show_all_rows: bool = False,
+) -> int:
     """메인 차트 바로 아래 서브플롯: 행별 패턴명 + 구간(broken_barh).
 
-    events 는 analyze_seven_criteria 결과(박스권 range_box 선추출 후 타 패턴 병합).
+    기본(show_all_rows=False): 감지된 패턴만 행으로 표시해 24종 전체 고정을 피한다.
+    캔들/도지는 최근 건만 남겨 과밀을 줄인다.
+    반환: 표시 행 수.
     """
     events = events or []
-    n = len(CHART_PATTERN_CRITERIA)
-    ax.set_ylim(0, n)
-    ax.set_yticks([i + 0.41 for i in range(n)])
-    ax.set_yticklabels(
-        [f'{c["label"]} · {c["id"]}' for c in CHART_PATTERN_CRITERIA],
-        fontsize=5,
-    )
-    n_pat = len(CHART_PATTERN_CRITERIA)
-    ax.set_title(
-        f"차트/캔들 패턴 ({n_pat}행, 휴리스틱) — 행: 표시명 · --pattern-main id",
-        fontsize=8,
-        loc="left",
-        pad=2,
-    )
-    ax.grid(True, axis="x", alpha=0.25, linestyle=":")
-    ax.tick_params(axis="y", labelsize=6)
+    slim = _events_for_pattern_strip(events)
 
-    for ev in events:
-        pid = ev.get("pattern_id") or ev.get("id")
-        if pid not in ID_TO_ROW:
-            continue
-        row = ID_TO_ROW[pid]
-        start = pd.Timestamp(ev["start"])
-        end = pd.Timestamp(ev["end"])
-        if end < start:
-            start, end = end, start
-        x0 = mdates.date2num(start.to_pydatetime())
-        x1 = mdates.date2num(end.to_pydatetime())
-        width = max(x1 - x0, 1.0 / 32.0)
-        base_conf = CHART_PATTERN_CRITERIA[row]["confidence"]
-        conf = float(ev.get("confidence", base_conf))
-        alpha = min(0.2 + 0.6 * conf, 0.92)
-        color = ev.get("color") or CHART_PATTERN_CRITERIA[row]["color"]
-        ax.broken_barh([(x0, width)], (row, 0.82), facecolors=color, alpha=alpha, edgecolors="none")
+    if show_all_rows:
+        rows_meta = list(CHART_PATTERN_CRITERIA)
+    else:
+        detected_ids = {str(e.get("pattern_id") or e.get("id")) for e in slim}
+        rows_meta = [c for c in CHART_PATTERN_CRITERIA if c["id"] in detected_ids]
+        rows_meta.sort(key=_strip_group_rank)
 
-    if not events:
+    n = len(rows_meta)
+    if n == 0:
+        ax.set_ylim(0, 1)
+        ax.set_yticks([])
+        ax.set_title(
+            f"차트/캔들 패턴 (감지 0 / 전체 {len(CHART_PATTERN_CRITERIA)})",
+            fontsize=8,
+            loc="left",
+            pad=2,
+        )
         ax.text(
             0.99,
             0.5,
@@ -883,6 +1740,49 @@ def plot_pattern_strip(
             color="gray",
             alpha=0.95,
         )
+        ax.grid(True, axis="x", alpha=0.25, linestyle=":")
+        return 0
+
+    id_to_row = {str(c["id"]): i for i, c in enumerate(rows_meta)}
+    label_fs = 6.5 if n <= 8 else (5.5 if n <= 14 else 4.8)
+    bar_h = 0.78 if n <= 12 else 0.70
+
+    ax.set_ylim(0, n)
+    ax.set_yticks([i + 0.40 for i in range(n)])
+    ax.set_yticklabels(
+        [f'{c["label"]}({c["id"]})' for c in rows_meta],
+        fontsize=label_fs,
+    )
+    ax.set_title(
+        f"차트/캔들 패턴 (감지 {n} / 전체 {len(CHART_PATTERN_CRITERIA)} · 휴리스틱)",
+        fontsize=8,
+        loc="left",
+        pad=2,
+    )
+    ax.grid(True, axis="x", alpha=0.25, linestyle=":")
+    ax.tick_params(axis="y", labelsize=label_fs)
+
+    for ev in slim:
+        pid = str(ev.get("pattern_id") or ev.get("id") or "")
+        if pid not in id_to_row:
+            continue
+        row = id_to_row[pid]
+        start = pd.Timestamp(ev["start"])
+        end = pd.Timestamp(ev["end"])
+        if end < start:
+            start, end = end, start
+        x0 = mdates.date2num(start.to_pydatetime())
+        x1 = mdates.date2num(end.to_pydatetime())
+        # 캔들 단봉은 최소 폭을 조금 줘서 점으로 보이게
+        min_w = 0.35 if pid in CANDLE_PATTERN_IDS else (1.0 / 32.0)
+        width = max(x1 - x0, min_w)
+        base_conf = float(CHART_PATTERN_CRITERIA[ID_TO_ROW[pid]]["confidence"])
+        conf = float(ev.get("confidence", base_conf))
+        alpha = min(0.22 + 0.55 * conf, 0.90)
+        color = ev.get("color") or CHART_PATTERN_CRITERIA[ID_TO_ROW[pid]]["color"]
+        ax.broken_barh([(x0, width)], (row + (1.0 - bar_h) / 2.0, bar_h), facecolors=color, alpha=alpha, edgecolors="none")
+
+    return n
 
 
 # 패턴별 짝 색: (W 저점선·마커, 목선·연장) — 같은 인덱스가 한 세트
@@ -897,14 +1797,16 @@ def plot_triple_bottom_w_on_main(
     ax,
     events: Optional[List[Dict[str, Any]]] = None,
     ohlcv: Optional[pd.DataFrame] = None,
+    pattern_id: str = "triple_bottom_w",
 ) -> None:
-    """
-    역삼중창(W) + 목선을 한 세트(짝 색)로만 표시. 목선 없는 이벤트는 스킵.
-    """
+    """삼중바닥/역H&S + 목선을 한 세트(짝 색)로만 표시. 목선 없는 이벤트는 스킵."""
     events = events or []
+    if pattern_id not in ID_TO_ROW:
+        return
     w_no = 0
+    base_lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["label"]
     for ev in events:
-        if ev.get("pattern_id") != "triple_bottom_w":
+        if ev.get("pattern_id") != pattern_id:
             continue
         pds = ev.get("pivot_dates")
         pps = ev.get("pivot_prices")
@@ -987,9 +1889,9 @@ def plot_triple_bottom_w_on_main(
             )
 
         mid_x, mid_y = xs[1], ys[1]
-        title = "역삼중창(W)" if w_no == 1 else f"역삼중창(W){w_no}"
+        title = base_lbl if w_no == 1 else f"{base_lbl}{w_no}"
         ax.annotate(
-            f"{title} · triple_bottom_w\n목선",
+            f"{title} · {pattern_id}\n목선",
             xy=(mid_x, mid_y),
             xytext=(0, -18),
             textcoords="offset points",
@@ -1069,8 +1971,9 @@ def plot_double_top_m_on_main(
                     zorder=36,
                 )
         xm = mdates.num2date((x0 + x1) / 2.0)
+        dt_lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["double_top_m"]]["label"]
         ax.annotate(
-            "목선 · double_top_m",
+            f"목선 · {dt_lbl}",
             xy=(xm, vp),
             xytext=(0, -12),
             textcoords="offset points",
@@ -1090,7 +1993,7 @@ def plot_double_top_m_on_main(
         )
 
         ax.annotate(
-            "쌍봉(M) · double_top_m" if n == 0 else f"M{n+1} · double_top_m",
+            f"{dt_lbl} · double_top_m" if n == 0 else f"{dt_lbl}{n+1} · double_top_m",
             xy=(xs[1], ys[1]),
             xytext=(0, 12),
             textcoords="offset points",
@@ -1100,6 +2003,217 @@ def plot_double_top_m_on_main(
             ha="center",
             zorder=40,
             bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.88, edgecolor=col, linewidth=0.8),
+        )
+
+
+NECKLINE_COLOR_DOUBLE_BOTTOM = "#16a085"
+
+
+def plot_bull_double_bottom_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+) -> None:
+    """상승반·쌍바닥 곡선 + 두 저점 사이 고점 수평 넥라인 + 연장 점선."""
+    events = events or []
+    col = CHART_PATTERN_CRITERIA[ID_TO_ROW["bull_double_bottom"]]["color"]
+    neck = NECKLINE_COLOR_DOUBLE_BOTTOM
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["bull_double_bottom"]]["label"]
+    for n, ev in enumerate(events):
+        tds = ev.get("trough_dates")
+        tps = ev.get("trough_prices")
+        pd_ = ev.get("peak_date")
+        pp = ev.get("peak_price")
+        if not tds or not tps or len(tds) != 2 or pd_ is None or pp is None:
+            continue
+        t1 = pd.Timestamp(tds[0])
+        t2 = pd.Timestamp(tds[1])
+        xs = [t1, pd.Timestamp(pd_), t2]
+        ys = [float(tps[0]), float(pp), float(tps[1])]
+        ax.plot(xs, ys, color=col, linewidth=2.0, alpha=0.9, zorder=38, solid_capstyle="round")
+        ax.scatter(xs, ys, color=col, s=34, zorder=39, edgecolors="white", linewidths=0.5)
+
+        x0 = mdates.date2num(t1)
+        x1 = mdates.date2num(t2)
+        pp = float(pp)
+        ax.plot(
+            [t1, t2],
+            [pp, pp],
+            color=neck,
+            linestyle="--",
+            linewidth=1.7,
+            alpha=0.95,
+            zorder=37,
+            solid_capstyle="round",
+        )
+        if ohlcv is not None and len(ohlcv.index) > 0:
+            t_end = pd.Timestamp(ohlcv.index[-1])
+            if t_end > t2:
+                ax.plot(
+                    [t2, t_end],
+                    [pp, pp],
+                    color=neck,
+                    linestyle=":",
+                    linewidth=1.2,
+                    alpha=0.65,
+                    zorder=36,
+                )
+        xm = mdates.num2date((x0 + x1) / 2.0)
+        ax.annotate(
+            f"넥라인 · {lbl}" if n == 0 else f"넥라인 · {lbl}{n+1}",
+            xy=(xm, pp),
+            xytext=(0, 12),
+            textcoords="offset points",
+            fontsize=6,
+            color=neck,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            zorder=40,
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                alpha=0.9,
+                edgecolor=neck,
+                linewidth=1.0,
+            ),
+        )
+        ax.annotate(
+            f"{lbl} · bull_double_bottom" if n == 0 else f"{lbl}{n+1} · bull_double_bottom",
+            xy=(xs[1], ys[1]),
+            xytext=(0, -14),
+            textcoords="offset points",
+            fontsize=6,
+            color=col,
+            fontweight="bold",
+            ha="center",
+            va="top",
+            zorder=40,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.88, edgecolor=col, linewidth=0.8),
+        )
+
+
+_TRIPLE_TOP_MATCHED_PAIRS: List[Tuple[str, str]] = [
+    ("#c0392b", "#16a085"),
+    ("#d35400", "#2980b9"),
+    ("#e67e22", "#8e44ad"),
+]
+
+
+def plot_bear_triple_top_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+    pattern_id: str = "bear_triple_top",
+) -> None:
+    """하락반·삼중탑/헤드앤숄더 + 목선을 한 세트(짝 색)로 표시."""
+    events = events or []
+    if pattern_id not in ID_TO_ROW:
+        return
+    w_no = 0
+    base_lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["label"]
+    for ev in events:
+        if ev.get("pattern_id") != pattern_id:
+            continue
+        pds = ev.get("pivot_dates")
+        pps = ev.get("pivot_prices")
+        nds = ev.get("neckline_dates")
+        nps = ev.get("neckline_prices")
+        if (
+            not pds
+            or not pps
+            or len(pds) != 3
+            or len(pps) != 3
+            or not nds
+            or not nps
+            or len(nds) != 2
+            or len(nps) != 2
+        ):
+            continue
+
+        w_col, neck_col = _TRIPLE_TOP_MATCHED_PAIRS[w_no % len(_TRIPLE_TOP_MATCHED_PAIRS)]
+        w_no += 1
+
+        xs = [pd.Timestamp(d) for d in pds]
+        ys = [float(p) for p in pps]
+        nx = [pd.Timestamp(d) for d in nds]
+        ny = [float(p) for p in nps]
+
+        ax.plot(
+            xs,
+            ys,
+            color=w_col,
+            linewidth=2.0,
+            alpha=0.92,
+            linestyle="-",
+            solid_capstyle="round",
+            zorder=38,
+        )
+        ax.scatter(
+            xs,
+            ys,
+            color=w_col,
+            s=36,
+            zorder=39,
+            edgecolors="white",
+            linewidths=0.6,
+        )
+        ax.plot(
+            nx,
+            ny,
+            color=neck_col,
+            linestyle="--",
+            linewidth=1.7,
+            alpha=0.95,
+            zorder=37,
+            solid_capstyle="round",
+        )
+        ax.scatter(
+            nx,
+            ny,
+            color=neck_col,
+            s=22,
+            zorder=37,
+            marker="v",
+            edgecolors="white",
+            linewidths=0.4,
+        )
+        x0n = mdates.date2num(nx[0])
+        x1n = mdates.date2num(nx[1])
+        if x1n != x0n and ohlcv is not None and len(ohlcv.index) > 0:
+            slope = (ny[1] - ny[0]) / (x1n - x0n)
+            x_end = mdates.date2num(pd.Timestamp(ohlcv.index[-1]))
+            y_end = ny[1] + slope * (x_end - x1n)
+            ax.plot(
+                [nx[1], ohlcv.index[-1]],
+                [ny[1], y_end],
+                color=neck_col,
+                linestyle=":",
+                linewidth=1.2,
+                alpha=0.65,
+                zorder=36,
+            )
+
+        mid_x, mid_y = xs[1], ys[1]
+        title = base_lbl if w_no == 1 else f"{base_lbl}{w_no}"
+        ax.annotate(
+            f"{title} · {pattern_id}\n목선",
+            xy=(mid_x, mid_y),
+            xytext=(0, 18),
+            textcoords="offset points",
+            fontsize=6,
+            color=w_col,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            zorder=40,
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                alpha=0.9,
+                edgecolor=w_col,
+                linewidth=1.0,
+            ),
         )
 
 
@@ -1124,9 +2238,10 @@ def plot_range_box_on_main(
         ax.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0], color=col, linewidth=1.0, alpha=0.85, zorder=33)
         xm = mdates.num2date((x0 + x1) / 2.0)
         ym = (y0 + y1) / 2.0
-        lbl = "박스권 · range_box" if n == 0 else f"박스권({n+1}) · range_box"
+        lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["range_box"]]["label"]
+        caption = f"{lbl} · range_box" if n == 0 else f"{lbl}({n+1}) · range_box"
         ax.annotate(
-            lbl,
+            caption,
             xy=(xm, ym),
             fontsize=6,
             color=col,
@@ -1147,6 +2262,7 @@ def plot_asc_triangle_on_main(
     if ohlcv is None:
         return
     col = CHART_PATTERN_CRITERIA[ID_TO_ROW["asc_triangle"]]["color"]
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["asc_triangle"]]["label"]
     for ev in events:
         sub = _ohlcv_between(ohlcv, ev["start"], ev["end"])
         if len(sub) < 5:
@@ -1172,7 +2288,7 @@ def plot_asc_triangle_on_main(
             linewidth=0.5,
         )
         ax.annotate(
-            "저항선 · asc_triangle",
+            f"저항선 · {lbl}",
             xy=(xm, xh),
             xytext=(0, 10),
             textcoords="offset points",
@@ -1185,7 +2301,7 @@ def plot_asc_triangle_on_main(
             bbox=tri_bbox,
         )
         ax.annotate(
-            "지지선 · asc_triangle",
+            f"지지선 · {lbl}",
             xy=(xm, y_support_mid),
             xytext=(0, -11),
             textcoords="offset points",
@@ -1198,13 +2314,211 @@ def plot_asc_triangle_on_main(
             bbox=tri_bbox,
         )
         ax.annotate(
-            "상승삼각 · asc_triangle",
+            f"{lbl} · asc_triangle",
             xy=(idx[len(idx) // 2], (xh + (y0 + y1) / 2) / 2),
             fontsize=6,
             color=col,
             fontweight="bold",
             zorder=40,
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.85, edgecolor=col, linewidth=0.7),
+        )
+
+
+def plot_bear_desc_triangle_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+) -> None:
+    """하락지·하락삼각: 수평 지지 + 우하향 저항."""
+    events = events or []
+    if ohlcv is None:
+        return
+    col = CHART_PATTERN_CRITERIA[ID_TO_ROW["bear_desc_triangle"]]["color"]
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["bear_desc_triangle"]]["label"]
+    for ev in events:
+        sub = _ohlcv_between(ohlcv, ev["start"], ev["end"])
+        if len(sub) < 5:
+            continue
+        hi = sub["High"].astype(float).values
+        lo = sub["Low"].astype(float).values
+        idx = sub.index
+        xl = float(np.min(lo))
+        tnums = mdates.date2num([pd.Timestamp(x) for x in idx])
+        m, b = np.polyfit(tnums, hi, 1)
+        t0, t1 = tnums[0], tnums[-1]
+        y0, y1 = m * t0 + b, m * t1 + b
+        ax.plot([idx[0], idx[-1]], [xl, xl], color=col, linestyle="-", linewidth=1.4, alpha=0.9, zorder=38)
+        ax.plot([idx[0], idx[-1]], [y0, y1], color=col, linestyle="--", linewidth=1.4, alpha=0.9, zorder=38)
+        tmid = (t0 + t1) / 2.0
+        xm = mdates.num2date(tmid)
+        y_resist_mid = m * tmid + b
+        tri_bbox = dict(
+            boxstyle="round,pad=0.15",
+            facecolor="white",
+            alpha=0.9,
+            edgecolor=col,
+            linewidth=0.5,
+        )
+        ax.annotate(
+            f"지지선 · {lbl}",
+            xy=(xm, xl),
+            xytext=(0, -11),
+            textcoords="offset points",
+            fontsize=5,
+            color=col,
+            fontweight="bold",
+            ha="center",
+            va="top",
+            zorder=41,
+            bbox=tri_bbox,
+        )
+        ax.annotate(
+            f"저항선 · {lbl}",
+            xy=(xm, y_resist_mid),
+            xytext=(0, 10),
+            textcoords="offset points",
+            fontsize=5,
+            color=col,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            zorder=41,
+            bbox=tri_bbox,
+        )
+        ax.annotate(
+            f"{lbl} · bear_desc_triangle",
+            xy=(idx[len(idx) // 2], (xl + (y0 + y1) / 2) / 2),
+            fontsize=6,
+            color=col,
+            fontweight="bold",
+            zorder=40,
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.85, edgecolor=col, linewidth=0.7),
+        )
+
+
+def plot_wedge_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+    pattern_id: str = "bull_falling_wedge",
+) -> None:
+    """웨지: 고가·저가 회귀선이 수렴하는 형태."""
+    events = events or []
+    if ohlcv is None or pattern_id not in ID_TO_ROW:
+        return
+    col = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["color"]
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["label"]
+    for n, ev in enumerate(events):
+        sub = _ohlcv_between(ohlcv, ev["start"], ev["end"])
+        if len(sub) < 5:
+            continue
+        hi = sub["High"].astype(float).values
+        lo = sub["Low"].astype(float).values
+        idx = sub.index
+        tnums = mdates.date2num([pd.Timestamp(x) for x in idx])
+        mh, bh = np.polyfit(tnums, hi, 1)
+        ml, bl = np.polyfit(tnums, lo, 1)
+        t0, t1 = tnums[0], tnums[-1]
+        y_h0, y_h1 = mh * t0 + bh, mh * t1 + bh
+        y_l0, y_l1 = ml * t0 + bl, ml * t1 + bl
+        ax.plot([idx[0], idx[-1]], [y_h0, y_h1], color=col, linestyle="-", linewidth=1.4, alpha=0.9, zorder=38)
+        ax.plot([idx[0], idx[-1]], [y_l0, y_l1], color=col, linestyle="--", linewidth=1.4, alpha=0.9, zorder=38)
+        ax.annotate(
+            f"{lbl} · {pattern_id}" if n == 0 else f"{lbl}{n+1} · {pattern_id}",
+            xy=(idx[len(idx) // 2], (y_h0 + y_h1 + y_l0 + y_l1) / 4),
+            fontsize=6,
+            color=col,
+            fontweight="bold",
+            zorder=40,
+            ha="center",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.85, edgecolor=col, linewidth=0.7),
+        )
+
+
+def plot_cup_handle_on_main(
+    ax,
+    events: Optional[List[Dict[str, Any]]] = None,
+    ohlcv: Optional[pd.DataFrame] = None,
+) -> None:
+    """상승지·컵핸들: 컵(림·바닥) 곡선 + 핸들 구간 + 림 수평선."""
+    events = events or []
+    if ohlcv is None or "bull_cup_handle" not in ID_TO_ROW:
+        return
+    col = CHART_PATTERN_CRITERIA[ID_TO_ROW["bull_cup_handle"]]["color"]
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["bull_cup_handle"]]["label"]
+    for n, ev in enumerate(events):
+        if ev.get("pattern_id") != "bull_cup_handle":
+            continue
+        try:
+            t_left = pd.Timestamp(ev["left_rim_date"])
+            t_right = pd.Timestamp(ev["right_rim_date"])
+            t_bot = pd.Timestamp(ev["bottom_date"])
+            t_h0 = pd.Timestamp(ev["handle_start"])
+            t_h1 = pd.Timestamp(ev["handle_end"])
+            left_rim = float(ev["left_rim"])
+            right_rim = float(ev["right_rim"])
+            bottom = float(ev["bottom"])
+            rim = float(ev.get("rim") or max(left_rim, right_rim))
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        xs = [t_left, t_bot, t_right]
+        ys = [left_rim, bottom, right_rim]
+        ax.plot(xs, ys, color=col, linewidth=2.0, alpha=0.9, zorder=38, solid_capstyle="round")
+        ax.scatter(xs, ys, color=col, s=34, zorder=39, edgecolors="white", linewidths=0.5)
+
+        # 림 저항선
+        ax.plot(
+            [t_left, t_h1],
+            [rim, rim],
+            color=col,
+            linestyle="--",
+            linewidth=1.3,
+            alpha=0.85,
+            zorder=37,
+        )
+        # 핸들 박스
+        sub_h = _ohlcv_between(ohlcv, t_h0, t_h1)
+        if len(sub_h) >= 1:
+            y0 = float(sub_h["Low"].min())
+            y1 = float(sub_h["High"].max())
+            x0 = mdates.date2num(t_h0)
+            x1 = mdates.date2num(t_h1)
+            ax.fill_betweenx([y0, y1], x0, x1, color=col, alpha=0.12, zorder=32)
+            ax.plot(
+                [x0, x1, x1, x0, x0],
+                [y0, y0, y1, y1, y0],
+                color=col,
+                linewidth=1.0,
+                alpha=0.8,
+                zorder=33,
+            )
+
+        ax.annotate(
+            f"{lbl} · bull_cup_handle" if n == 0 else f"{lbl}{n+1} · bull_cup_handle",
+            xy=(t_bot, bottom),
+            xytext=(0, -16),
+            textcoords="offset points",
+            fontsize=6,
+            color=col,
+            fontweight="bold",
+            ha="center",
+            va="top",
+            zorder=40,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.9, edgecolor=col, linewidth=0.8),
+        )
+        ax.annotate(
+            "림 · bull_cup_handle",
+            xy=(t_right, rim),
+            xytext=(0, 10),
+            textcoords="offset points",
+            fontsize=5,
+            color=col,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            zorder=41,
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", alpha=0.9, edgecolor=col, linewidth=0.5),
         )
 
 
@@ -1218,7 +2532,7 @@ def plot_flag_on_main(
     if ohlcv is None:
         return
     col = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["color"]
-    label = "상승깃발" if pattern_id == "bull_flag" else "하락깃발"
+    label = CHART_PATTERN_CRITERIA[ID_TO_ROW[pattern_id]]["label"]
     for n, ev in enumerate(events):
         sub = _ohlcv_between(ohlcv, ev["start"], ev["end"])
         if len(sub) < 1:
@@ -1240,7 +2554,7 @@ def plot_flag_on_main(
                 linewidth=0.5,
             )
             ax.annotate(
-                "지지선 · bull_flag",
+                f"지지선 · {label}",
                 xy=(xm, y0),
                 xytext=(0, -11),
                 textcoords="offset points",
@@ -1253,7 +2567,7 @@ def plot_flag_on_main(
                 bbox=neck_bbox,
             )
             ax.annotate(
-                "저항선 · bull_flag",
+                f"저항선 · {label}",
                 xy=(xm, y1),
                 xytext=(0, 11),
                 textcoords="offset points",
@@ -1286,6 +2600,7 @@ def plot_bear_diamond_on_main(
     if ohlcv is None:
         return
     col = CHART_PATTERN_CRITERIA[ID_TO_ROW["bear_diamond"]]["color"]
+    lbl = CHART_PATTERN_CRITERIA[ID_TO_ROW["bear_diamond"]]["label"]
     for ev in events:
         sub = _ohlcv_between(ohlcv, ev["start"], ev["end"])
         if len(sub) < 2:
@@ -1300,7 +2615,7 @@ def plot_bear_diamond_on_main(
         poly = MplPolygon(verts, closed=True, facecolor=col, edgecolor=col, alpha=0.18, linewidth=1.2, zorder=33)
         ax.add_patch(poly)
         ax.annotate(
-            "하락다이아 · bear_diamond",
+            f"{lbl} · bear_diamond",
             xy=(mdates.num2date(tmid), ymid),
             fontsize=6,
             color=col,
@@ -1358,7 +2673,7 @@ def plot_post_box_bull_on_main(
         if bh is not None:
             ax.axhline(float(bh), xmin=0, xmax=1, color=col, linestyle="--", alpha=0.5, linewidth=0.9, zorder=33)
         ax.annotate(
-            "박스후장대양봉 · post_box_bull",
+            f"{CHART_PATTERN_CRITERIA[ID_TO_ROW['post_box_bull']]['label']} · post_box_bull",
             xy=(ts, c),
             fontsize=6,
             color=col,
@@ -1573,9 +2888,17 @@ def plot_pattern_main_overlays(
         if pid in enabled_ids and conf >= float(main_min_confidence):
             by_id.setdefault(pid, []).append(e)
     if "triple_bottom_w" in enabled_ids:
-        plot_triple_bottom_w_on_main(ax, by_id.get("triple_bottom_w"), ohlcv_n)
+        plot_triple_bottom_w_on_main(ax, by_id.get("triple_bottom_w"), ohlcv_n, "triple_bottom_w")
+    if "bull_inv_hs" in enabled_ids:
+        plot_triple_bottom_w_on_main(ax, by_id.get("bull_inv_hs"), ohlcv_n, "bull_inv_hs")
+    if "bear_triple_top" in enabled_ids:
+        plot_bear_triple_top_on_main(ax, by_id.get("bear_triple_top"), ohlcv_n, "bear_triple_top")
+    if "bear_hs" in enabled_ids:
+        plot_bear_triple_top_on_main(ax, by_id.get("bear_hs"), ohlcv_n, "bear_hs")
     if "double_top_m" in enabled_ids:
         plot_double_top_m_on_main(ax, by_id.get("double_top_m"), ohlcv_n)
+    if "bull_double_bottom" in enabled_ids:
+        plot_bull_double_bottom_on_main(ax, by_id.get("bull_double_bottom"), ohlcv_n)
     if "range_box" in enabled_ids:
         rb_all = by_id.get("range_box") or []
         if range_box_main_max < 1:
@@ -1590,10 +2913,22 @@ def plot_pattern_main_overlays(
         plot_range_box_on_main(ax, rb_show, ohlcv_n)
     if "asc_triangle" in enabled_ids:
         plot_asc_triangle_on_main(ax, by_id.get("asc_triangle"), ohlcv_n)
+    if "bear_desc_triangle" in enabled_ids:
+        plot_bear_desc_triangle_on_main(ax, by_id.get("bear_desc_triangle"), ohlcv_n)
+    if "bull_falling_wedge" in enabled_ids:
+        plot_wedge_on_main(ax, by_id.get("bull_falling_wedge"), ohlcv_n, "bull_falling_wedge")
+    if "bear_rising_wedge" in enabled_ids:
+        plot_wedge_on_main(ax, by_id.get("bear_rising_wedge"), ohlcv_n, "bear_rising_wedge")
     if "bull_flag" in enabled_ids:
         plot_flag_on_main(ax, by_id.get("bull_flag"), ohlcv_n, "bull_flag")
     if "bear_flag" in enabled_ids:
         plot_flag_on_main(ax, by_id.get("bear_flag"), ohlcv_n, "bear_flag")
+    if "bull_pennant" in enabled_ids:
+        plot_wedge_on_main(ax, by_id.get("bull_pennant"), ohlcv_n, "bull_pennant")
+    if "bear_pennant" in enabled_ids:
+        plot_wedge_on_main(ax, by_id.get("bear_pennant"), ohlcv_n, "bear_pennant")
+    if "bull_cup_handle" in enabled_ids:
+        plot_cup_handle_on_main(ax, by_id.get("bull_cup_handle"), ohlcv_n)
     if "bear_diamond" in enabled_ids:
         plot_bear_diamond_on_main(ax, by_id.get("bear_diamond"), ohlcv_n)
     if "post_box_bull" in enabled_ids:
