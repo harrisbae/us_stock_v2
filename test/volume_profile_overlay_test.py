@@ -12,6 +12,38 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.indicators.hma_mantra.visualization.volume_profile_overlay_chart import plot_main_chart_with_volume_profile_overlay
 
+
+def _resolve_show_ma(args):
+    """전체 지정(--show-ma)과 개별 플래그를 합친다. 둘 다 없으면 MA 50."""
+    selected = []
+    for period, enabled in (
+        (20, args.show_ma_20),
+        (50, args.show_ma_50),
+        (120, args.show_ma_120),
+        (200, args.show_ma_200),
+    ):
+        if enabled:
+            selected.append(str(period))
+    if args.show_ma_labels and args.show_ma:
+        base = "all"
+    elif args.show_ma_labels:
+        base = "all"
+    else:
+        base = args.show_ma
+    if selected and base:
+        text = str(base).strip().lower()
+        if text in ("all", "true", "on"):
+            return "all"
+        if text in ("none", "off", "false", "hide"):
+            return ",".join(selected)
+        return f"{base},{','.join(selected)}"
+    if selected:
+        return ",".join(selected)
+    if base:
+        return base
+    return "50"
+
+
 def main():
     import sys
     import argparse
@@ -71,6 +103,17 @@ def main():
         default='',
         help='이격도 conf 프리셋(growth|balanced|defensive). 지정 시 개별 weight보다 우선',
     )
+    parser.add_argument(
+        '--show-ma',
+        default=None,
+        help='메인 차트 MA 선과 범례. all=20/50/120/200, none=숨김, 또는 20,50,120,200 조합. 생략 시 MA 50',
+    )
+    parser.add_argument('--show-ma-20', action='store_true', help='메인 차트에 MA 20 표시')
+    parser.add_argument('--show-ma-50', action='store_true', help='메인 차트에 MA 50 표시')
+    parser.add_argument('--show-ma-120', action='store_true', help='메인 차트에 MA 120 표시')
+    parser.add_argument('--show-ma-200', action='store_true', help='메인 차트에 MA 200 표시')
+    parser.add_argument('--show-ma-labels', action='store_true', help='메인 차트에 MA 20/50/120/200을 모두 표시 (--show-ma all)')
+    parser.add_argument('--hide-vwma-spread', action='store_true', help='메인 VWMA 20·MA 20과 VWMA/SMA 비율 패널 숨김')
     parser.add_argument('--show-adx-dmi', action='store_true', help='ADX·DMI(+DI/−DI) 추세·강도 서브플롯 표시')
     parser.add_argument('--adx-period', type=int, default=14, help='ADX/DMI 기간 (기본 14)')
     parser.add_argument('--adx-sideways', type=float, default=20.0, help='ADX 횡보 임계 (기본 20)')
@@ -239,6 +282,8 @@ def main():
         disparity_conf_weight_depth=w_depth,
         disparity_conf_weight_volume=w_volume,
         disparity_conf_weight_trend=w_trend,
+        show_ma=_resolve_show_ma(args),
+        show_vwma_spread=not args.hide_vwma_spread,
         show_adx_dmi=args.show_adx_dmi,
         adx_period=args.adx_period,
         adx_sideways=args.adx_sideways,

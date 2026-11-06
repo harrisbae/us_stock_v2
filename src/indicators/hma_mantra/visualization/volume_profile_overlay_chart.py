@@ -2421,6 +2421,326 @@ def get_hy_spread_data(start_date, end_date):
         print(f"⚠️ HY 스프레드 데이터 가져오기 실패: {e}")
         return None
 
+
+def parse_show_ma(show_ma):
+    """메인 차트에 그릴 MA 기간. 기본은 50. all, none, 20/50/120/200 조합."""
+    allowed = {20, 50, 120, 200}
+    if show_ma is None:
+        return {50}
+    if isinstance(show_ma, (list, tuple, set)):
+        text = ",".join(str(item) for item in show_ma)
+    else:
+        text = str(show_ma)
+    text = text.strip().lower().replace(" ", "")
+    if text in ("", "default"):
+        return {50}
+    if text in ("all", "true", "on"):
+        return set(allowed)
+    if text in ("none", "off", "false", "hide"):
+        return set()
+    periods = set()
+    unknown = []
+    for part in text.split(","):
+        if not part:
+            continue
+        token = part[2:] if part.startswith("ma") else part
+        if token.isdigit() and int(token) in allowed:
+            periods.add(int(token))
+        else:
+            unknown.append(part)
+    if unknown:
+        print(
+            "⚠️ 알 수 없는 MA 기간: "
+            + ", ".join(unknown)
+            + " (사용 가능: 20, 50, 120, 200, all, none)"
+        )
+    return periods
+
+
+def build_vwma_sma_spread(close, volume, window=20, std_window=120):
+    """VWMA/SMA 비율. 밴드는 직전 봉까지의 120일 표준편차."""
+    close = pd.to_numeric(close, errors="coerce")
+    volume = pd.to_numeric(volume, errors="coerce").clip(lower=0)
+    weighted = (close * volume).rolling(window, min_periods=window).sum()
+    volume_sum = volume.rolling(window, min_periods=window).sum().replace(0, np.nan)
+    vwma = weighted / volume_sum
+    sma = close.rolling(window, min_periods=window).mean()
+    ratio = vwma / sma.replace(0, np.nan) * 100.0
+    sigma = ratio.rolling(std_window, min_periods=std_window).std().shift(1)
+    return {
+        "vwma": vwma,
+        "sma": sma,
+        "ratio": ratio,
+        "sigma": sigma,
+        "upper_1": 100.0 + sigma,
+        "lower_1": 100.0 - sigma,
+        "upper_2": 100.0 + 2.0 * sigma,
+        "lower_2": 100.0 - 2.0 * sigma,
+        "window": window,
+    }
+
+
+def vwma_spread_status_lines(close, spread, bb_upper=None):
+    """우측 요약에 넣을 VWMA/SMA 상태. 본문 한 줄과 참고 한 줄."""
+    ratio = spread.get("ratio") if spread else None
+    if ratio is None or not len(ratio):
+        return []
+    latest = float(ratio.iloc[-1])
+    if not np.isfinite(latest):
+        return []
+    previous = float(ratio.iloc[-2]) if len(ratio) > 1 else np.nan
+    side = "100 위" if latest >= 100 else "100 아래"
+    if np.isfinite(previous):
+        lines = [f"VWMA/SMA20: {latest:.2f} ({side}, 전일 {latest - previous:+.2f})"]
+    else:
+        lines = [f"VWMA/SMA20: {latest:.2f} ({side})"]
+
+    note = None
+    if bb_upper is not None and len(bb_upper) and len(close):
+        upper = float(bb_upper.iloc[-1])
+        price = float(close.iloc[-1])
+        if np.isfinite(upper) and np.isfinite(price) and price > upper and latest < 100:
+            note = "상단 돌파 · 비율 100 아래"
+    sigma = spread.get("sigma")
+    sigma_now = float(sigma.iloc[-1]) if sigma is not None and len(sigma) else np.nan
+    if note is None and np.isfinite(sigma_now):
+        if latest >= 100.0 + 2.0 * sigma_now:
+            note = "비율 +2σ"
+        elif latest <= 100.0 - sigma_now:
+            note = "비율 -1σ 밖"
+    if note is None and len(close) > 20 and len(ratio) > 20:
+        price_then = float(close.iloc[-21])
+        price_now = float(close.iloc[-1])
+        ratio_then = float(ratio.iloc[-21])
+        if np.isfinite(price_then) and np.isfinite(price_now) and np.isfinite(ratio_then):
+            if price_now > price_then and latest < ratio_then:
+                note = "20일: 가격 상승 · 비율 축소"
+            elif price_now < price_then and latest > ratio_then:
+                note = "20일: 가격 하락 · 비율 축소"
+    if note:
+        lines.append(note)
+    return lines
+
+
+_VWMA_ACTION_GUIDE = {
+    "돌파 진입": "거래량 실린 돌파 확인 — 신규 매수",
+    "눌림 진입": "지지 양봉 확인 — 분할 매수",
+    "일부 청산": "비율 고점이 낮아짐 — 일부 익절",
+    "청산": "비율 100 아래 마감 — 잔여 정리",
+    "눌림 청산": "직전 고점 또는 +2σ — 목표 청산",
+    "이탈": "비율 -1σ 밖 — 손절",
+    "보류": "상단 돌파이나 비율 100 아래 — 추격 금지",
+}
+
+
+def vwma_action_guide(label):
+    """매매 표식에 대응하는 액션 가이드."""
+    return _VWMA_ACTION_GUIDE.get(label)
+
+
+def _vwma_entries_blocked(beta_text):
+    """현재 베타 전략이 신규 매수를 막을 때 마지막 봉의 진입 표식을 빼기 위한 판정."""
+    text = beta_text or ""
+    return ("신규 매수 중단" in text) or ("비중 동결" in text)
+
+
+def _naive_day(value):
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert(None)
+    return ts.normalize()
+
+
+def _box_bounds_at(box_ranges, ts):
+    """날짜에 걸친 박스의 상·하단. 없으면 그 날짜 이전의 마지막 박스."""
+    day = _naive_day(ts)
+    previous = None
+    for box in box_ranges or []:
+        start = _naive_day(box["start_date"])
+        end = _naive_day(box["end_date"])
+        if start <= day <= end:
+            return float(box["high"]), float(box["low"])
+        if end <= day:
+            previous = box
+    if previous is None:
+        return None, None
+    return float(previous["high"]), float(previous["low"])
+
+
+def build_vwma_spread_signals(
+    ohlcv,
+    spread,
+    bb_upper,
+    sma50,
+    box_ranges,
+    value_area_max,
+    poc_price,
+    block_entries,
+):
+    """VWMA/SMA 서브차트 매매 표식.
+
+    돌파 진입·눌림 진입·청산·보류. 같은 봉에서는 청산, 보류, 진입 순으로 남긴다.
+    국면이 신규 매수를 막으면 마지막 봉의 진입만 빼서 과거 표식은 유지한다.
+    """
+    close = pd.to_numeric(ohlcv["Close"], errors="coerce")
+    open_ = pd.to_numeric(ohlcv["Open"], errors="coerce")
+    high = pd.to_numeric(ohlcv["High"], errors="coerce")
+    low = pd.to_numeric(ohlcv["Low"], errors="coerce")
+    volume = pd.to_numeric(ohlcv["Volume"], errors="coerce")
+    ratio = spread["ratio"]
+    lower_1 = spread["lower_1"]
+    upper_2 = spread["upper_2"]
+    vol_ma = volume.rolling(20, min_periods=20).mean().shift(1)
+    index = close.index
+    n = len(close)
+    if n == 0:
+        return []
+
+    events = {}
+    pull_levels = {}
+
+    def put(i, priority, label, kind):
+        price = ratio.iloc[i]
+        if not np.isfinite(price):
+            return
+        current = events.get(i)
+        if current is None or priority >= current[0]:
+            events[i] = (priority, label, kind, float(price))
+
+    def is_defer(i):
+        return events.get(i, (0, "", "", None))[2] == "defer"
+
+    for i in range(n):
+        r = ratio.iloc[i]
+        upper = bb_upper.iloc[i] if bb_upper is not None and len(bb_upper) else np.nan
+        if np.isfinite(r) and np.isfinite(upper) and float(close.iloc[i]) > float(upper) and r < 100:
+            put(i, 2, "보류", "defer")
+
+    vah = float(value_area_max) if value_area_max is not None and np.isfinite(value_area_max) else None
+    for i in range(n - 1):
+        box_high, _box_low = _box_bounds_at(box_ranges, index[i])
+        price = float(close.iloc[i])
+        bar_volume = float(volume.iloc[i])
+        average_volume = float(vol_ma.iloc[i]) if np.isfinite(vol_ma.iloc[i]) else np.nan
+        above_box = box_high is not None and price > box_high
+        above_value = vah is not None and price > vah
+        if not (above_box or above_value):
+            continue
+        if not (np.isfinite(bar_volume) and np.isfinite(average_volume) and bar_volume > average_volume):
+            continue
+        confirm_at = None
+        for j in range(i, min(i + 3, n)):
+            rj = ratio.iloc[j]
+            if np.isfinite(rj) and rj > 100 and j + 1 < n and np.isfinite(ratio.iloc[j + 1]) and ratio.iloc[j + 1] > 100:
+                confirm_at = j + 1
+                break
+        if confirm_at is None or is_defer(confirm_at):
+            continue
+        if block_entries and confirm_at == n - 1:
+            continue
+        put(confirm_at, 1, "돌파 진입", "entry_break")
+
+    poc = float(poc_price) if poc_price is not None and np.isfinite(poc_price) else None
+    for i in range(n):
+        r = ratio.iloc[i]
+        band = lower_1.iloc[i]
+        ma = sma50.iloc[i] if sma50 is not None and len(sma50) else np.nan
+        if not all(np.isfinite(x) for x in (r, band, ma)):
+            continue
+        if not (float(band) <= float(r) <= 100):
+            continue
+        if float(close.iloc[i]) <= float(ma) or float(close.iloc[i]) <= float(open_.iloc[i]):
+            continue
+        if is_defer(i) or events.get(i, (0, "", "", None))[2] == "entry_break":
+            continue
+        if block_entries and i == n - 1:
+            continue
+        _box_high, box_low = _box_bounds_at(box_ranges, index[i])
+        supports = [float(ma)]
+        if box_low is not None:
+            supports.append(box_low)
+        if poc is not None:
+            supports.append(poc)
+        bar_low = float(low.iloc[i])
+        bar_close = float(close.iloc[i])
+        touched = next((level for level in supports if bar_low <= level <= bar_close), None)
+        if touched is None:
+            continue
+        prior = high.iloc[max(0, i - 20):i]
+        target = float(prior.max()) if len(prior) and np.isfinite(prior.max()) else None
+        pull_levels[i] = (touched, target)
+        put(i, 1, "눌림 진입", "entry_pull")
+
+    state = None
+    pull_support = None
+    pull_target = None
+    anchor_close = None
+    anchor_ratio = None
+    partial_done = False
+    for i in range(n):
+        r = ratio.iloc[i]
+        r_prev = ratio.iloc[i - 1] if i else np.nan
+        band = lower_1.iloc[i]
+        stretch = upper_2.iloc[i]
+        price = float(close.iloc[i])
+        if state == "break" and anchor_close is not None and np.isfinite(r):
+            if price > anchor_close and r < anchor_ratio and not partial_done:
+                put(i, 3, "일부 청산", "exit")
+                partial_done = True
+            if price >= anchor_close:
+                anchor_close = price
+                anchor_ratio = float(r)
+        if state == "break" and np.isfinite(r) and np.isfinite(r_prev) and r_prev >= 100 and r < 100:
+            put(i, 3, "청산", "exit")
+            state = None
+            partial_done = False
+            anchor_close = None
+        if state == "pull" and pull_support is not None:
+            bar_volume = float(volume.iloc[i])
+            average_volume = float(vol_ma.iloc[i]) if np.isfinite(vol_ma.iloc[i]) else np.nan
+            if (
+                np.isfinite(bar_volume) and np.isfinite(average_volume) and bar_volume > average_volume
+                and price < pull_support
+                and np.isfinite(r) and np.isfinite(band) and r < band
+            ):
+                put(i, 3, "이탈", "exit")
+                state = None
+        if state == "pull" and (
+            (np.isfinite(r) and np.isfinite(stretch) and r >= stretch)
+            or (pull_target is not None and price >= pull_target)
+        ):
+            put(i, 3, "눌림 청산", "exit")
+            state = None
+        if state is None and np.isfinite(r) and np.isfinite(band) and r <= band and (not np.isfinite(r_prev) or r_prev > band):
+            put(i, 3, "이탈", "exit")
+        kind = events.get(i, (0, "", "", None))[2]
+        if kind == "entry_break":
+            state = "break"
+            anchor_close = price
+            anchor_ratio = float(r) if np.isfinite(r) else None
+            partial_done = False
+        elif kind == "entry_pull":
+            state = "pull"
+            pull_support, pull_target = pull_levels.get(i, (None, None))
+
+    last = n - 1
+    last_ratio = ratio.iloc[last]
+    last_band = lower_1.iloc[last]
+    if np.isfinite(last_ratio) and np.isfinite(last_band) and last_ratio <= last_band:
+        put(last, 3, "이탈", "exit")
+
+    ordered = []
+    for i in sorted(events):
+        _priority, label, kind, level = events[i]
+        ordered.append({
+            "date": index[i],
+            "ratio": level,
+            "label": label,
+            "kind": kind,
+        })
+    return ordered
+
+
 def plot_main_chart_with_volume_profile_overlay(
     data: pd.DataFrame,
     ticker: str = None,
@@ -2463,6 +2783,8 @@ def plot_main_chart_with_volume_profile_overlay(
     disparity_conf_weight_depth: float = 0.22,
     disparity_conf_weight_volume: float = 0.16,
     disparity_conf_weight_trend: float = 0.10,
+    show_ma="50",  # 메인 차트 MA 선과 범례. 50 | all | none | 20,120 같은 조합
+    show_vwma_spread: bool = True,  # 메인 VWMA20·MA20과 하단 VWMA/SMA 비율
     show_adx_dmi: bool = False,
     adx_period: int = 14,
     adx_sideways: float = 20.0,
@@ -2805,6 +3127,19 @@ def plot_main_chart_with_volume_profile_overlay(
     sma120 = ohlcv_data['Close'].rolling(window=120).mean()
     sma50 = ohlcv_data['Close'].rolling(window=50).mean()
     sma20 = ohlcv_data['Close'].rolling(window=20).mean()
+    vwma_spread = None
+    if show_vwma_spread and 'Volume' in ohlcv_data.columns:
+        try:
+            vwma_spread = build_vwma_sma_spread(ohlcv_data['Close'], ohlcv_data['Volume'])
+            last_ratio = vwma_spread['ratio'].dropna()
+            if len(last_ratio):
+                print(f"VWMA/SMA20 비율: {float(last_ratio.iloc[-1]):.2f}")
+        except Exception as e:
+            print(f"VWMA/SMA 계산 실패: {e}")
+            vwma_spread = None
+    vwma_signals = []
+    vwma_signal_label = None
+    vwma_signal_guide = None
     
     # 신호 생성
     trade_signals = get_hma_mantra_md_signals(ohlcv_data, ticker)
@@ -2881,6 +3216,7 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_pattern = None
     ax_disparity = None
     ax_adx = None
+    ax_vwma = None
 
     # 패턴 스트립 높이 산정용 — 감지된 종류 수만 행으로 쓰므로 미리 분석
     _enabled_main_early = normalize_pattern_main_ids(pattern_main_overlays or [])
@@ -2911,6 +3247,8 @@ def plot_main_chart_with_volume_profile_overlay(
     if show_pattern_strip:
         height_ratios.append(pattern_strip_height_ratio(_strip_n_rows))
     height_ratios.extend([1.0, 1.0, 1.0])  # Volume, RSI, MACD
+    if show_vwma_spread and vwma_spread is not None:
+        height_ratios.append(0.9)
     if show_adx_dmi:
         height_ratios.append(0.85)
     if show_disparity_strategy:
@@ -3003,6 +3341,9 @@ def plot_main_chart_with_volume_profile_overlay(
     row += 1
     ax_macd = fig.add_subplot(gs[row, 0], sharex=ax_main)
     row += 1
+    if show_vwma_spread and vwma_spread is not None:
+        ax_vwma = fig.add_subplot(gs[row, 0], sharex=ax_main)
+        row += 1
     if show_adx_dmi:
         ax_adx = fig.add_subplot(gs[row, 0], sharex=ax_main)
         row += 1
@@ -3368,12 +3709,49 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.plot(ohlcv_data.index, bb_ma, color='purple', linewidth=0.175, label='BB MA(20)')
     ax_main.plot(ohlcv_data.index, bb_upper, color='purple', linewidth=0.175, linestyle=':', label='BB Upper')
     ax_main.plot(ohlcv_data.index, bb_lower, color='purple', linewidth=0.175, linestyle=':', label='BB Lower')
-    ax_main.plot(ohlcv_data.index, sma20, color='#8e44ad', linewidth=0.85, linestyle='-', alpha=0.9, label='MA 20', zorder=7)
-    
-    # 긴 이평을 먼저 깔고, 짧은 이평을 그 위에 그린다.
-    ax_main.plot(ohlcv_data.index, sma200, color='darkblue', linewidth=0.525, linestyle='-', label='MA 200', alpha=0.8, zorder=4)
-    ax_main.plot(ohlcv_data.index, sma120, color='#117A65', linewidth=0.62, linestyle='-', label='MA 120', alpha=0.9, zorder=5)
-    ax_main.plot(ohlcv_data.index, sma50, color='#E67E22', linewidth=0.7, linestyle='-', label='MA 50', alpha=0.9, zorder=6)
+    visible_ma = parse_show_ma(show_ma)
+    ma_styles = {
+        200: (sma200, 'darkblue', 0.525, 0.8, 4),
+        120: (sma120, '#117A65', 0.62, 0.9, 5),
+        50: (sma50, '#E67E22', 0.7, 0.9, 6),
+        20: (sma20, '#8e44ad', 0.85, 0.9, 7),
+    }
+    for period in (200, 120, 50, 20):
+        if period not in visible_ma:
+            continue
+        series, color, linewidth, alpha, zorder = ma_styles[period]
+        ax_main.plot(
+            ohlcv_data.index,
+            series,
+            color=color,
+            linewidth=linewidth,
+            linestyle='-',
+            alpha=alpha,
+            label=f'MA {period}',
+            zorder=zorder,
+        )
+    if show_vwma_spread and vwma_spread is not None:
+        if 20 not in visible_ma:
+            ax_main.plot(
+                ohlcv_data.index,
+                vwma_spread['sma'],
+                color='#8e44ad',
+                linewidth=0.85,
+                linestyle='-',
+                alpha=0.9,
+                label='MA 20',
+                zorder=7,
+            )
+        ax_main.plot(
+            ohlcv_data.index,
+            vwma_spread['vwma'],
+            color='#148F77',
+            linewidth=0.9,
+            linestyle='-',
+            alpha=0.95,
+            label='VWMA 20',
+            zorder=8,
+        )
     
     # 박스권 표시: display_box_ranges 만 사용 (패턴 range_box 후보와 무관).
     if show_box_ranges and display_box_ranges:
@@ -3525,6 +3903,10 @@ def plot_main_chart_with_volume_profile_overlay(
             return f'{label}: {value:.2f} ({side})'
 
         sma_status = f"{_ma_vs_price('MA 50', sma50)}\n{_ma_vs_price('MA 200', sma200)}"
+        if show_vwma_spread and vwma_spread is not None:
+            vwma_lines = vwma_spread_status_lines(ohlcv_data['Close'], vwma_spread, bb_upper)
+            if vwma_lines:
+                sma_status += "\n" + "\n".join(vwma_lines)
         
         # 통합 정보를 하나의 박스에 표시 (현재 일시, 현재가, 투자전략, 버핏지수 포함)
         # 실시간 주가 시간을 우선으로 사용하여 일시 표시
@@ -3573,6 +3955,35 @@ def plot_main_chart_with_volume_profile_overlay(
             hy_spread_data, vix, tnx_data, ffr_data, inflation_data
         )
         beta_text = _beta_info_text(ticker, ohlcv_data, regime_text)
+        if show_vwma_spread and vwma_spread is not None:
+            try:
+                vwma_signals = build_vwma_spread_signals(
+                    ohlcv_data,
+                    vwma_spread,
+                    bb_upper,
+                    sma50,
+                    display_box_ranges,
+                    value_area_max,
+                    poc_price,
+                    _vwma_entries_blocked(beta_text),
+                )
+                if vwma_signals:
+                    vwma_signal_label = vwma_signals[-1]["label"]
+                    vwma_signal_guide = vwma_action_guide(vwma_signal_label)
+                    rewritten = []
+                    for line in info_text.split("\n"):
+                        rewritten.append(line)
+                        if line.startswith("VWMA/SMA20:"):
+                            rewritten.append(f"VWMA 전략: {vwma_signal_label}")
+                            if vwma_signal_guide:
+                                rewritten.append(f"액션가이드: {vwma_signal_guide}")
+                    info_text = "\n".join(rewritten)
+                    print(f"VWMA 전략: {vwma_signal_label} / {vwma_signal_guide} ({len(vwma_signals)}건)")
+            except Exception as e:
+                print(f"VWMA 전략 표식 실패: {e}")
+                vwma_signals = []
+                vwma_signal_label = None
+                vwma_signal_guide = None
         cross_text = _cross_asset_regime_text(
             ohlcv_data.index[-1], fear_greed_score, fear_greed_data
         )
@@ -4271,6 +4682,106 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_macd.legend(fontsize=8, loc='upper left')
     ax_macd.grid(True, alpha=0.3)
 
+    if show_vwma_spread and ax_vwma is not None and vwma_spread is not None:
+        ratio = vwma_spread['ratio']
+        ax_vwma.axhline(100.0, color='#7f8c8d', linewidth=0.8, linestyle=':', label='100')
+        for key, color, style, label in (
+            ('upper_2', '#1e8449', '--', '+2σ'),
+            ('upper_1', '#196f3d', ':', '+1σ'),
+            ('lower_1', '#922b21', ':', '-1σ'),
+            ('lower_2', '#7b241c', '--', '-2σ'),
+        ):
+            ax_vwma.plot(
+                ohlcv_data.index,
+                vwma_spread[key],
+                color=color,
+                linestyle=style,
+                linewidth=0.6,
+                alpha=0.85,
+                label=label,
+            )
+        ax_vwma.fill_between(
+            ohlcv_data.index, 100.0, ratio,
+            where=(ratio >= 100).fillna(False),
+            color='#1e8449', alpha=0.22, interpolate=True,
+        )
+        ax_vwma.fill_between(
+            ohlcv_data.index, 100.0, ratio,
+            where=(ratio < 100).fillna(False),
+            color='#922b21', alpha=0.22, interpolate=True,
+        )
+        ax_vwma.plot(ohlcv_data.index, ratio, color='#1a5276', linewidth=0.85, label='VWMA/SMA')
+        previous_ratio = ratio.shift(1)
+        cross_up = ratio[(previous_ratio <= 100) & (ratio > 100)]
+        cross_down = ratio[(previous_ratio >= 100) & (ratio < 100)]
+        if len(cross_up):
+            ax_vwma.scatter(
+                cross_up.index, cross_up.values,
+                marker='^', s=18, color='#196f3d', zorder=5, label='100 상향',
+            )
+        if len(cross_down):
+            ax_vwma.scatter(
+                cross_down.index, cross_down.values,
+                marker='v', s=18, color='#7b241c', zorder=5, label='100 하향',
+            )
+        signal_styles = {
+            "entry_break": dict(marker='s', s=28, color='#196f3d', label='돌파 진입'),
+            "entry_pull": dict(
+                marker='s', s=34, facecolors='none', edgecolors='#196f3d',
+                linewidths=1.1, label='눌림 진입',
+            ),
+            "exit": dict(marker='s', s=30, color='#922b21', label='청산'),
+            "defer": dict(marker='x', s=28, color='#7f8c8d', label='보류'),
+        }
+        grouped_signals = {}
+        for signal in vwma_signals:
+            grouped_signals.setdefault(signal["kind"], []).append(signal)
+        for kind, style in signal_styles.items():
+            rows = grouped_signals.get(kind) or []
+            if not rows:
+                continue
+            ax_vwma.scatter(
+                [row["date"] for row in rows],
+                [row["ratio"] for row in rows],
+                zorder=6,
+                **style,
+            )
+        last_ratio = ratio.dropna()
+        spread_title = 'VWMA/SMA 20'
+        if len(last_ratio):
+            latest_ratio = float(last_ratio.iloc[-1])
+            spread_side = '100 위' if latest_ratio >= 100 else '100 아래'
+            spread_title += f'  {latest_ratio:.2f} ({spread_side})'
+        if vwma_signal_label:
+            spread_title += f' · {vwma_signal_label}'
+            if vwma_signal_guide:
+                spread_title += f' — {vwma_signal_guide}'
+        ax_vwma.set_title(spread_title, fontsize=9)
+        if vwma_signals and vwma_signal_guide:
+            latest_signal = vwma_signals[-1]
+            ax_vwma.annotate(
+                vwma_signal_guide,
+                xy=(latest_signal["date"], latest_signal["ratio"]),
+                xytext=(-6, 10),
+                textcoords="offset points",
+                fontsize=7,
+                ha="right",
+                va="bottom",
+                color="#1a1a1a",
+                bbox=dict(
+                    boxstyle="round,pad=0.2",
+                    facecolor="white",
+                    edgecolor="#922b21",
+                    alpha=0.92,
+                ),
+                zorder=7,
+            )
+        ax_vwma.set_ylabel('Ratio', fontsize=8)
+        ax_vwma.grid(True, alpha=0.3)
+        ax_vwma.legend(loc='upper left', fontsize=6, ncol=4, framealpha=0.85)
+        ax_macd.tick_params(axis='x', labelbottom=False)
+        ax_vwma.tick_params(axis='x', labelbottom=False)
+
     if show_adx_dmi and ax_adx is not None and adx_dmi_data is not None:
         try:
             adx_series = adx_dmi_data.get("series")
@@ -4746,7 +5257,7 @@ def plot_main_chart_with_volume_profile_overlay(
     ax_main.set_ylabel('Price')
     ax_main.grid(True, alpha=0.3)
     legend_handles, legend_labels = ax_main.get_legend_handles_labels()
-    ma_order = ["MA 20", "MA 50", "MA 120", "MA 200"]
+    ma_order = ["MA 20", "VWMA 20", "MA 50", "MA 120", "MA 200"]
     ma_items = []
     other_items = []
     first_ma = None

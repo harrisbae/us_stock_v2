@@ -40,6 +40,13 @@ DISPARITY_CONF_WEIGHT_DEPTH="0.22"
 DISPARITY_CONF_WEIGHT_VOLUME="0.16"
 DISPARITY_CONF_WEIGHT_TREND="0.10"
 DISPARITY_CONF_PRESET=""
+SHOW_MA="50"  # 메인 차트 MA. 기본은 50. all | none | 20,120 같은 조합
+SHOW_MA_EXPLICIT="false"
+SHOW_MA_20="false"
+SHOW_MA_50="false"
+SHOW_MA_120="false"
+SHOW_MA_200="false"
+SHOW_VWMA_SPREAD="true"  # 메인 VWMA20·MA20과 하단 비율. --hide-vwma-spread 로 숨김
 SHOW_ADX_DMI="false"
 ADX_PERIOD="14"
 ADX_SIDEWAYS="20"
@@ -197,6 +204,36 @@ while [[ $# -gt 0 ]]; do
       DISPARITY_CONF_PRESET="$2"
       shift 2
       ;;
+    --show-ma)
+      SHOW_MA="$2"
+      SHOW_MA_EXPLICIT="true"
+      shift 2
+      ;;
+    --show-ma-20)
+      SHOW_MA_20="true"
+      shift
+      ;;
+    --show-ma-50)
+      SHOW_MA_50="true"
+      shift
+      ;;
+    --show-ma-120)
+      SHOW_MA_120="true"
+      shift
+      ;;
+    --show-ma-200)
+      SHOW_MA_200="true"
+      shift
+      ;;
+    --show-ma-labels)
+      SHOW_MA="all"
+      SHOW_MA_EXPLICIT="true"
+      shift
+      ;;
+    --hide-vwma-spread)
+      SHOW_VWMA_SPREAD="false"
+      shift
+      ;;
     --show-adx-dmi)
       SHOW_ADX_DMI="true"
       shift
@@ -255,6 +292,26 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+resolve_show_ma() {
+  local indiv=""
+  [ "$SHOW_MA_20" = "true" ] && indiv="${indiv},20"
+  [ "$SHOW_MA_50" = "true" ] && indiv="${indiv},50"
+  [ "$SHOW_MA_120" = "true" ] && indiv="${indiv},120"
+  [ "$SHOW_MA_200" = "true" ] && indiv="${indiv},200"
+  indiv="${indiv#,}"
+  if [ -n "$indiv" ] && [ "$SHOW_MA_EXPLICIT" != "true" ]; then
+    echo "$indiv"
+  elif [ -n "$indiv" ]; then
+    case "$SHOW_MA" in
+      all|ALL|true|on) echo "all" ;;
+      none|NONE|off|false|hide) echo "$indiv" ;;
+      *) echo "${SHOW_MA},${indiv}" ;;
+    esac
+  else
+    echo "$SHOW_MA"
+  fi
+}
 
 # 일수 옵션이 지정된 경우 PERIOD를 업데이트
 if [ ! -z "$DAYS" ]; then
@@ -426,6 +483,10 @@ if [ -z "$SYMBOL" ] && [ -z "$SYMBOL_FILE" ]; then
   echo "  --disparity-conf-weight-volume F 이격도 conf 거래량 가중치(기본 0.16)"
   echo "  --disparity-conf-weight-trend F  이격도 conf 추세 가중치(기본 0.10)"
   echo "  --disparity-conf-preset P   이격도 conf 프리셋(growth|balanced|defensive)"
+  echo "  --show-ma SPEC              메인 차트 MA 선과 범례. all=전체, none=숨김, 20,50,120,200 조합. 기본 50"
+  echo "  --show-ma-20|50|120|200     해당 MA만 표시. --show-ma 와 함께 쓰면 그 설정에 더함"
+  echo "  --show-ma-labels            메인 차트 MA 20/50/120/200 모두 표시 (--show-ma all)"
+  echo "  --hide-vwma-spread          메인 VWMA 20·MA 20과 VWMA/SMA 비율 패널 숨김"
   echo "  --show-adx-dmi              ADX·DMI(+DI/−DI) 추세·강도 서브플롯 표시"
   echo "  --adx-period N              ADX/DMI 기간 (기본 14)"
   echo "  --adx-sideways F            ADX 횡보 임계 (기본 20)"
@@ -560,6 +621,8 @@ analyze_stock() {
                         --disparity-conf-weight-trend "$DISPARITY_CONF_WEIGHT_TREND" \
                         $( [ -n "$DISPARITY_CONF_PRESET" ] && echo --disparity-conf-preset "$DISPARITY_CONF_PRESET" ) \
                         $( [ "$SHOW_DISPARITY_STRATEGY" = "true" ] && echo --show-disparity-strategy ) \
+                        --show-ma "$(resolve_show_ma)" \
+                        $( [ "$SHOW_VWMA_SPREAD" = "false" ] && echo --hide-vwma-spread ) \
                         $( [ "$SHOW_ADX_DMI" = "true" ] && echo --show-adx-dmi ) \
                         --adx-period "$ADX_PERIOD" \
                         --adx-sideways "$ADX_SIDEWAYS" \
@@ -623,6 +686,8 @@ analyze_stock() {
                     --disparity-conf-weight-trend "$DISPARITY_CONF_WEIGHT_TREND" \
                     $( [ -n "$DISPARITY_CONF_PRESET" ] && echo --disparity-conf-preset "$DISPARITY_CONF_PRESET" ) \
                     $( [ "$SHOW_DISPARITY_STRATEGY" = "true" ] && echo --show-disparity-strategy ) \
+                    --show-ma "$(resolve_show_ma)" \
+                    $( [ "$SHOW_VWMA_SPREAD" = "false" ] && echo --hide-vwma-spread ) \
                     $( [ "$SHOW_ADX_DMI" = "true" ] && echo --show-adx-dmi ) \
                     --adx-period "$ADX_PERIOD" \
                     --adx-sideways "$ADX_SIDEWAYS" \
